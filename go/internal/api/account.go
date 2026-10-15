@@ -11,12 +11,19 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/keys"
+	"github.com/Mutiur03/pulse/internal/orgs"
 )
 
 func meOf(p *auth.Principal) gen.Me {
-	out := gen.Me{User: gen.User{Id: p.User.ID, Email: p.User.Email, Name: p.User.Name}, Projects: []gen.Project{}}
+	out := gen.Me{
+		User:     gen.User{Id: p.User.ID, Email: p.User.Email, Name: p.User.Name, EmailVerified: p.User.EmailVerified},
+		Projects: []gen.Project{}, Orgs: []gen.Org{},
+	}
 	for _, pr := range p.Projects {
-		out.Projects = append(out.Projects, gen.Project{Id: pr.ID, Name: pr.Name, Role: gen.ProjectRole(pr.Role)})
+		out.Projects = append(out.Projects, project2gen(pr))
+	}
+	for _, o := range p.Orgs {
+		out.Orgs = append(out.Orgs, gen.Org{Id: o.ID, Name: o.Name, Role: gen.OrgRole(o.Role)})
 	}
 	return out
 }
@@ -72,7 +79,11 @@ func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
-	token, _, err := s.Accounts.Signup(r.Context(), body.Email, body.Password, body.Name, r.UserAgent())
+	invite := ""
+	if body.InviteToken != nil {
+		invite = *body.InviteToken
+	}
+	token, u, err := s.Accounts.Signup(r.Context(), body.Email, body.Password, body.Name, r.UserAgent(), invite)
 	var verr *auth.ValidationError
 	switch {
 	case errors.As(err, &verr):
@@ -81,9 +92,18 @@ func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 	case errors.Is(err, auth.ErrEmailTaken):
 		writeErr(w, http.StatusConflict, "an account with this email already exists")
 		return
+	case errors.Is(err, orgs.ErrWrongUser):
+		writeErr(w, http.StatusBadRequest, "this invite was sent to a different email address")
+		return
+	case errors.Is(err, orgs.ErrBadInvite):
+		writeErr(w, http.StatusBadRequest, "the invite is invalid or has expired")
+		return
 	case err != nil:
 		internal(w, err)
 		return
+	}
+	if !u.EmailVerified {
+		s.sendVerification(r.Context(), u)
 	}
 	s.startSession(w, r, token, http.StatusCreated)
 }

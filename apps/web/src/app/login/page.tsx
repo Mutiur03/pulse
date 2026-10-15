@@ -46,6 +46,9 @@ function LoginForm() {
           Password
           <Input type="password" name="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
+        <Link href="/reset-password" className="-mt-1 self-end text-xs text-muted underline-offset-2 hover:text-zinc-200 hover:underline">
+          Forgot password?
+        </Link>
         <ErrorNote error={error} />
         <Button type="submit" disabled={busy} className="mt-2">
           {busy ? 'Signing in…' : 'Sign in'}

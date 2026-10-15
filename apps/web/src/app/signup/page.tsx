@@ -2,7 +2,7 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import { APIError } from '@pulse/api-client';
-import { api, selectProject } from '@/lib/api';
+import { api, selectOrg, selectProject } from '@/lib/api';
 import { Button, Card, ErrorNote, Input } from '@/components/ui';
 
 export default function SignupPage() {
@@ -22,6 +22,7 @@ export default function SignupPage() {
     try {
       await api.signup(email, password, name);
       selectProject(undefined);
+      selectOrg(undefined);
       window.location.href = '/projects/new';
     } catch (err) {
       if (err instanceof APIError && err.status === 409) setError('An account with this email already exists.');

@@ -11,21 +11,25 @@ import (
 )
 
 func project2gen(p auth.Project) gen.Project {
-	return gen.Project{Id: p.ID, Name: p.Name, Role: gen.ProjectRole(p.Role)}
+	return gen.Project{Id: p.ID, Name: p.Name, Role: gen.ProjectRole(p.Role), OrgId: p.OrgID}
 }
 
-func decodeName(w http.ResponseWriter, r *http.Request) (string, bool) {
+func decodeName(w http.ResponseWriter, r *http.Request) (string, int64, bool) {
 	var body gen.ProjectInput
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<12)).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body")
-		return "", false
+		return "", 0, false
 	}
 	name, err := projects.CleanName(body.Name)
 	if err != nil {
 		writeErr(w, http.StatusBadRequest, err.Error())
-		return "", false
+		return "", 0, false
 	}
-	return name, true
+	var org int64
+	if body.OrgId != nil {
+		org = *body.OrgId
+	}
+	return name, org, true
 }
 
 func (s *Server) ListProjects(w http.ResponseWriter, r *http.Request) {
@@ -52,11 +56,28 @@ func (s *Server) CreateProject(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
-	name, ok := decodeName(w, r)
+	name, org, ok := decodeName(w, r)
 	if !ok {
 		return
 	}
-	pr, k, err := s.Projects.Create(r.Context(), p.User.ID, name)
+	if org != 0 {
+		if _, ok := orgAccess(w, r, org, true); !ok {
+			return
+		}
+	} else if len(p.Orgs) > 0 && p.OrgRole(p.Orgs[0].ID) != "owner" {
+		// Default to an organization the user owns.
+		for _, o := range p.Orgs {
+			if o.Role == "owner" {
+				org = o.ID
+				break
+			}
+		}
+		if org == 0 {
+			writeErr(w, http.StatusForbidden, "only organization owners can create projects")
+			return
+		}
+	}
+	pr, k, err := s.Projects.Create(r.Context(), p.User.ID, org, name)
 	if err != nil {
 		internal(w, err)
 		return
@@ -68,7 +89,7 @@ func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, projectID
 	if !owns(w, r, projectID) {
 		return
 	}
-	name, ok := decodeName(w, r)
+	name, _, ok := decodeName(w, r)
 	if !ok {
 		return
 	}
@@ -80,5 +101,5 @@ func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, projectID
 		internal(w, err)
 		return
 	}
-	writeJSON(w, http.StatusOK, gen.Project{Id: projectID, Name: name, Role: gen.Owner})
+	writeJSON(w, http.StatusOK, gen.Project{Id: projectID, Name: name, Role: gen.ProjectRoleOwner})
 }

@@ -30,29 +30,16 @@ func CleanName(name string) (string, error) {
 
 type Store struct{ DB *pgxpool.Pool }
 
-// List returns the projects the user is a member of.
+// List returns the projects the user can read.
 func (s *Store) List(ctx context.Context, userID int64) ([]auth.Project, error) {
-	rows, err := s.DB.Query(ctx, `SELECT p.id, p.name, m.role FROM project_members m JOIN projects p ON p.id = m.project_id
-		WHERE m.user_id = $1 ORDER BY p.id`, userID)
-	if err != nil {
-		return nil, err
-	}
-	defer rows.Close()
-	out := []auth.Project{}
-	for rows.Next() {
-		var p auth.Project
-		if err := rows.Scan(&p.ID, &p.Name, &p.Role); err != nil {
-			return nil, err
-		}
-		out = append(out, p)
-	}
-	return out, rows.Err()
+	return auth.ListProjects(ctx, s.DB, userID)
 }
 
-// Create makes a project in the user's first organization (creating one for
-// users that predate organizations), adds the user as owner and issues the
-// first ingest key, in one transaction.
-func (s *Store) Create(ctx context.Context, userID int64, name string) (auth.Project, keys.APIKey, error) {
+// Create makes a project in the given organization, or when orgID is 0 the
+// user's first organization (creating one for users that predate
+// organizations). It adds the user as owner and issues the first ingest key,
+// in one transaction. The caller checks the user may create in orgID.
+func (s *Store) Create(ctx context.Context, userID, orgID int64, name string) (auth.Project, keys.APIKey, error) {
 	name, err := CleanName(name)
 	if err != nil {
 		return auth.Project{}, keys.APIKey{}, err
@@ -66,9 +53,11 @@ func (s *Store) Create(ctx context.Context, userID int64, name string) (auth.Pro
 		return auth.Project{}, keys.APIKey{}, err
 	}
 	defer func() { _ = tx.Rollback(ctx) }()
-	var org int64
-	err = tx.QueryRow(ctx, `SELECT org_id FROM org_members WHERE user_id = $1
+	org := orgID
+	if org == 0 {
+		err = tx.QueryRow(ctx, `SELECT org_id FROM org_members WHERE user_id = $1
 		ORDER BY role = 'owner' DESC, org_id LIMIT 1`, userID).Scan(&org)
+	}
 	if errors.Is(err, pgx.ErrNoRows) {
 		if err = tx.QueryRow(ctx, `INSERT INTO organizations (name)
 			SELECT name || '''s organization' FROM users WHERE id = $1 RETURNING id`, userID).Scan(&org); err == nil {
@@ -78,7 +67,7 @@ func (s *Store) Create(ctx context.Context, userID int64, name string) (auth.Pro
 	if err != nil {
 		return auth.Project{}, keys.APIKey{}, err
 	}
-	p := auth.Project{Name: name, Role: "owner"}
+	p := auth.Project{Name: name, Role: "owner", OrgID: org}
 	if err := tx.QueryRow(ctx, `INSERT INTO projects (name, org_id) VALUES ($1, $2) RETURNING id`, name, org).Scan(&p.ID); err != nil {
 		return auth.Project{}, keys.APIKey{}, err
 	}

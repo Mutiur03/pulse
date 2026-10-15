@@ -87,6 +87,226 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/auth/password-reset/request:
+    post:
+      summary: Email a password reset link
+      description: >
+        Always returns 204 whether or not the email has an account, so it
+        cannot be used to find accounts. Limited to 5 requests per email and
+        address per hour (429 after that).
+      operationId: requestPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetRequest'
+      responses:
+        '204':
+          description: Done
+        '429':
+          description: Too many requests; see Retry-After
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/auth/password-reset/confirm:
+    post:
+      summary: Set a new password with a reset token
+      description: >
+        Tokens are single use and expire after one hour. Every existing
+        session of the user is ended.
+      operationId: confirmPasswordReset
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PasswordResetConfirm'
+      responses:
+        '204':
+          description: Done
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/auth/verify-email:
+    post:
+      summary: Confirm the email address with the token from the verification email
+      operationId: verifyEmail
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '204':
+          description: Done
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/auth/verify-email/resend:
+    post:
+      summary: Send the verification email again
+      operationId: resendVerification
+      responses:
+        '204':
+          description: Done
+  /v1/orgs/{org_id}/members:
+    get:
+      summary: Members of the organization
+      operationId: listMembers
+      parameters:
+        - $ref: '#/components/parameters/OrgPath'
+      responses:
+        '200':
+          description: Members
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Member'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/orgs/{org_id}/members/{user_id}/remove:
+    post:
+      summary: Remove a member from the organization
+      description: Owners only. The last owner cannot be removed.
+      operationId: removeMember
+      parameters:
+        - $ref: '#/components/parameters/OrgPath'
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Done
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: That is the last owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/orgs/{org_id}/invites:
+    get:
+      summary: Pending invites
+      operationId: listInvites
+      parameters:
+        - $ref: '#/components/parameters/OrgPath'
+      responses:
+        '200':
+          description: Invites that are neither accepted, revoked nor expired
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Invite'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Invite someone by email
+      description: Owners only. The link expires after 7 days.
+      operationId: createInvite
+      parameters:
+        - $ref: '#/components/parameters/OrgPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/InviteInput'
+      responses:
+        '201':
+          description: The invite (the token is only sent by email)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Invite'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: Already a member
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/orgs/{org_id}/invites/{invite_id}/revoke:
+    post:
+      summary: Revoke a pending invite
+      operationId: revokeInvite
+      parameters:
+        - $ref: '#/components/parameters/OrgPath'
+        - name: invite_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '204':
+          description: Done
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/invites/lookup:
+    post:
+      summary: Describe an invite from its token
+      operationId: lookupInvite
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: The invite
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/InviteInfo'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/invites/accept:
+    post:
+      summary: Accept an invite as the logged-in user
+      description: The invite must be addressed to the user's email.
+      operationId: acceptInvite
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: The user, now in the organization
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/auth/logout:
     post:
       summary: End the current session
@@ -495,6 +715,13 @@ components:
       in: cookie
       name: pulse_session
   parameters:
+    OrgPath:
+      name: org_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
     ProjectPath:
       name: project_id
       in: path
@@ -575,6 +802,104 @@ components:
           description: At least 10 characters.
         name:
           type: string
+        invite_token:
+          type: string
+          description: Join the inviting organization instead of creating one.
+    PasswordResetRequest:
+      type: object
+      required: [email]
+      properties:
+        email:
+          type: string
+    PasswordResetConfirm:
+      type: object
+      required: [token, password]
+      properties:
+        token:
+          type: string
+        password:
+          type: string
+    TokenRequest:
+      type: object
+      required: [token]
+      properties:
+        token:
+          type: string
+    Org:
+      type: object
+      required: [id, name, role]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+    Member:
+      type: object
+      required: [user_id, email, name, role, joined_at]
+      properties:
+        user_id:
+          type: integer
+          format: int64
+        email:
+          type: string
+        name:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+        joined_at:
+          type: string
+          format: date-time
+    InviteInput:
+      type: object
+      required: [email, role]
+      properties:
+        email:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+    Invite:
+      type: object
+      required: [id, org_id, email, role, created_at, expires_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        org_id:
+          type: integer
+          format: int64
+        email:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+        created_at:
+          type: string
+          format: date-time
+        expires_at:
+          type: string
+          format: date-time
+    InviteInfo:
+      type: object
+      required: [org_id, org_name, email, role, inviter]
+      properties:
+        org_id:
+          type: integer
+          format: int64
+        org_name:
+          type: string
+        email:
+          type: string
+        role:
+          type: string
+          enum: [owner, member]
+        inviter:
+          type: string
     ProjectInput:
       type: object
       required: [name]
@@ -582,6 +907,10 @@ components:
         name:
           type: string
           description: 1 to 80 characters.
+        org_id:
+          type: integer
+          format: int64
+          description: Organization for a new project; defaults to the user's first. Ignored on rename.
     CreatedProject:
       type: object
       required: [project, key]
@@ -600,8 +929,10 @@ components:
           type: string
     User:
       type: object
-      required: [id, email, name]
+      required: [id, email, name, email_verified]
       properties:
+        email_verified:
+          type: boolean
         id:
           type: integer
           format: int64
@@ -611,8 +942,11 @@ components:
           type: string
     Project:
       type: object
-      required: [id, name, role]
+      required: [id, name, role, org_id]
       properties:
+        org_id:
+          type: integer
+          format: int64
         id:
           type: integer
           format: int64
@@ -623,8 +957,12 @@ components:
           enum: [owner, member]
     Me:
       type: object
-      required: [user, projects]
+      required: [user, projects, orgs]
       properties:
+        orgs:
+          type: array
+          items:
+            $ref: '#/components/schemas/Org'
         user:
           $ref: '#/components/schemas/User'
         projects:

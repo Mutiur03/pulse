@@ -1,4 +1,4 @@
-import { expect, test, type Page } from '@playwright/test';
+import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 const email = process.env.PULSE_EMAIL ?? 'demo@pulse.local';
 const password = process.env.PULSE_PASSWORD ?? 'pulse-demo';
@@ -171,4 +171,152 @@ test('sign up, create a project and manage its keys', async ({ page }) => {
   await page.getByLabel('Password').fill('a-long-e2e-password');
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page.getByText('An account with this email already exists.')).toBeVisible();
+});
+
+// Emails from the local stack land in Mailpit; read them through its API.
+const mailpit = process.env.MAILPIT_URL ?? 'http://localhost:8025';
+
+async function mailLink(request: APIRequestContext, to: string, path: string): Promise<string> {
+  let link = '';
+  await expect
+    .poll(
+      async () => {
+        const res = await request.get(`${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${to}"`)}`);
+        const { messages } = (await res.json()) as { messages: { ID: string }[] };
+        for (const m of messages ?? []) {
+          const msg = (await (await request.get(`${mailpit}/api/v1/message/${m.ID}`)).json()) as { Text: string };
+          const found = msg.Text.match(new RegExp(`https?://\\S+${path}\\?token=[\\w-]+`));
+          if (found) {
+            link = found[0];
+            return true;
+          }
+        }
+        return false;
+      },
+      { timeout: 20_000 },
+    )
+    .toBe(true);
+  // Links point at APP_URL; keep the path so tests work against any base URL.
+  const u = new URL(link);
+  return u.pathname + u.search;
+}
+
+async function apiSignup(page: Page, who: string) {
+  const res = await page.request.post('/api/v1/auth/signup', {
+    data: { email: who, password: 'first-password-1', name: who.split('@')[0] },
+  });
+  expect(res.status()).toBe(201);
+}
+
+test('verify email, then reset a forgotten password', async ({ page, playwright }) => {
+  const who = `reset-${Date.now()}@example.com`;
+  await apiSignup(page, who);
+  const oldSession = (await page.context().cookies()).find((c) => c.name === 'pulse_session')!.value;
+  await page.goto('/settings');
+  await expect(page.getByTestId('verify-banner')).toBeVisible();
+  await shot(page, '13-verify-banner');
+  await page.goto(await mailLink(page.request, who, '/verify-email'));
+  await expect(page.getByTestId('verify-result')).toHaveText('Your email address is confirmed.');
+  await page.goto('/settings');
+  await expect(page.getByTestId('org-switcher')).toBeVisible();
+  await expect(page.getByTestId('verify-banner')).toHaveCount(0);
+
+  await page.context().clearCookies();
+  await page.goto('/login');
+  await page.getByRole('link', { name: 'Forgot password?' }).click();
+  await page.getByLabel('Email').fill(who);
+  await shot(page, '14-forgot-password');
+  await page.getByRole('button', { name: 'Send reset link' }).click();
+  await expect(page.getByTestId('reset-sent')).toBeVisible();
+  // Unknown emails get exactly the same answer.
+  const unknown = await page.request.post('/api/v1/auth/password-reset/request', { data: { email: `nobody-${Date.now()}@example.com` } });
+  expect(unknown.status()).toBe(204);
+
+  const resetLink = await mailLink(page.request, who, '/reset-password');
+  await page.goto(resetLink);
+  await page.getByLabel('New password').fill('second-password-2');
+  await shot(page, '15-new-password');
+  await page.getByRole('button', { name: 'Set new password' }).click();
+  await expect(page.getByTestId('reset-done')).toBeVisible();
+
+  // The link is single use and the old session is gone.
+  const again = await page.request.post('/api/v1/auth/password-reset/confirm', { data: { token: new URL(resetLink, 'http://x').searchParams.get('token'), password: 'third-password-3' } });
+  expect(again.status()).toBe(400);
+  const other = await playwright.request.newContext({ baseURL: page.url(), extraHTTPHeaders: { cookie: `pulse_session=${oldSession}` } });
+  expect((await other.get('/api/v1/auth/me')).status()).toBe(401);
+  await other.dispose();
+
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await page.getByLabel('Email').fill(who);
+  await page.getByLabel('Password').fill('first-password-1');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByText('Wrong email or password.')).toBeVisible();
+  await page.getByLabel('Password').fill('second-password-2');
+  await page.getByRole('button', { name: 'Sign in' }).click();
+  await expect(page.getByTestId('user-email')).toHaveText(who);
+});
+
+test('owners invite new and existing users into their organization', async ({ page, browser }) => {
+  const stamp = Date.now();
+  const owner = `owner-${stamp}@example.com`;
+  const fresh = `fresh-${stamp}@example.com`;
+  const existing = `existing-${stamp}@example.com`;
+  await apiSignup(page, owner);
+  const created = await page.request.post('/api/v1/projects', { data: { name: 'Team App' } });
+  expect(created.status()).toBe(201);
+
+  await page.goto('/settings');
+  const orgName = await page.getByTestId('org-switcher').locator('option:checked').innerText();
+  for (const [to, role] of [
+    [fresh, 'member'],
+    [existing, 'owner'],
+    [`revoked-${stamp}@example.com`, 'member'],
+  ]) {
+    await page.getByLabel('Invite email').fill(to);
+    await page.getByLabel('Invite role').selectOption(role);
+    await page.getByRole('button', { name: 'Send invite' }).click();
+    await expect(page.getByText(`Invite sent to ${to}.`)).toBeVisible();
+  }
+  await expect(page.getByTestId('invite-row')).toHaveCount(3);
+  await page.getByTestId('invite-row').filter({ hasText: 'revoked-' }).getByRole('button', { name: 'Revoke' }).click();
+  await expect(page.getByTestId('invite-row')).toHaveCount(2);
+  await shot(page, '16-members-invites');
+
+  // A new user signs up from the invite link and lands in the organization.
+  const freshCtx = await browser.newContext();
+  const freshPage = await freshCtx.newPage();
+  await freshPage.goto(await mailLink(page.request, fresh, '/invite'));
+  await expect(freshPage.getByTestId('invite-card')).toBeVisible();
+  await freshPage.getByLabel('Name').fill('Fresh');
+  await freshPage.getByLabel('Password').fill('fresh-password-1');
+  await shot(freshPage, '17-invite-signup');
+  await freshPage.getByRole('button', { name: 'Create account and join' }).click();
+  await expect(freshPage).toHaveURL(/\/traces/);
+  await expect(freshPage.getByTestId('org-switcher').locator('option:checked')).toHaveText(orgName);
+  await expect(freshPage.getByTestId('project-switcher').locator('option:checked')).toHaveText('Team App');
+  await expect(freshPage.getByTestId('verify-banner')).toHaveCount(0);
+  await freshCtx.close();
+
+  // An existing user accepts while signed in and can switch organizations.
+  const exCtx = await browser.newContext();
+  const exPage = await exCtx.newPage();
+  await apiSignup(exPage, existing);
+  await exPage.goto(await mailLink(page.request, existing, '/invite'));
+  await expect(exPage.getByText(`Signed in as ${existing}`)).toBeVisible();
+  await shot(exPage, '18-invite-accept');
+  await exPage.getByRole('button', { name: `Accept and join ${orgName}` }).click();
+  await expect(exPage).toHaveURL(/\/traces/);
+  const orgs = exPage.getByTestId('org-switcher');
+  await expect(orgs.locator('option')).toHaveCount(2);
+  await expect(orgs.locator('option:checked')).toHaveText(orgName);
+  await shot(exPage, '19-org-switcher');
+  await exCtx.close();
+
+  await page.reload();
+  await expect(page.getByTestId('member-row')).toHaveCount(3);
+  await expect(page.getByTestId('invite-row')).toHaveCount(0);
+  page.on('dialog', (d) => void d.accept());
+  await page.getByTestId('member-row').filter({ hasText: fresh }).getByRole('button', { name: 'Remove' }).click();
+  await expect(page.getByTestId('member-row')).toHaveCount(2);
+  await shot(page, '20-members');
 });

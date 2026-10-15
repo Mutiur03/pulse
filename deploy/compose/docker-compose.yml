@@ -225,6 +225,15 @@ services:
       start_period: 5s
     restart: unless-stopped
 
+  # Catches every email the local stack sends; nothing leaves the machine.
+  mailpit:
+    image: axllent/mailpit:v1.27
+    container_name: mailpit
+    ports:
+      - "8025:8025"
+      - "1025:1025"
+    restart: unless-stopped
+
   query-api:
     build:
       context: ../..
@@ -242,7 +251,13 @@ services:
       CLICKHOUSE_ADDR: clickhouse:9000
       POSTGRES_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable
       QUERY_API_PORT: 8081
+      # Local mail goes to Mailpit (web UI and API on http://localhost:8025).
+      SMTP_ADDR: mailpit:1025
+      SMTP_FROM: "Pulse <no-reply@pulse.local>"
+      APP_URL: http://localhost:3000
     depends_on:
+      mailpit:
+        condition: service_started
       postgres-migrate:
         condition: service_completed_successfully
       clickhouse-migrate:

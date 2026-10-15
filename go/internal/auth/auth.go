@@ -30,22 +30,53 @@ var (
 )
 
 type User struct {
-	ID    int64
-	Email string
-	Name  string
+	ID            int64
+	Email         string
+	Name          string
+	EmailVerified bool
 }
 
 type Project struct {
+	ID    int64
+	Name  string
+	Role  string
+	OrgID int64
+}
+
+// Org is an organization the user belongs to.
+type Org struct {
 	ID   int64
 	Name string
 	Role string
 }
 
-// Principal is the logged-in user and the projects they can read.
+// Principal is the logged-in user, their organizations and the projects they
+// can read.
 type Principal struct {
 	User     User
 	Projects []Project
+	Orgs     []Org
 }
+
+// OrgRole returns the user's role in the organization, or "" if not a member.
+func (p *Principal) OrgRole(org int64) string {
+	for _, o := range p.Orgs {
+		if o.ID == org {
+			return o.Role
+		}
+	}
+	return ""
+}
+
+// ProjectsSQL selects (id, name, role, org_id) of every project a user ($1)
+// can read: projects they are a direct member of and all projects of their
+// organizations. Owner of either kind wins.
+const ProjectsSQL = `SELECT p.id, p.name, CASE WHEN bool_or(x.role = 'owner') THEN 'owner' ELSE 'member' END, COALESCE(p.org_id, 0)
+	FROM (SELECT project_id, role FROM project_members WHERE user_id = $1
+	      UNION ALL
+	      SELECT pr.id, om.role FROM org_members om JOIN projects pr ON pr.org_id = om.org_id WHERE om.user_id = $1) x
+	JOIN projects p ON p.id = x.project_id
+	GROUP BY p.id ORDER BY p.id`
 
 // Can reports whether the user is a member of the project.
 func (p *Principal) Can(project int64) bool {
@@ -127,28 +158,53 @@ func (s *Store) Principal(ctx context.Context, token string) (*Principal, error)
 		return nil, ErrNoSession
 	}
 	p := &Principal{}
-	err := s.DB.QueryRow(ctx, `SELECT u.id, u.email, u.name FROM user_sessions s JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = $1 AND s.expires_at > now()`, tokenHash(token)).Scan(&p.User.ID, &p.User.Email, &p.User.Name)
+	err := s.DB.QueryRow(ctx, `SELECT u.id, u.email, u.name, u.email_verified_at IS NOT NULL FROM user_sessions s JOIN users u ON u.id = s.user_id
+		WHERE s.token_hash = $1 AND s.expires_at > now()`, tokenHash(token)).Scan(&p.User.ID, &p.User.Email, &p.User.Name, &p.User.EmailVerified)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNoSession
 	}
 	if err != nil {
 		return nil, err
 	}
-	rows, err := s.DB.Query(ctx, `SELECT p.id, p.name, m.role FROM project_members m JOIN projects p ON p.id = m.project_id
-		WHERE m.user_id = $1 ORDER BY p.id`, p.User.ID)
+	if p.Projects, err = ListProjects(ctx, s.DB, p.User.ID); err != nil {
+		return nil, err
+	}
+	rows, err := s.DB.Query(ctx, `SELECT o.id, o.name, m.role FROM org_members m JOIN organizations o ON o.id = m.org_id
+		WHERE m.user_id = $1 ORDER BY o.id`, p.User.ID)
 	if err != nil {
 		return nil, err
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var pr Project
-		if err := rows.Scan(&pr.ID, &pr.Name, &pr.Role); err != nil {
+		var o Org
+		if err := rows.Scan(&o.ID, &o.Name, &o.Role); err != nil {
 			return nil, err
 		}
-		p.Projects = append(p.Projects, pr)
+		p.Orgs = append(p.Orgs, o)
 	}
 	return p, rows.Err()
+}
+
+type querier interface {
+	Query(ctx context.Context, sql string, args ...any) (pgx.Rows, error)
+}
+
+// ListProjects runs ProjectsSQL.
+func ListProjects(ctx context.Context, db querier, userID int64) ([]Project, error) {
+	rows, err := db.Query(ctx, ProjectsSQL, userID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	out := []Project{}
+	for rows.Next() {
+		var pr Project
+		if err := rows.Scan(&pr.ID, &pr.Name, &pr.Role, &pr.OrgID); err != nil {
+			return nil, err
+		}
+		out = append(out, pr)
+	}
+	return out, rows.Err()
 }
 
 // Logout deletes the session.
@@ -176,7 +232,11 @@ func WithPrincipal(ctx context.Context, p *Principal) context.Context {
 }
 
 // Public paths skip authentication.
-var Public = map[string]bool{"/health": true, "/v1/auth/login": true, "/v1/auth/signup": true}
+var Public = map[string]bool{
+	"/health": true, "/v1/auth/login": true, "/v1/auth/signup": true,
+	"/v1/auth/password-reset/request": true, "/v1/auth/password-reset/confirm": true,
+	"/v1/auth/verify-email": true, "/v1/invites/lookup": true,
+}
 
 // Middleware requires a valid session for everything but Public paths and
 // rejects state-changing requests that are not JSON, which (with SameSite

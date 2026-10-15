@@ -23,3 +23,5 @@ WHERE p.id = 1 AND p.org_id IS NOT NULL AND lower(u.email) = 'demo@pulse.local'
 ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'owner';
 UPDATE organizations SET name = 'Demo Org'
 WHERE name = 'Default' AND id = (SELECT org_id FROM projects WHERE id = 1);
+
+UPDATE users SET email_verified_at = COALESCE(email_verified_at, now()) WHERE lower(email) = 'demo@pulse.local';

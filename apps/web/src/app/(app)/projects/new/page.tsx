@@ -2,7 +2,8 @@
 import Link from 'next/link';
 import { useState } from 'react';
 import type { CreatedProject } from '@pulse/api-client';
-import { api, handleAuthError, selectProject } from '@/lib/api';
+import { api, currentContext, handleAuthError, selectProject } from '@/lib/api';
+import { useAsync } from '@/lib/hooks';
 import { backendSnippet, browserSnippet } from '@/lib/snippet';
 import { Button, Card, CardHeader, ErrorNote, Input, PageHeader } from '@/components/ui';
 
@@ -12,13 +13,15 @@ export default function NewProjectPage() {
   const [err, setErr] = useState<string>();
   const [created, setCreated] = useState<CreatedProject>();
   const [copied, setCopied] = useState(false);
+  const me = useAsync(() => api.me(), []);
+  const org = me.data ? currentContext(me.data).org : undefined;
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     setBusy(true);
     setErr(undefined);
     try {
-      const res = await api.createProject(name.trim());
+      const res = await api.createProject(name.trim(), org?.id);
       selectProject(res.project.id);
       setCreated(res);
     } catch (e) {
@@ -73,7 +76,10 @@ export default function NewProjectPage() {
 
   return (
     <>
-      <PageHeader title="New project" description="A project holds one app's traces, errors and events, with its own ingest keys." />
+      <PageHeader
+        title="New project"
+        description={`A project holds one app's traces, errors and events, with its own ingest keys.${org ? ` It is created in ${org.name}.` : ''}`}
+      />
       <Card className="max-w-md">
         <form onSubmit={submit} className="flex flex-col gap-3 p-4">
           <label className="flex flex-col gap-1 text-xs text-muted">

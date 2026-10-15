@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { Me } from '@pulse/api-client';
-import { api, handleAuthError, selectProject, storedProject } from '@/lib/api';
+import { api, currentContext, handleAuthError, selectOrg, selectProject, storedOrg, storedProject } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
 const links = [
@@ -18,20 +18,27 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const router = useRouter();
   const [me, setMe] = useState<Me>();
+  const [sent, setSent] = useState(false);
   useEffect(() => {
     api.me().then((m) => {
-      const stored = storedProject();
-      if (stored !== undefined && !m.projects.some((p) => p.id === stored)) {
-        // The remembered project is gone or belongs to another account.
-        selectProject(undefined);
-        window.location.reload();
-        return;
+      const ctx = currentContext(m);
+      if (ctx.org?.id !== storedOrg() || ctx.project?.id !== storedProject()) {
+        // Remember a consistent pair; reload if pages may have queried another project.
+        const reload = storedProject() !== undefined && ctx.project?.id !== storedProject();
+        selectOrg(ctx.org?.id);
+        selectProject(ctx.project?.id);
+        if (reload) {
+          window.location.reload();
+          return;
+        }
       }
       setMe(m);
-      if (m.projects.length === 0 && !window.location.pathname.startsWith('/projects/new')) router.replace('/projects/new');
+      const here = window.location.pathname;
+      if (!ctx.project && ctx.org?.role === 'owner' && !here.startsWith('/projects/new') && !here.startsWith('/settings')) router.replace('/projects/new');
     }, handleAuthError);
   }, [router]);
-  const current = me?.projects.find((p) => p.id === storedProject()) ?? me?.projects[0];
+  const ctx = me ? currentContext(me) : undefined;
+  const current = ctx?.project;
   const switchTo = (v: string) => {
     if (v === 'new') {
       router.push('/projects/new');
@@ -39,6 +46,16 @@ export function Shell({ children }: { children: React.ReactNode }) {
     }
     selectProject(Number(v));
     window.location.reload();
+  };
+  const switchOrg = (v: string) => {
+    const id = Number(v);
+    selectOrg(id);
+    selectProject(me?.projects.find((p) => p.org_id === id)?.id);
+    window.location.href = '/traces';
+  };
+  const resend = async () => {
+    await api.resendVerification().catch(handleAuthError);
+    setSent(true);
   };
   const logout = async () => {
     await api.logout().catch(() => undefined);
@@ -51,6 +68,21 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-sm font-bold">P</span>
           <span className="font-semibold tracking-tight">Pulse</span>
         </Link>
+        {me && ctx && me.orgs.length > 0 && (
+          <select
+            aria-label="Organization"
+            data-testid="org-switcher"
+            className="mb-2 h-8 rounded-md border border-border bg-background px-2 text-xs font-medium text-zinc-100 outline-none focus:border-primary"
+            value={ctx.org?.id ?? ''}
+            onChange={(e) => switchOrg(e.target.value)}
+          >
+            {me.orgs.map((o) => (
+              <option key={o.id} value={o.id}>
+                {o.name}
+              </option>
+            ))}
+          </select>
+        )}
         {me && (
           <select
             aria-label="Project"
@@ -60,12 +92,12 @@ export function Shell({ children }: { children: React.ReactNode }) {
             onChange={(e) => switchTo(e.target.value)}
           >
             {!current && <option value="">No project</option>}
-            {me.projects.map((p) => (
+            {(ctx?.projects ?? []).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.name}
               </option>
             ))}
-            <option value="new">+ New project</option>
+            {ctx?.org?.role === 'owner' && <option value="new">+ New project</option>}
           </select>
         )}
         <nav className="flex flex-col gap-0.5">
@@ -92,7 +124,17 @@ export function Shell({ children }: { children: React.ReactNode }) {
           </button>
         </div>
       </aside>
-      <main className="min-w-0 flex-1 px-8 py-6">{children}</main>
+      <main className="min-w-0 flex-1 px-8 py-6">
+        {me && !me.user.email_verified && (
+          <div className="mb-4 flex items-center justify-between gap-3 rounded-md border border-amber-500/30 bg-amber-500/10 px-4 py-2 text-sm text-amber-200" data-testid="verify-banner">
+            <span>Confirm your email address: we sent a link to {me.user.email}.</span>
+            <button onClick={resend} disabled={sent} className="shrink-0 text-xs font-medium underline-offset-2 hover:underline disabled:opacity-60">
+              {sent ? 'Sent' : 'Resend email'}
+            </button>
+          </div>
+        )}
+        {children}
+      </main>
     </div>
   );
 }

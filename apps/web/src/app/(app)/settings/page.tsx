@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
-import { api, handleAuthError, storedProject } from '@/lib/api';
+import { api, currentContext, handleAuthError } from '@/lib/api';
+import { Members } from '@/components/members';
 import { backendSnippet, browserSnippet } from '@/lib/snippet';
 import { time } from '@/lib/format';
 import { useAsync } from '@/lib/hooks';
@@ -8,7 +9,8 @@ import { Badge, Button, Card, CardHeader, ErrorNote, Input, PageHeader, Spinner 
 
 export default function SettingsPage() {
   const me = useAsync(() => api.me(), []);
-  const project = me.data?.projects.find((p) => p.id === storedProject()) ?? me.data?.projects[0];
+  const ctx = me.data ? currentContext(me.data) : undefined;
+  const project = ctx?.project;
   const owner = project?.role === 'owner';
   const [name, setName] = useState('');
   const [copiedId, setCopiedId] = useState<number>();
@@ -131,6 +133,7 @@ export default function SettingsPage() {
           <pre className="overflow-auto px-4 pb-4 font-mono text-xs leading-relaxed text-zinc-300">{backend}</pre>
         </Card>
       </div>
+      {ctx?.org && me.data && <Members org={ctx.org} me={me.data.user.id} />}
     </>
   );
 }

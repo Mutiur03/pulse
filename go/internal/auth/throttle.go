@@ -16,10 +16,16 @@ type Throttle struct {
 	Redis  redis.UniversalClient
 	Max    int
 	Window time.Duration
+	// Prefix namespaces the counters; default "login:fail".
+	Prefix string
 }
 
 func (t *Throttle) key(email, ip string) string {
-	return fmt.Sprintf("login:fail:%s:%s", strings.ToLower(strings.TrimSpace(email)), ip)
+	p := t.Prefix
+	if p == "" {
+		p = "login:fail"
+	}
+	return fmt.Sprintf("%s:%s:%s", p, strings.ToLower(strings.TrimSpace(email)), ip)
 }
 
 // Blocked reports whether the pair is locked out and for how long.

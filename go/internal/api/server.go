@@ -14,6 +14,8 @@ import (
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
+	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/orgs"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 )
 
@@ -35,7 +37,11 @@ type TraceReader interface {
 // Accounts logs users in and out.
 type Accounts interface {
 	Login(ctx context.Context, email, password, userAgent string) (string, auth.User, error)
-	Signup(ctx context.Context, email, password, name, userAgent string) (string, auth.User, error)
+	Signup(ctx context.Context, email, password, name, userAgent, invite string) (string, auth.User, error)
+	RequestReset(ctx context.Context, email string) (string, auth.User, bool, error)
+	ResetPassword(ctx context.Context, token, password string) error
+	IssueVerify(ctx context.Context, userID int64) (string, error)
+	VerifyEmail(ctx context.Context, token string) error
 	Principal(ctx context.Context, token string) (*auth.Principal, error)
 	Logout(ctx context.Context, token string) error
 }
@@ -52,8 +58,19 @@ type KeyStore interface {
 // ProjectStore creates, lists and renames projects.
 type ProjectStore interface {
 	List(ctx context.Context, userID int64) ([]auth.Project, error)
-	Create(ctx context.Context, userID int64, name string) (auth.Project, keys.APIKey, error)
+	Create(ctx context.Context, userID, orgID int64, name string) (auth.Project, keys.APIKey, error)
 	Rename(ctx context.Context, projectID int64, name string) (string, error)
+}
+
+// OrgStore manages organization members and invites.
+type OrgStore interface {
+	Members(ctx context.Context, org int64) ([]orgs.Member, error)
+	RemoveMember(ctx context.Context, org, user int64) error
+	CreateInvite(ctx context.Context, org int64, email, role string, invitedBy int64) (orgs.Invite, string, error)
+	ListInvites(ctx context.Context, org int64) ([]orgs.Invite, error)
+	RevokeInvite(ctx context.Context, org, id int64) error
+	Lookup(ctx context.Context, token string) (orgs.InviteInfo, error)
+	Accept(ctx context.Context, token string, userID int64, email string) (int64, error)
 }
 
 type IssueStore interface {
@@ -69,7 +86,14 @@ type Server struct {
 	Keys     KeyStore
 	Projects ProjectStore
 	// Throttle limits failed logins; nil disables it.
-	Throttle     *auth.Throttle
+	Throttle *auth.Throttle
+	// ResetThrottle limits password reset requests; nil disables it.
+	ResetThrottle *auth.Throttle
+	Orgs          OrgStore
+	// Mail sends reset, invite and verification emails; nil drops them.
+	Mail mail.Sender
+	// AppURL is the web app's public base URL used in email links.
+	AppURL       string
 	SecureCookie bool
 	Now          func() time.Time
 }

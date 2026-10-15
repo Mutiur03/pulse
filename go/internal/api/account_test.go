@@ -29,7 +29,7 @@ func (f *fakeAccounts) Login(_ context.Context, email, pw, _ string) (string, au
 	return "", auth.User{}, auth.ErrBadCredentials
 }
 
-func (f *fakeAccounts) Signup(_ context.Context, email, pw, name, _ string) (string, auth.User, error) {
+func (f *fakeAccounts) Signup(_ context.Context, email, pw, name, _, _ string) (string, auth.User, error) {
 	email, _, err := auth.NormalizeSignup(email, pw, name)
 	if err != nil {
 		return "", auth.User{}, err
@@ -46,6 +46,32 @@ func (f *fakeAccounts) Principal(_ context.Context, tok string) (*auth.Principal
 }
 
 func (f *fakeAccounts) Logout(context.Context, string) error { return nil }
+
+func (f *fakeAccounts) RequestReset(_ context.Context, email string) (string, auth.User, bool, error) {
+	if _, ok := f.users[email]; !ok {
+		return "", auth.User{}, false, nil
+	}
+	return "reset-token", auth.User{ID: 1, Email: email, Name: "A"}, true, nil
+}
+
+func (f *fakeAccounts) ResetPassword(_ context.Context, token, pw string) error {
+	if err := auth.CheckPassword(pw); err != nil {
+		return err
+	}
+	if token != "reset-token" {
+		return auth.ErrBadToken
+	}
+	return nil
+}
+
+func (f *fakeAccounts) IssueVerify(context.Context, int64) (string, error) { return "verify-token", nil }
+
+func (f *fakeAccounts) VerifyEmail(_ context.Context, token string) error {
+	if token != "verify-token" {
+		return auth.ErrBadToken
+	}
+	return nil
+}
 
 func post(s *Server, path, body, ip string) *httptest.ResponseRecorder {
 	h := gen.HandlerFromMux(s, chi.NewRouter())
@@ -143,7 +169,7 @@ func (f *fakeProjects) List(context.Context, int64) ([]auth.Project, error) {
 	return []auth.Project{{ID: 1, Name: "One", Role: "owner"}}, nil
 }
 
-func (f *fakeProjects) Create(_ context.Context, _ int64, name string) (auth.Project, keys.APIKey, error) {
+func (f *fakeProjects) Create(_ context.Context, _, _ int64, name string) (auth.Project, keys.APIKey, error) {
 	f.created = append(f.created, name)
 	return auth.Project{ID: 5, Name: name, Role: "owner"}, keys.APIKey{ID: 1, ProjectID: 5, PublicKey: "pk_first"}, nil
 }

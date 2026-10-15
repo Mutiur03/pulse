@@ -17,6 +17,11 @@ export type Me = Schemas['Me'];
 export type Project = Schemas['Project'];
 export type ApiKey = Schemas['ApiKey'];
 export type CreatedProject = Schemas['CreatedProject'];
+export type Org = Schemas['Org'];
+export type Member = Schemas['Member'];
+export type Invite = Schemas['Invite'];
+export type InviteInfo = Schemas['InviteInfo'];
+export type Role = Org['role'];
 export type EventName = Schemas['EventName'];
 export type FunnelQuery = Schemas['FunnelQuery'];
 export type FunnelResult = Schemas['FunnelResult'];
@@ -51,7 +56,7 @@ export class APIClient {
   private async request<T>(method: string, path: string, query?: Query, body?: unknown): Promise<T> {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined) qs.set(k, String(v));
-    const scoped = !/^\/(health|v1\/auth\/|v1\/projects)/.test(path);
+    const scoped = !/^\/(health|v1\/auth\/|v1\/projects|v1\/orgs|v1\/invites)/.test(path);
     if (scoped && this.project !== undefined && !qs.has('project_id')) qs.set('project_id', String(this.project));
     const url = `${this.baseURL.replace(/\/$/, '')}${path}${qs.size ? `?${qs}` : ''}`;
     const res = await this.fetchImpl(url, {
@@ -77,8 +82,52 @@ export class APIClient {
     return this.request('POST', '/v1/auth/login', undefined, { email, password });
   }
 
-  signup(email: string, password: string, name: string): Promise<Me> {
-    return this.request('POST', '/v1/auth/signup', undefined, { email, password, name });
+  signup(email: string, password: string, name: string, inviteToken?: string): Promise<Me> {
+    return this.request('POST', '/v1/auth/signup', undefined, { email, password, name, invite_token: inviteToken });
+  }
+
+  requestPasswordReset(email: string): Promise<void> {
+    return this.request('POST', '/v1/auth/password-reset/request', undefined, { email });
+  }
+
+  confirmPasswordReset(token: string, password: string): Promise<void> {
+    return this.request('POST', '/v1/auth/password-reset/confirm', undefined, { token, password });
+  }
+
+  verifyEmail(token: string): Promise<void> {
+    return this.request('POST', '/v1/auth/verify-email', undefined, { token });
+  }
+
+  resendVerification(): Promise<void> {
+    return this.request('POST', '/v1/auth/verify-email/resend');
+  }
+
+  listMembers(orgId: number): Promise<Member[]> {
+    return this.request('GET', `/v1/orgs/${orgId}/members`);
+  }
+
+  removeMember(orgId: number, userId: number): Promise<void> {
+    return this.request('POST', `/v1/orgs/${orgId}/members/${userId}/remove`);
+  }
+
+  listInvites(orgId: number): Promise<Invite[]> {
+    return this.request('GET', `/v1/orgs/${orgId}/invites`);
+  }
+
+  createInvite(orgId: number, email: string, role: Role): Promise<Invite> {
+    return this.request('POST', `/v1/orgs/${orgId}/invites`, undefined, { email, role });
+  }
+
+  revokeInvite(orgId: number, inviteId: number): Promise<void> {
+    return this.request('POST', `/v1/orgs/${orgId}/invites/${inviteId}/revoke`);
+  }
+
+  lookupInvite(token: string): Promise<InviteInfo> {
+    return this.request('POST', '/v1/invites/lookup', undefined, { token });
+  }
+
+  acceptInvite(token: string): Promise<Me> {
+    return this.request('POST', '/v1/invites/accept', undefined, { token });
   }
 
   logout(): Promise<void> {
@@ -109,8 +158,8 @@ export class APIClient {
     return this.request('GET', '/v1/projects');
   }
 
-  createProject(name: string): Promise<CreatedProject> {
-    return this.request('POST', '/v1/projects', undefined, { name });
+  createProject(name: string, orgId?: number): Promise<CreatedProject> {
+    return this.request('POST', '/v1/projects', undefined, { name, org_id: orgId });
   }
 
   renameProject(projectId: number, name: string): Promise<Project> {

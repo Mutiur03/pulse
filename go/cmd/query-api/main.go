@@ -16,6 +16,8 @@ import (
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
+	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/orgs"
 	"github.com/Mutiur03/pulse/internal/projects"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/telemetry"
@@ -64,6 +66,15 @@ func main() {
 		Projects: &projects.Store{DB: db},
 		// Five failed logins per email and address lock it for 15 minutes.
 		Throttle: &auth.Throttle{Redis: rdb, Max: 5, Window: 15 * time.Minute},
+		// Five reset emails per address and client per hour.
+		ResetThrottle: &auth.Throttle{Redis: rdb, Max: 5, Window: time.Hour, Prefix: "reset:req"},
+		Orgs:          &orgs.Store{DB: db},
+		// Without SMTP_ADDR emails are written to the log.
+		Mail: mail.New(mail.Config{
+			Addr: os.Getenv("SMTP_ADDR"), From: os.Getenv("SMTP_FROM"),
+			User: os.Getenv("SMTP_USER"), Password: os.Getenv("SMTP_PASSWORD"),
+		}),
+		AppURL: os.Getenv("APP_URL"),
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: os.Getenv("COOKIE_SECURE") != "false",
 	}
