@@ -16,6 +16,7 @@ export type TraceSummary = Schemas['TraceSummary'];
 export type Me = Schemas['Me'];
 export type Project = Schemas['Project'];
 export type ApiKey = Schemas['ApiKey'];
+export type CreatedProject = Schemas['CreatedProject'];
 export type EventName = Schemas['EventName'];
 export type FunnelQuery = Schemas['FunnelQuery'];
 export type FunnelResult = Schemas['FunnelResult'];
@@ -44,9 +45,14 @@ export class APIClient {
     private readonly fetchImpl: typeof fetch = (...a) => fetch(...a),
   ) {}
 
+  /** Project used by data queries that do not name one. Unset means the API default (the first project). */
+  project?: number;
+
   private async request<T>(method: string, path: string, query?: Query, body?: unknown): Promise<T> {
     const qs = new URLSearchParams();
     for (const [k, v] of Object.entries(query ?? {})) if (v !== undefined) qs.set(k, String(v));
+    const scoped = !/^\/(health|v1\/auth\/|v1\/projects)/.test(path);
+    if (scoped && this.project !== undefined && !qs.has('project_id')) qs.set('project_id', String(this.project));
     const url = `${this.baseURL.replace(/\/$/, '')}${path}${qs.size ? `?${qs}` : ''}`;
     const res = await this.fetchImpl(url, {
       method,
@@ -71,6 +77,10 @@ export class APIClient {
     return this.request('POST', '/v1/auth/login', undefined, { email, password });
   }
 
+  signup(email: string, password: string, name: string): Promise<Me> {
+    return this.request('POST', '/v1/auth/signup', undefined, { email, password, name });
+  }
+
   logout(): Promise<void> {
     return this.request('POST', '/v1/auth/logout');
   }
@@ -85,6 +95,26 @@ export class APIClient {
 
   rotateKey(projectId: number): Promise<ApiKey> {
     return this.request('POST', `/v1/projects/${projectId}/keys/rotate`);
+  }
+
+  createKey(projectId: number): Promise<ApiKey> {
+    return this.request('POST', `/v1/projects/${projectId}/keys`);
+  }
+
+  revokeKey(projectId: number, keyId: number): Promise<ApiKey> {
+    return this.request('POST', `/v1/projects/${projectId}/keys/${keyId}/revoke`);
+  }
+
+  listProjects(): Promise<Project[]> {
+    return this.request('GET', '/v1/projects');
+  }
+
+  createProject(name: string): Promise<CreatedProject> {
+    return this.request('POST', '/v1/projects', undefined, { name });
+  }
+
+  renameProject(projectId: number, name: string): Promise<Project> {
+    return this.request('PATCH', `/v1/projects/${projectId}`, undefined, { name });
   }
 
   listTraces(query: ListTracesQuery = {}): Promise<Schemas['TraceList']> {

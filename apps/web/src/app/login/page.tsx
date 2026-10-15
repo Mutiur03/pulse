@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { Suspense, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { APIError } from '@pulse/api-client';
@@ -21,7 +22,9 @@ function LoginForm() {
       // Only follow same-site relative paths.
       window.location.href = next && next.startsWith('/') && !next.startsWith('//') ? next : '/traces';
     } catch (err) {
-      setError(err instanceof APIError && err.status === 401 ? 'Wrong email or password.' : 'Could not log in. Is the query API running?');
+      if (err instanceof APIError && err.status === 401) setError('Wrong email or password.');
+      else if (err instanceof APIError && err.status === 429) setError('Too many failed attempts. Try again in a few minutes.');
+      else setError('Could not log in. Is the query API running?');
       setBusy(false);
     }
   };
@@ -49,6 +52,12 @@ function LoginForm() {
         </Button>
       </form>
       <p className="mt-4 text-xs text-muted">
+        New to Pulse?{' '}
+        <Link href="/signup" className="text-zinc-200 underline-offset-2 hover:underline">
+          Create an account
+        </Link>
+      </p>
+      <p className="mt-2 text-xs text-muted">
         Local stack: <span className="font-mono text-zinc-300">demo@pulse.local</span> / <span className="font-mono text-zinc-300">pulse-demo</span>
       </p>
     </Card>

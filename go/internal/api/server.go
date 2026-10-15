@@ -35,6 +35,7 @@ type TraceReader interface {
 // Accounts logs users in and out.
 type Accounts interface {
 	Login(ctx context.Context, email, password, userAgent string) (string, auth.User, error)
+	Signup(ctx context.Context, email, password, name, userAgent string) (string, auth.User, error)
 	Principal(ctx context.Context, token string) (*auth.Principal, error)
 	Logout(ctx context.Context, token string) error
 }
@@ -43,7 +44,16 @@ type Accounts interface {
 type KeyStore interface {
 	List(ctx context.Context, projectID int64) ([]keys.APIKey, error)
 	Rotate(ctx context.Context, projectID int64) (keys.APIKey, []string, error)
+	Create(ctx context.Context, projectID int64) (keys.APIKey, error)
+	Revoke(ctx context.Context, projectID, keyID int64) (keys.APIKey, error)
 	Purge(ctx context.Context, publicKey string) error
+}
+
+// ProjectStore creates, lists and renames projects.
+type ProjectStore interface {
+	List(ctx context.Context, userID int64) ([]auth.Project, error)
+	Create(ctx context.Context, userID int64, name string) (auth.Project, keys.APIKey, error)
+	Rename(ctx context.Context, projectID int64, name string) (string, error)
 }
 
 type IssueStore interface {
@@ -53,10 +63,13 @@ type IssueStore interface {
 }
 
 type Server struct {
-	Traces       TraceReader
-	Issues       IssueStore
-	Accounts     Accounts
-	Keys         KeyStore
+	Traces   TraceReader
+	Issues   IssueStore
+	Accounts Accounts
+	Keys     KeyStore
+	Projects ProjectStore
+	// Throttle limits failed logins; nil disables it.
+	Throttle     *auth.Throttle
 	SecureCookie bool
 	Now          func() time.Time
 }

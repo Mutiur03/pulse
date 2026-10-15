@@ -60,6 +60,15 @@ func (f *fakeKeys) List(context.Context, int64) ([]keys.APIKey, error) { return 
 func (f *fakeKeys) Rotate(_ context.Context, p int64) (keys.APIKey, []string, error) {
 	return keys.APIKey{ID: 9, ProjectID: p, PublicKey: "pk_new"}, []string{"pk_old"}, nil
 }
+func (f *fakeKeys) Create(_ context.Context, p int64) (keys.APIKey, error) {
+	return keys.APIKey{ID: 10, ProjectID: p, PublicKey: "pk_added"}, nil
+}
+func (f *fakeKeys) Revoke(_ context.Context, p, id int64) (keys.APIKey, error) {
+	if id != 7 {
+		return keys.APIKey{}, keys.ErrKeyNotFound
+	}
+	return keys.APIKey{ID: 7, ProjectID: p, PublicKey: "pk_revoked"}, nil
+}
 func (f *fakeKeys) Purge(_ context.Context, k string) error {
 	f.purged = append(f.purged, k)
 	return nil

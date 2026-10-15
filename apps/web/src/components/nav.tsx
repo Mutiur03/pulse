@@ -1,9 +1,9 @@
 'use client';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import type { Me } from '@pulse/api-client';
-import { api, handleAuthError } from '@/lib/api';
+import { api, handleAuthError, selectProject, storedProject } from '@/lib/api';
 import { cn } from '@/lib/cn';
 
 const links = [
@@ -16,10 +16,30 @@ const links = [
 
 export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
+  const router = useRouter();
   const [me, setMe] = useState<Me>();
   useEffect(() => {
-    api.me().then(setMe, handleAuthError);
-  }, []);
+    api.me().then((m) => {
+      const stored = storedProject();
+      if (stored !== undefined && !m.projects.some((p) => p.id === stored)) {
+        // The remembered project is gone or belongs to another account.
+        selectProject(undefined);
+        window.location.reload();
+        return;
+      }
+      setMe(m);
+      if (m.projects.length === 0 && !window.location.pathname.startsWith('/projects/new')) router.replace('/projects/new');
+    }, handleAuthError);
+  }, [router]);
+  const current = me?.projects.find((p) => p.id === storedProject()) ?? me?.projects[0];
+  const switchTo = (v: string) => {
+    if (v === 'new') {
+      router.push('/projects/new');
+      return;
+    }
+    selectProject(Number(v));
+    window.location.reload();
+  };
   const logout = async () => {
     await api.logout().catch(() => undefined);
     window.location.href = '/login';
@@ -31,7 +51,23 @@ export function Shell({ children }: { children: React.ReactNode }) {
           <span className="grid h-7 w-7 place-items-center rounded-md bg-primary text-sm font-bold">P</span>
           <span className="font-semibold tracking-tight">Pulse</span>
         </Link>
-        {me && <div className="mb-4 truncate px-2 text-xs text-muted">{me.projects[0]?.name ?? 'No project'}</div>}
+        {me && (
+          <select
+            aria-label="Project"
+            data-testid="project-switcher"
+            className="mb-4 h-8 rounded-md border border-border bg-background px-2 text-xs text-zinc-200 outline-none focus:border-primary"
+            value={current?.id ?? ''}
+            onChange={(e) => switchTo(e.target.value)}
+          >
+            {!current && <option value="">No project</option>}
+            {me.projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+            <option value="new">+ New project</option>
+          </select>
+        )}
         <nav className="flex flex-col gap-0.5">
           {links.map((l) => (
             <Link

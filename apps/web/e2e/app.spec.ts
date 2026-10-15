@@ -125,3 +125,50 @@ test('settings shows the ingest key and SDK snippet', async ({ page }) => {
   await expect(page.getByTestId('sdk-snippet')).toContainText(await key.innerText());
   await shot(page, '08-settings');
 });
+
+test('sign up, create a project and manage its keys', async ({ page }) => {
+  const newEmail = `e2e-${Date.now()}@example.com`;
+  await page.goto('/login');
+  await page.getByRole('link', { name: 'Create an account' }).click();
+  await expect(page).toHaveURL(/\/signup/);
+  await shot(page, '09-signup');
+  await page.getByLabel('Name').fill('E2E User');
+  await page.getByLabel('Email').fill(newEmail);
+  await page.getByLabel('Password').fill('short');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByText('Password must be at least 10 characters.')).toBeVisible();
+  await page.getByLabel('Password').fill('a-long-e2e-password');
+  await page.getByRole('button', { name: 'Create account' }).click();
+
+  await expect(page).toHaveURL(/\/projects\/new/);
+  await expect(page.getByTestId('user-email')).toHaveText(newEmail);
+  await page.getByLabel('Project name').fill('E2E Shop');
+  await shot(page, '10-new-project');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  const key = page.getByTestId('new-project-key');
+  await expect(key).toHaveText(/^pk_[0-9a-f]{32}$/);
+  const value = await key.innerText();
+  await expect(page.getByTestId('new-project-snippet')).toContainText(value);
+  await shot(page, '11-project-key');
+
+  await page.goto('/settings');
+  await expect(page.getByTestId('project-switcher').locator('option:checked')).toHaveText('E2E Shop');
+  await expect(page.getByTestId('active-key')).toHaveText(value);
+  page.on('dialog', (d) => void d.accept());
+  await page.getByTestId('add-key').click();
+  await expect(page.getByTestId('active-key')).toHaveCount(2);
+  await page.getByTestId('revoke-key').last().click();
+  await expect(page.getByTestId('active-key')).toHaveCount(1);
+  await expect(page.getByText('revoked', { exact: true })).toBeVisible();
+  await shot(page, '12-key-management');
+
+  // The same email cannot sign up twice.
+  await page.getByRole('button', { name: 'Log out' }).click();
+  await expect(page).toHaveURL(/\/login$/);
+  await page.goto('/signup');
+  await page.getByLabel('Name').fill('Again');
+  await page.getByLabel('Email').fill(newEmail);
+  await page.getByLabel('Password').fill('a-long-e2e-password');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page.getByText('An account with this email already exists.')).toBeVisible();
+});

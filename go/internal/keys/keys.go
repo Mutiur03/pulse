@@ -232,3 +232,33 @@ func (s *Store) Rotate(ctx context.Context, projectID int64) (APIKey, []string, 
 	}
 	return k, revoked, tx.Commit(ctx)
 }
+
+// Create adds a new active key without touching the existing ones.
+func (s *Store) Create(ctx context.Context, projectID int64) (APIKey, error) {
+	pk, err := NewPublicKey()
+	if err != nil {
+		return APIKey{}, err
+	}
+	var k APIKey
+	err = s.DB.QueryRow(ctx, `INSERT INTO api_keys (project_id, public_key) VALUES ($1, $2)
+		RETURNING id, project_id, public_key, rate_limit_per_sec, created_at, revoked_at`, projectID, pk).
+		Scan(&k.ID, &k.ProjectID, &k.PublicKey, &k.RateLimitPerSec, &k.CreatedAt, &k.RevokedAt)
+	return k, err
+}
+
+// ErrKeyNotFound means the key does not exist in the project.
+var ErrKeyNotFound = errors.New("key not found")
+
+// Revoke revokes one key of the project. Revoking an already revoked key
+// returns it unchanged.
+func (s *Store) Revoke(ctx context.Context, projectID, keyID int64) (APIKey, error) {
+	var k APIKey
+	err := s.DB.QueryRow(ctx, `UPDATE api_keys SET revoked_at = COALESCE(revoked_at, now())
+		WHERE id = $1 AND project_id = $2
+		RETURNING id, project_id, public_key, rate_limit_per_sec, created_at, revoked_at`, keyID, projectID).
+		Scan(&k.ID, &k.ProjectID, &k.PublicKey, &k.RateLimitPerSec, &k.CreatedAt, &k.RevokedAt)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return APIKey{}, ErrKeyNotFound
+	}
+	return k, err
+}

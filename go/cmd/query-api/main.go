@@ -16,6 +16,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
+	"github.com/Mutiur03/pulse/internal/projects"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/telemetry"
 	"github.com/go-chi/chi/v5"
@@ -59,7 +60,10 @@ func main() {
 	accounts := &auth.Store{DB: db}
 	srv := &api.Server{
 		Traces: chClient, Issues: issueStore, Accounts: accounts,
-		Keys: &keys.Store{DB: db, Redis: rdb},
+		Keys:     &keys.Store{DB: db, Redis: rdb},
+		Projects: &projects.Store{DB: db},
+		// Five failed logins per email and address lock it for 15 minutes.
+		Throttle: &auth.Throttle{Redis: rdb, Max: 5, Window: 15 * time.Minute},
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: os.Getenv("COOKIE_SECURE") != "false",
 	}

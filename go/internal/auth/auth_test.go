@@ -90,3 +90,21 @@ func TestPasswordHashing(t *testing.T) {
 		t.Error("token hash should be sha256")
 	}
 }
+
+func TestNormalizeSignup(t *testing.T) {
+	email, name, err := NormalizeSignup("  ann@example.com ", "0123456789", " Ann ")
+	if err != nil || email != "ann@example.com" || name != "Ann" {
+		t.Fatalf("%q %q %v", email, name, err)
+	}
+	for _, c := range [][3]string{
+		{"bad", "0123456789", "Ann"},
+		{"ann@localhost", "0123456789", "Ann"},
+		{"ann@example.com", "012345678", "Ann"},
+		{"ann@example.com", strings.Repeat("x", 73), "Ann"},
+		{"ann@example.com", "0123456789", ""},
+	} {
+		if _, _, err := NormalizeSignup(c[0], c[1], c[2]); err == nil {
+			t.Errorf("%v should be rejected", c)
+		}
+	}
+}

@@ -4,8 +4,8 @@ info:
   version: 1.2.0
   description: >
     Read API for traces, issues, product events and funnels stored by Pulse.
-    Everything under /v1 except POST /v1/auth/login needs the pulse_session
-    cookie set by login, and only returns data from projects the user is a
+    Everything under /v1 except POST /v1/auth/login and /v1/auth/signup needs
+    the pulse_session cookie set by login or signup, and only returns data from projects the user is a
     member of. Mutating requests must use a JSON content type.
 security:
   - session: []
@@ -46,6 +46,47 @@ paths:
                 $ref: '#/components/schemas/Me'
         '401':
           $ref: '#/components/responses/Unauthorized'
+        '429':
+          description: >
+            Too many failed logins for this email from this address. The
+            Retry-After header gives the seconds to wait.
+          headers:
+            Retry-After:
+              schema:
+                type: integer
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/auth/signup:
+    post:
+      summary: Create an account
+      description: >
+        Creates the user and their organization and logs them in by setting
+        the `pulse_session` cookie. Projects are created afterwards.
+      operationId: signup
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignupRequest'
+      responses:
+        '201':
+          description: Account created and logged in
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Me'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '409':
+          description: The email is already registered
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/auth/logout:
     post:
       summary: End the current session
@@ -66,7 +107,81 @@ paths:
                 $ref: '#/components/schemas/Me'
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/projects:
+    get:
+      summary: Projects the user is a member of
+      operationId: listProjects
+      responses:
+        '200':
+          description: Projects
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Project'
+    post:
+      summary: Create a project in the user's organization
+      description: The creator becomes its owner and gets a first ingest key.
+      operationId: createProject
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectInput'
+      responses:
+        '201':
+          description: The project and its ingest key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CreatedProject'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/projects/{project_id}:
+    patch:
+      summary: Rename a project
+      operationId: updateProject
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProjectInput'
+      responses:
+        '200':
+          description: Updated project
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/projects/{project_id}/keys:
+    post:
+      summary: Add an ingest key
+      description: Existing keys stay active, so apps can move over gradually.
+      operationId: createKey
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '201':
+          description: The new key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
     get:
       summary: List the project's ingest keys
       operationId: listKeys
@@ -99,6 +214,29 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ApiKey'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/keys/{key_id}/revoke:
+    post:
+      summary: Revoke one ingest key
+      operationId: revokeKey
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - name: key_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The revoked key
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApiKey'
+        '403':
+          $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
   /v1/traces:
@@ -413,6 +551,12 @@ components:
         application/json:
           schema:
             $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: Only project owners can do this
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
     Unauthorized:
       description: Not logged in or bad credentials
       content:
@@ -420,6 +564,32 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
   schemas:
+    SignupRequest:
+      type: object
+      required: [email, password, name]
+      properties:
+        email:
+          type: string
+        password:
+          type: string
+          description: At least 10 characters.
+        name:
+          type: string
+    ProjectInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          description: 1 to 80 characters.
+    CreatedProject:
+      type: object
+      required: [project, key]
+      properties:
+        project:
+          $ref: '#/components/schemas/Project'
+        key:
+          $ref: '#/components/schemas/ApiKey'
     LoginRequest:
       type: object
       required: [email, password]

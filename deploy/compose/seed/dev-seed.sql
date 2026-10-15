@@ -15,3 +15,11 @@ UPDATE projects SET name = 'Demo Shop' WHERE id = 1 AND name = 'Default';
 INSERT INTO api_keys (project_id, public_key, rate_limit_per_sec)
 SELECT 1, 'pk_dev_local_0123456789abcdef', 1000
 WHERE NOT EXISTS (SELECT 1 FROM api_keys WHERE project_id = 1);
+
+-- The demo user owns the organization of the demo project.
+INSERT INTO org_members (org_id, user_id, role)
+SELECT p.org_id, u.id, 'owner' FROM projects p, users u
+WHERE p.id = 1 AND p.org_id IS NOT NULL AND lower(u.email) = 'demo@pulse.local'
+ON CONFLICT (org_id, user_id) DO UPDATE SET role = 'owner';
+UPDATE organizations SET name = 'Demo Org'
+WHERE name = 'Default' AND id = (SELECT org_id FROM projects WHERE id = 1);

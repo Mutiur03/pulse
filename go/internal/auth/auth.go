@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/jackc/pgx/v5"
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -91,20 +92,33 @@ func (s *Store) Login(ctx context.Context, email, password, userAgent string) (s
 	if bcrypt.CompareHashAndPassword([]byte(hash), []byte(password)) != nil {
 		return "", User{}, ErrBadCredentials
 	}
+	token, err := newSession(ctx, s.DB, u.ID, userAgent)
+	if err != nil {
+		return "", User{}, err
+	}
+	return token, u, nil
+}
+
+type execer interface {
+	Exec(ctx context.Context, sql string, args ...any) (pgconn.CommandTag, error)
+}
+
+// newSession stores a session for the user and returns the raw token.
+func newSession(ctx context.Context, db execer, userID int64, userAgent string) (string, error) {
 	raw := make([]byte, 32)
 	if _, err := rand.Read(raw); err != nil {
-		return "", User{}, err
+		return "", err
 	}
 	token := base64.RawURLEncoding.EncodeToString(raw)
 	if len(userAgent) > 256 {
 		userAgent = userAgent[:256]
 	}
-	_, err = s.DB.Exec(ctx, `INSERT INTO user_sessions (token_hash, user_id, expires_at, user_agent)
-		VALUES ($1, $2, $3::timestamptz, $4::text)`, tokenHash(token), u.ID, time.Now().Add(SessionTTL), userAgent)
+	_, err := db.Exec(ctx, `INSERT INTO user_sessions (token_hash, user_id, expires_at, user_agent)
+		VALUES ($1, $2, $3::timestamptz, $4::text)`, tokenHash(token), userID, time.Now().Add(SessionTTL), userAgent)
 	if err != nil {
-		return "", User{}, err
+		return "", err
 	}
-	return token, u, nil
+	return token, nil
 }
 
 // Principal resolves a session token to the user and their projects.
@@ -162,7 +176,7 @@ func WithPrincipal(ctx context.Context, p *Principal) context.Context {
 }
 
 // Public paths skip authentication.
-var Public = map[string]bool{"/health": true, "/v1/auth/login": true}
+var Public = map[string]bool{"/health": true, "/v1/auth/login": true, "/v1/auth/signup": true}
 
 // Middleware requires a valid session for everything but Public paths and
 // rejects state-changing requests that are not JSON, which (with SameSite
