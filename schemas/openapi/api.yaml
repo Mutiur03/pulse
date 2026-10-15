@@ -1,0 +1,134 @@
+openapi: 3.1.0
+info:
+  title: Telemetry Platform API
+  version: 1.0.0
+  description: Unified product analytics and observability platform API
+servers:
+  - url: http://localhost:8081
+    description: Local development
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: getHealth
+      responses:
+        '200':
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                  service:
+                    type: string
+  /api/v1/projects:
+    get:
+      summary: List projects
+      operationId: listProjects
+      responses:
+        '200':
+          description: List of projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  projects:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Project'
+  /api/v1/events:
+    get:
+      summary: Query events
+      operationId: queryEvents
+      parameters:
+        - name: project_id
+          in: query
+          schema:
+            type: integer
+        - name: start_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: end_time
+          in: query
+          schema:
+            type: string
+            format: date-time
+      responses:
+        '200':
+          description: List of events
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  events:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Event'
+  /api/v1/traces/{traceId}:
+    get:
+      summary: Get trace by ID
+      operationId: getTrace
+      parameters:
+        - name: traceId
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Trace details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Trace'
+components:
+  schemas:
+    Project:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        project_key:
+          type: string
+    Event:
+      type: object
+      properties:
+        event:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        properties:
+          type: object
+          additionalProperties: true
+        trace_id:
+          type: string
+    Trace:
+      type: object
+      properties:
+        trace_id:
+          type: string
+        spans:
+          type: array
+          items:
+            $ref: '#/components/schemas/Span'
+    Span:
+      type: object
+      properties:
+        span_id:
+          type: string
+        name:
+          type: string
+        timestamp:
+          type: string
+          format: date-time
+        duration_ns:
+          type: integer

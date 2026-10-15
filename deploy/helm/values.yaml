@@ -1,0 +1,49 @@
+# Default values for pulse
+
+replicaCount:
+  ingestGateway: 2
+  streamProcessor: 1
+  queryApi: 2
+  alertingWorker: 1
+
+image:
+  repository: pulse
+  pullPolicy: IfNotPresent
+  tag: "latest"
+
+service:
+  type: ClusterIP
+  ingestGateway:
+    port: 8080
+  queryApi:
+    port: 8081
+
+ingress:
+  enabled: false
+
+resources:
+  ingestGateway:
+    limits:
+      cpu: 1000m
+      memory: 512Mi
+    requests:
+      cpu: 100m
+      memory: 128Mi
+  
+kafka:
+  enabled: true
+  bootstrapServers: "kafka:9092"
+
+clickhouse:
+  enabled: true
+  host: "clickhouse"
+  port: 9000
+
+postgres:
+  enabled: true
+  url: "postgres://platform:platform@postgres:5432/platform"
+
+redis:
+  enabled: true
+  host: "redis"
+  port: 6379

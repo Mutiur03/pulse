@@ -1,0 +1,27 @@
+{
+  "name": "@pulse/browser",
+  "version": "0.1.0",
+  "description": "Browser SDK for Telemetry Platform",
+  "main": "dist/index.js",
+  "module": "dist/index.esm.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "rollup -c",
+    "dev": "rollup -c -w",
+    "test": "echo \"No tests yet\"",
+    "lint": "eslint src"
+  },
+  "keywords": ["analytics", "observability", "opentelemetry"],
+  "license": "MIT",
+  "devDependencies": {
+    "@rollup/plugin-node-resolve": "^15.3.1",
+    "@rollup/plugin-typescript": "^12.1.2",
+    "@types/uuid": "^10.0.0",
+    "rollup": "^4.28.1",
+    "tslib": "^2.8.1",
+    "typescript": "^5.7.2"
+  },
+  "dependencies": {
+    "uuid": "^11.0.3"
+  }
+}

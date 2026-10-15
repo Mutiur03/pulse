@@ -1,0 +1,6 @@
+package: gen
+output: ../../go/internal/api/gen/server.go
+generate:
+  chi-server: true
+  models: true
+  embedded-spec: true

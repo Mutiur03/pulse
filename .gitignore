@@ -1,0 +1,53 @@
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go/bin/
+vendor/
+
+# Node / TypeScript
+node_modules/
+.next/
+.turbo/
+dist/
+build/
+*.tsbuildinfo
+.env*.local
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+venv/
+*.egg-info/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# Env files with secrets
+.env.local
+.env.production.local
+
+# Generated code (tracked to enforce sync in CI)
+!go/internal/api/gen/
+!packages/api-client/src/generated/
+
+# Data directories
+data/
+volumes/

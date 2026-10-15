@@ -1,0 +1,8 @@
+# Helm chart skeleton for Kubernetes deployment
+
+apiVersion: v2
+name: pulse
+description: Unified analytics and observability platform
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

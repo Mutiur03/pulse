@@ -1,0 +1,32 @@
+sequenceDiagram
+  autonumber
+  actor U as User
+  participant SDK as Browser SDK (OTel web + rrweb)
+  participant API as api-service (Node/Go, OTel)
+  participant PAY as payment-service (OTel)
+  participant DB as Postgres (customer DB)
+  participant GW as ingest-gateway
+  participant K as Kafka
+  participant SP as stream-processor
+  participant CH as ClickHouse
+
+  U->>SDK: click "Pay"
+  SDK->>SDK: start root span "click Pay" (trace_id T)<br/>emit $autocapture event {trace_id T, session_id S}<br/>rrweb adds custom marker {T}
+  SDK->>API: POST /api/checkout<br/>traceparent: 00-T-span1-01<br/>baggage: session.id=S
+  API->>API: server span "POST /api/checkout" (parent span1)
+  API->>PAY: gRPC Charge() traceparent: 00-T-span2-01
+  PAY->>DB: SELECT … FOR UPDATE (db span, 1.8 s)
+  DB-->>PAY: rows
+  PAY-->>API: DEADLINE_EXCEEDED (exception event on span)
+  API-->>SDK: 500 + Server-Timing traceparent
+  SDK->>SDK: fetch span ends status=ERROR<br/>capture JS error {T, S}<br/>replay buffer flagged "has_error"
+  par async export (batched, beacon-safe)
+    SDK->>GW: OTLP spans + events + error + replay chunk
+    API->>GW: OTLP spans/logs (via customer collector or direct)
+    PAY->>GW: OTLP spans/logs
+  end
+  GW->>K: raw.events / raw.spans (keyed by trace_id) / raw.errors / raw.replay
+  K->>SP: consume
+  SP->>SP: tail-sample trace T → KEEP (error + slow)<br/>symbolicate + group error → issue 812<br/>stitch identity S → person P
+  SP->>CH: insert events, spans, errors, sessions
+  Note over CH: Replay at t=00:42 → trace T → SQL span 1.8 s → issue 812 → funnel step "Payment" drop-off

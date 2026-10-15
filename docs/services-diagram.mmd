@@ -1,0 +1,65 @@
+flowchart LR
+  subgraph Clients["Customer apps"]
+    SDK["TS Browser SDK<br/>OTel web + rrweb + autocapture"]
+    BE["Backend services<br/>OTel SDKs (any language)"]
+    COL["Customer OTel Collectors"]
+    CLI["CLI / CI<br/>source maps, releases"]
+  end
+
+  subgraph Write["WRITE PATH (public)"]
+    GW["ingest-gateway (Go)<br/>OTel Collector distro<br/>auth · quotas · PII scrub"]
+  end
+
+  KF[("Apache Kafka (KRaft)<br/>raw.* · issue.* · ai.* · dlq.*")]
+
+  subgraph Proc["PROCESSING"]
+    SP["stream-processor (Go)<br/>enrich · identity · tail-sample<br/>group · symbolicate · sessionize"]
+    AL["alerting-worker (Go)<br/>asynq scheduler"]
+    AI["ai-worker (Python)"]
+  end
+
+  subgraph Read["READ / CONTROL PATH (authenticated)"]
+    QA["query-api (Go, chi)<br/>oapi-codegen server"]
+    WEB["web (Next.js/React)"]
+    CT[["OpenAPI spec →<br/>generated TS client"]]
+  end
+
+  subgraph Data
+    CH[("ClickHouse<br/>events · spans · logs · errors<br/>sessions · metrics")]
+    PG[("Postgres<br/>metadata · persons · issues · rules")]
+    S3[("S3 / MinIO<br/>source maps · replay chunks · archive")]
+    RD[("Redis")]
+  end
+
+  NOTIF["Slack · Email · Webhooks · PagerDuty"]
+  USER(("Customer's team"))
+
+  SDK -->|OTLP/HTTP + envelopes| GW
+  BE -->|OTLP| GW
+  COL -->|OTLP| GW
+  SDK -. traceparent .-> BE
+  CLI -->|upload| QA
+  GW <--> RD
+  GW -->|produce raw.*| KF
+  KF --> SP
+  SP <--> RD
+  SP --> S3
+  SP -->|batch insert| CH
+  SP -->|persons / issues| PG
+  SP -->|issue.*| KF
+  KF --> AL
+  KF --> AI
+  AL --> CH
+  AL --> PG
+  AL <--> RD
+  AL --> NOTIF
+  AI -->|read| CH
+  AI -->|ai.results| KF
+  QA --> CH
+  QA --> PG
+  QA --> S3
+  QA <--> RD
+  WEB --> QA
+  CT -.-> QA
+  CT -.-> WEB
+  USER --> WEB
