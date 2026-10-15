@@ -807,6 +807,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/metrics/names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Metrics received in the time range */
+        get: operations["listMetricNames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/metrics/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Query one metric as time series
+         * @description Buckets data points by step and aggregates them. Without agg, gauges average, delta sums add up, cumulative sums take the latest total and histograms report p95 from their buckets.
+         */
+        get: operations["queryMetric"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1183,6 +1220,34 @@ export interface components {
         UploadTokenCreated: {
             token: components["schemas"]["UploadToken"];
             secret: string;
+        };
+        MetricName: {
+            name: string;
+            /** @description gauge, sum, histogram, exponential_histogram or summary */
+            type: string;
+            unit: string;
+            services: string[];
+            /** Format: int64 */
+            points: number;
+        };
+        MetricResult: {
+            name: string;
+            type: string;
+            unit: string;
+            agg: string;
+            /** @description Bucket size in seconds. */
+            step: number;
+            series: components["schemas"]["MetricSeries"][];
+        };
+        MetricSeries: {
+            label: string;
+            points: components["schemas"]["MetricPoint"][];
+        };
+        MetricPoint: {
+            /** Format: date-time */
+            t: string;
+            /** Format: double */
+            v: number;
         };
         ProductEvent: {
             event: string;
@@ -2802,6 +2867,68 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listMetricNames: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Metric names with their type and services */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricName"][];
+                };
+            };
+        };
+    };
+    queryMetric: {
+        parameters: {
+            query: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+                name: string;
+                service?: string;
+                agg?: "avg" | "sum" | "min" | "max" | "count" | "rate" | "p50" | "p90" | "p95" | "p99";
+                /** @description Bucket size in seconds. Default fits about 60 points in the range. */
+                step?: number;
+                /** @description service.name or a data point attribute key; at most 20 series. */
+                group_by?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Series */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MetricResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
 }

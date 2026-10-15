@@ -160,6 +160,8 @@ services:
     container_name: ingest-gateway
     ports:
       - "8080:8080"
+      # OTLP/gRPC receiver (OTLP_GRPC_PORT; TLS with OTLP_GRPC_TLS_CERT/KEY).
+      - "4317:4317"
     environment:
       SERVICE_NAME: ingest-gateway
       KAFKA_BOOTSTRAP_SERVERS: kafka:19092
@@ -339,7 +341,12 @@ services:
     ports:
       - "8090:8090"
     environment:
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://ingest-gateway:8080/v1/traces
+      # Exports over OTLP/gRPC by default; set DEMO_OTLP_PROTOCOL=http/protobuf
+      # and DEMO_OTLP_ENDPOINT=http://ingest-gateway:8080 for OTLP/HTTP.
+      OTEL_EXPORTER_OTLP_PROTOCOL: ${DEMO_OTLP_PROTOCOL:-grpc}
+      OTEL_EXPORTER_OTLP_ENDPOINT: ${DEMO_OTLP_ENDPOINT:-http://ingest-gateway:4317}
+      OTEL_EXPORTER_OTLP_COMPRESSION: gzip
+      OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE: delta
       OTEL_SERVICE_NAME: go-demo-api
       OTEL_EXPORTER_OTLP_HEADERS: X-Pulse-Key=pk_dev_local_0123456789abcdef
       DATABASE_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable

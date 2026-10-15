@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process';
-import { createHmac } from 'node:crypto';
+import { createHmac, randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { createServer } from 'node:http';
@@ -606,4 +606,32 @@ test('minified demo errors show original source after uploading source maps', as
   await page.getByTestId('stack-original').click();
   await page.getByTestId('reprocess').click();
   await expect(page.getByTestId('frame').first().getByTestId('frame-location')).toContainText(`src/main.ts:${line}`);
+});
+
+test('spans and metrics exported over OTLP/gRPC show in the waterfall and metrics', async ({ page, request }) => {
+  test.setTimeout(120_000);
+  // The demo API exports over gRPC (:4317) in the compose stack. Start a
+  // trace by sending it a traceparent, as a browser would.
+  const traceId = randomBytes(16).toString('hex');
+  const parent = randomBytes(8).toString('hex');
+  const api = process.env.DEMO_API_URL ?? 'http://localhost:8090';
+  const res = await request.get(`${api}/api/orders?n=3`, { headers: { traceparent: `00-${traceId}-${parent}-01` } });
+  expect(res.ok()).toBeTruthy();
+
+  await login(page);
+  await expect(async () => {
+    await page.goto(`/traces/${traceId}`);
+    await expect(page.getByTestId('span-row').filter({ hasText: 'GET /api/orders' }).first()).toBeVisible({ timeout: 3000 });
+  }).toPass({ timeout: 60_000 });
+  const wf = page.getByTestId('waterfall');
+  await expect(wf.locator('[data-testid=span-row][data-source=backend]').first()).toContainText('go-demo-api');
+  await expect(wf.locator('[data-testid=span-row][data-source=database]').first()).toBeVisible();
+  await shot(page, '35-grpc-trace-waterfall');
+
+  // Its HTTP server metrics arrive over the same gRPC connection.
+  await expect(async () => {
+    await page.goto('/metrics?name=http.server.duration&group_by=http.route&range=15m');
+    await expect(page.getByTestId('metric-series').first()).toBeAttached({ timeout: 3000 });
+  }).toPass({ timeout: 60_000 });
+  await shot(page, '36-metrics');
 });

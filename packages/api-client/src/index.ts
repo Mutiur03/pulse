@@ -11,6 +11,10 @@ export type IssueList = Schemas['IssueList'];
 export type IssueDetail = Schemas['IssueDetail'];
 export type ErrorOccurrence = Schemas['ErrorOccurrence'];
 export type StackFrame = Schemas['StackFrame'];
+export type MetricName = Schemas['MetricName'];
+export type MetricResult = Schemas['MetricResult'];
+export type MetricSeries = Schemas['MetricSeries'];
+export type QueryMetricQuery = operations['queryMetric']['parameters']['query'];
 export type Release = Schemas['Release'];
 export type ReleaseDetail = Schemas['ReleaseDetail'];
 export type Artifact = Schemas['Artifact'];
@@ -195,6 +199,14 @@ export class APIClient {
 
   listServices(query: RangeQuery = {}): Promise<string[]> {
     return this.request('GET', '/v1/services', query);
+  }
+
+  listMetricNames(query: RangeQuery = {}): Promise<MetricName[]> {
+    return this.request('GET', '/v1/metrics/names', query);
+  }
+
+  queryMetric(query: QueryMetricQuery): Promise<MetricResult> {
+    return this.request('GET', '/v1/metrics/query', query as Query);
   }
 
   listEvents(query: ListEventsQuery = {}): Promise<Schemas['EventList']> {

@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -19,6 +21,8 @@ import (
 	"github.com/Mutiur03/pulse/internal/telemetry"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/credentials"
 )
 
 func main() {
@@ -75,6 +79,8 @@ func main() {
 		}
 	}()
 
+	grpcServer, lis := startGRPC(producer, auth)
+
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
@@ -85,4 +91,52 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("Server shutdown error: %v", err)
 	}
+	if grpcServer != nil {
+		// Finish in-flight exports, then force close what remains.
+		done := make(chan struct{})
+		go func() { grpcServer.GracefulStop(); close(done) }()
+		select {
+		case <-done:
+		case <-ctx.Done():
+			grpcServer.Stop()
+		}
+		_ = lis.Close()
+	}
+}
+
+// startGRPC serves OTLP/gRPC on OTLP_GRPC_PORT (default 4317; "0" or "off"
+// disables it), with TLS when OTLP_GRPC_TLS_CERT and OTLP_GRPC_TLS_KEY are
+// set and a size limit from OTLP_GRPC_MAX_RECV_MIB.
+func startGRPC(p ingest.Producer, auth ingest.Authenticator) (*grpc.Server, net.Listener) {
+	port := os.Getenv("OTLP_GRPC_PORT")
+	if port == "" {
+		port = "4317"
+	}
+	if port == "0" || port == "off" {
+		return nil, nil
+	}
+	var opts []grpc.ServerOption
+	if mib, err := strconv.Atoi(os.Getenv("OTLP_GRPC_MAX_RECV_MIB")); err == nil && mib > 0 {
+		opts = append(opts, grpc.MaxRecvMsgSize(mib<<20))
+	}
+	cert, key := os.Getenv("OTLP_GRPC_TLS_CERT"), os.Getenv("OTLP_GRPC_TLS_KEY")
+	if cert != "" || key != "" {
+		creds, err := credentials.NewServerTLSFromFile(cert, key)
+		if err != nil {
+			log.Fatalf("OTLP gRPC TLS: %v", err)
+		}
+		opts = append(opts, grpc.Creds(creds))
+	}
+	lis, err := net.Listen("tcp", ":"+port)
+	if err != nil {
+		log.Fatalf("OTLP gRPC listen: %v", err)
+	}
+	s := ingest.NewGRPCServer(p, auth, opts...)
+	go func() {
+		log.Printf("OTLP gRPC receiver listening on :%s (tls=%v)", port, cert != "")
+		if err := s.Serve(lis); err != nil && err != grpc.ErrServerStopped {
+			log.Fatalf("gRPC server error: %v", err)
+		}
+	}()
+	return s, lis
 }

@@ -1142,6 +1142,71 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/metrics/names:
+    get:
+      summary: Metrics received in the time range
+      operationId: listMetricNames
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Metric names with their type and services
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/MetricName'
+  /v1/metrics/query:
+    get:
+      summary: Query one metric as time series
+      description: >
+        Buckets data points by step and aggregates them. Without agg, gauges
+        average, delta sums add up, cumulative sums take the latest total and
+        histograms report p95 from their buckets.
+      operationId: queryMetric
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - name: name
+          in: query
+          required: true
+          schema:
+            type: string
+            maxLength: 255
+        - name: service
+          in: query
+          schema:
+            type: string
+        - name: agg
+          in: query
+          schema:
+            type: string
+            enum: [avg, sum, min, max, count, rate, p50, p90, p95, p99]
+        - name: step
+          in: query
+          description: Bucket size in seconds. Default fits about 60 points in the range.
+          schema:
+            type: integer
+            minimum: 1
+        - name: group_by
+          in: query
+          description: service.name or a data point attribute key; at most 20 series.
+          schema:
+            type: string
+            maxLength: 255
+      responses:
+        '200':
+          description: Series
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MetricResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 components:
   securitySchemes:
     session:
@@ -1960,6 +2025,63 @@ components:
           $ref: '#/components/schemas/UploadToken'
         secret:
           type: string
+    MetricName:
+      type: object
+      required: [name, type, unit, services, points]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+          description: gauge, sum, histogram, exponential_histogram or summary
+        unit:
+          type: string
+        services:
+          type: array
+          items:
+            type: string
+        points:
+          type: integer
+          format: int64
+    MetricResult:
+      type: object
+      required: [name, type, unit, agg, step, series]
+      properties:
+        name:
+          type: string
+        type:
+          type: string
+        unit:
+          type: string
+        agg:
+          type: string
+        step:
+          type: integer
+          description: Bucket size in seconds.
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricSeries'
+    MetricSeries:
+      type: object
+      required: [label, points]
+      properties:
+        label:
+          type: string
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/MetricPoint'
+    MetricPoint:
+      type: object
+      required: [t, v]
+      properties:
+        t:
+          type: string
+          format: date-time
+        v:
+          type: number
+          format: double
     ProductEvent:
       type: object
       required: [event, timestamp, distinct_id, session_id, span_id, properties]

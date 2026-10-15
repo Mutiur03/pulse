@@ -81,6 +81,7 @@ func main() {
 		}),
 		AppURL:  os.Getenv("APP_URL"),
 		Replays: chClient,
+		Metrics: chClient,
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: os.Getenv("COOKIE_SECURE") != "false",
 	}

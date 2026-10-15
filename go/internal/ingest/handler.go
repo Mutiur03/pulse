@@ -44,6 +44,7 @@ func NewHandler(p Producer, auth Authenticator, opts ...Option) http.Handler {
 	mux.HandleFunc("/v1/traces", h.post(h.traces))
 	mux.HandleFunc("/v1/errors", h.post(h.errors))
 	mux.HandleFunc("/v1/logs", h.post(h.logs))
+	mux.HandleFunc("/v1/metrics", h.post(h.metrics))
 	mux.HandleFunc("/v1/replay", h.post(h.replayChunk))
 	return cors(mux)
 }
@@ -216,28 +217,8 @@ func (h *handler) traces(r *http.Request, body []byte, project string) (int, *ap
 			return 0, &apiError{http.StatusBadRequest, "invalid JSON"}
 		}
 	}
-	keys := make([]string, len(spans))
-	vals := make([]interface{}, len(spans))
-	for i := range spans {
-		s := &spans[i]
-		if s.TraceID == "" || s.SpanID == "" {
-			return 0, &apiError{http.StatusBadRequest, "trace_id and span_id are required"}
-		}
-		s.ProjectID = project
-		if s.Timestamp.IsZero() {
-			s.Timestamp = time.Now().UTC()
-		}
-		keys[i], vals[i] = s.TraceID, s
-	}
-	if aerr := h.produceAll(r.Context(), TopicSpans, keys, vals); aerr != nil {
-		return 0, aerr
-	}
-	ekeys := make([]string, len(errs))
-	evals := make([]interface{}, len(errs))
-	for i := range errs {
-		ekeys[i], evals[i] = errs[i].ProjectID, &errs[i]
-	}
-	return len(spans), h.produceAll(r.Context(), TopicErrors, ekeys, evals)
+	pub, aerr := h.publishTraces(r.Context(), project, TraceBatch{Spans: spans, Errors: errs}, true)
+	return pub.accepted, aerr
 }
 
 func (h *handler) logs(r *http.Request, body []byte, project string) (int, *apiError) {
@@ -245,12 +226,17 @@ func (h *handler) logs(r *http.Request, body []byte, project string) (int, *apiE
 	if err != nil {
 		return 0, &apiError{http.StatusBadRequest, "invalid OTLP logs payload"}
 	}
-	keys := make([]string, len(recs))
-	vals := make([]interface{}, len(recs))
-	for i := range recs {
-		keys[i], vals[i] = recs[i].ProjectID, &recs[i]
+	pub, aerr := h.publishLogs(r.Context(), recs)
+	return pub.accepted, aerr
+}
+
+func (h *handler) metrics(r *http.Request, body []byte, project string) (int, *apiError) {
+	b, err := DecodeOTLPMetrics(bytes.TrimSpace(body), isProtobuf(r), project)
+	if err != nil {
+		return 0, &apiError{http.StatusBadRequest, "invalid OTLP metrics payload"}
 	}
-	return len(recs), h.produceAll(r.Context(), TopicLogs, keys, vals)
+	pub, aerr := h.publishMetrics(r.Context(), b)
+	return pub.accepted, aerr
 }
 
 func (h *handler) errors(r *http.Request, body []byte, project string) (int, *apiError) {

@@ -277,6 +277,10 @@ func parseProtoTraces(body []byte) ([]rawResource, error) {
 	if err := proto.Unmarshal(body, &req); err != nil {
 		return nil, err
 	}
+	return protoTraces(&req), nil
+}
+
+func protoTraces(req *coltrace.ExportTraceServiceRequest) []rawResource {
 	var out []rawResource
 	for _, rs := range req.GetResourceSpans() {
 		r := rawResource{attrs: pbAttrs(rs.GetResource().GetAttributes())}
@@ -295,7 +299,7 @@ func parseProtoTraces(body []byte) ([]rawResource, error) {
 		}
 		out = append(out, r)
 	}
-	return out, nil
+	return out
 }
 
 func parseProtoLogs(body []byte) ([]rawResource, error) {
@@ -303,6 +307,10 @@ func parseProtoLogs(body []byte) ([]rawResource, error) {
 	if err := proto.Unmarshal(body, &req); err != nil {
 		return nil, err
 	}
+	return protoLogs(&req), nil
+}
+
+func protoLogs(req *collogs.ExportLogsServiceRequest) []rawResource {
 	var out []rawResource
 	for _, rl := range req.GetResourceLogs() {
 		r := rawResource{attrs: pbAttrs(rl.GetResource().GetAttributes())}
@@ -317,7 +325,7 @@ func parseProtoLogs(body []byte) ([]rawResource, error) {
 		}
 		out = append(out, r)
 	}
-	return out, nil
+	return out
 }
 
 // ---- mapping ----
@@ -589,6 +597,16 @@ func DecodeOTLPLogs(body []byte, isProto bool, defaultProject string) ([]LogReco
 		return nil, err
 	}
 	return mapLogs(res, defaultProject), nil
+}
+
+// TracesFromProto maps an already decoded export, as received over gRPC.
+func TracesFromProto(req *coltrace.ExportTraceServiceRequest, defaultProject string) TraceBatch {
+	return mapTraces(protoTraces(req), defaultProject)
+}
+
+// LogsFromProto maps an already decoded logs export.
+func LogsFromProto(req *collogs.ExportLogsServiceRequest, defaultProject string) []LogRecord {
+	return mapLogs(protoLogs(req), defaultProject)
 }
 
 func orDefault(v, def string) string {

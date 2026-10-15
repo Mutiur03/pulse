@@ -1,7 +1,8 @@
 // Command go-demo-api is a small HTTP API instrumented with OpenTelemetry.
 // It continues the browser's trace (traceparent), records every SQL query
 // as a child span via otelsql, and sends spans to the Pulse ingest gateway
-// over OTLP/HTTP protobuf.
+// and HTTP server metrics over OTLP/HTTP protobuf, or OTLP/gRPC with
+// OTEL_EXPORTER_OTLP_PROTOCOL=grpc.
 package main
 
 import (
@@ -26,8 +27,12 @@ import (
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.26.0"
@@ -41,14 +46,41 @@ func env(k, def string) string {
 	return def
 }
 
-func setupTracing(ctx context.Context) (func(context.Context) error, error) {
-	// Honors OTEL_EXPORTER_OTLP_TRACES_ENDPOINT / OTEL_EXPORTER_OTLP_ENDPOINT;
-	// defaults to the local ingest gateway.
-	opts := []otlptracehttp.Option{}
-	if os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == "" && os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {
-		opts = append(opts, otlptracehttp.WithEndpointURL("http://localhost:8080/v1/traces"))
+// grpcExport reports whether OTEL_EXPORTER_OTLP_PROTOCOL selects gRPC
+// (port 4317) instead of the default http/protobuf (port 8080).
+func grpcExport() bool { return os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL") == "grpc" }
+
+// setupTelemetry starts trace and metric export. Exporters honor the
+// standard OTEL_EXPORTER_OTLP_* variables (endpoint, headers, compression);
+// without an endpoint they target the local ingest gateway.
+func setupTelemetry(ctx context.Context) (func(context.Context) error, error) {
+	noEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == ""
+	var exp sdktrace.SpanExporter
+	var mexp sdkmetric.Exporter
+	var err error
+	if grpcExport() {
+		var topts []otlptracegrpc.Option
+		var mopts []otlpmetricgrpc.Option
+		if noEndpoint {
+			topts = append(topts, otlptracegrpc.WithEndpointURL("http://localhost:4317"))
+			mopts = append(mopts, otlpmetricgrpc.WithEndpointURL("http://localhost:4317"))
+		}
+		if exp, err = otlptracegrpc.New(ctx, topts...); err == nil {
+			mexp, err = otlpmetricgrpc.New(ctx, mopts...)
+		}
+	} else {
+		var topts []otlptracehttp.Option
+		var mopts []otlpmetrichttp.Option
+		if noEndpoint && os.Getenv("OTEL_EXPORTER_OTLP_TRACES_ENDPOINT") == "" {
+			topts = append(topts, otlptracehttp.WithEndpointURL("http://localhost:8080/v1/traces"))
+		}
+		if noEndpoint && os.Getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") == "" {
+			mopts = append(mopts, otlpmetrichttp.WithEndpointURL("http://localhost:8080/v1/metrics"))
+		}
+		if exp, err = otlptracehttp.New(ctx, topts...); err == nil {
+			mexp, err = otlpmetrichttp.New(ctx, mopts...)
+		}
 	}
-	exp, err := otlptracehttp.New(ctx, opts...)
 	if err != nil {
 		return nil, err
 	}
@@ -62,9 +94,16 @@ func setupTracing(ctx context.Context) (func(context.Context) error, error) {
 		sdktrace.WithBatcher(exp, sdktrace.WithBatchTimeout(time.Second)),
 		sdktrace.WithResource(res),
 	)
+	mp := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(mexp, sdkmetric.WithInterval(10*time.Second))),
+		sdkmetric.WithResource(res),
+	)
 	otel.SetTracerProvider(tp)
+	otel.SetMeterProvider(mp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
-	return tp.Shutdown, nil
+	return func(ctx context.Context) error {
+		return errors.Join(tp.Shutdown(ctx), mp.Shutdown(ctx))
+	}, nil
 }
 
 type server struct{ db *sql.DB }
@@ -198,10 +237,15 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	shutdown, err := setupTracing(ctx)
+	shutdown, err := setupTelemetry(ctx)
 	if err != nil {
-		log.Fatalf("tracing: %v", err)
+		log.Fatalf("telemetry: %v", err)
 	}
+	proto := "http/protobuf"
+	if grpcExport() {
+		proto = "grpc"
+	}
+	log.Printf("exporting OTLP over %s", proto)
 	defer func() {
 		c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()

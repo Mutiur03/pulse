@@ -1,8 +1,10 @@
 # Go demo API
 
 A small Go HTTP API instrumented with OpenTelemetry: `otelhttp` for
-incoming requests, `otelsql` for every Postgres query, and the OTLP/HTTP
-protobuf exporter pointed at the Pulse ingest gateway. The browser demo
+incoming requests, `otelsql` for every Postgres query, and OTLP exporters
+for traces and HTTP server metrics pointed at the Pulse ingest gateway:
+OTLP/gRPC with `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` (the compose default, to
+`ingest-gateway:4317`), OTLP/HTTP protobuf otherwise. The browser demo
 calls it, so one trace covers browser click -> fetch -> Go handler -> SQL.
 
 | Route | What it does |
@@ -20,6 +22,8 @@ pnpm --filter @pulse/browser build && pnpm --filter @pulse/browser-demo start
 ```
 
 Or on its own: `go run .` with `DATABASE_URL` and
-`OTEL_EXPORTER_OTLP_TRACES_ENDPOINT` (default
-`http://localhost:8080/v1/traces`), plus
-`OTEL_EXPORTER_OTLP_HEADERS=X-Pulse-Key=<ingest key>`.
+`OTEL_EXPORTER_OTLP_HEADERS=X-Pulse-Key=<ingest key>`. Over HTTP the
+default endpoint is `http://localhost:8080`; with
+`OTEL_EXPORTER_OTLP_PROTOCOL=grpc` it is `http://localhost:4317`. Set
+`OTEL_EXPORTER_OTLP_ENDPOINT` to change it. In compose, switch back to HTTP
+with `DEMO_OTLP_PROTOCOL=http/protobuf DEMO_OTLP_ENDPOINT=http://ingest-gateway:8080`.

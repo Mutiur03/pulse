@@ -113,8 +113,10 @@ type Server struct {
 	Releases        ReleaseStore
 	ArtifactObjects ObjectPutter
 	Symbolicator    *symbolicate.Symbolicator
-	SecureCookie    bool
-	Now             func() time.Time
+	// Metrics reads OTLP metrics; nil returns empty results.
+	Metrics      MetricReader
+	SecureCookie bool
+	Now          func() time.Time
 }
 
 func (s *Server) now() time.Time {

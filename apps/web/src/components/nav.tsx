@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 const links = [
   { href: '/traces', label: 'Traces', icon: 'M3 12h4l3-8 4 16 3-8h4' },
   { href: '/issues', label: 'Issues', icon: 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z' },
+  { href: '/metrics', label: 'Metrics', icon: 'M3 3v18h18M7 15l4-4 3 3 5-6' },
   { href: '/replays', label: 'Replays', icon: 'M4 5h16v14H4zM10 9l5 3-5 3z' },
   { href: '/releases', label: 'Releases', icon: 'M20.6 13.4 13.4 20.6a2 2 0 0 1-2.8 0L3 13V3h10l7.6 7.6a2 2 0 0 1 0 2.8ZM7.5 7.5h.01' },
   { href: '/alerts', label: 'Alerts', icon: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.9 1.9 0 0 0 3.4 0' },

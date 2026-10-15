@@ -60,7 +60,7 @@ func main() {
 	}
 	defer producer.Close()
 
-	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, "stream-processor", []string{"raw.events", "raw.spans", "raw.errors", "raw.logs"})
+	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, "stream-processor", []string{"raw.events", "raw.spans", "raw.errors", "raw.logs", "raw.metrics"})
 	if err != nil {
 		log.Fatalf("Failed to create Kafka consumer: %v", err)
 	}
@@ -115,6 +115,7 @@ func main() {
 			var spans []map[string]interface{}
 			var errs []map[string]interface{}
 			var logs []map[string]interface{}
+			var metrics []map[string]interface{}
 
 			for _, record := range records {
 				var data map[string]interface{}
@@ -131,6 +132,8 @@ func main() {
 					errs = append(errs, data)
 				} else if record.Topic == "raw.logs" {
 					logs = append(logs, data)
+				} else if record.Topic == "raw.metrics" {
+					metrics = append(metrics, data)
 				}
 			}
 
@@ -179,6 +182,15 @@ func main() {
 					ok = false
 				} else {
 					log.Printf("Successfully inserted %d logs", len(logs))
+				}
+			}
+
+			if len(metrics) > 0 {
+				if err := retry(ctx, func() error { return chClient.InsertMetrics(ctx, metrics) }); err != nil {
+					log.Printf("Failed to insert metrics: %v", err)
+					ok = false
+				} else {
+					log.Printf("Successfully inserted %d metric points", len(metrics))
 				}
 			}
 

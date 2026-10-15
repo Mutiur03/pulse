@@ -192,6 +192,9 @@ jobs:
           DEMO_API_URL: http://localhost:8090
         run: ./tools/smoke-test.sh
 
+      - name: OTLP gRPC smoke with telemetrygen
+        run: ./tools/otlp-grpc-smoke.sh
+
       - name: Funnel and alert SQL against ClickHouse
         working-directory: go
         env:
