@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
 )
@@ -52,7 +53,13 @@ func NewConsumer(brokers []string, groupID string, topics []string) (*Consumer, 
 		kgo.SeedBrokers(brokers...),
 		kgo.ConsumerGroup(groupID),
 		kgo.ConsumeTopics(topics...),
-		kgo.ConsumeResetOffset(kgo.NewOffset().AtEnd()),
+		// Start from the earliest offset when the group has no committed
+		// offset yet, so records produced before the first join are not lost.
+		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
+		// Topics are auto-created by the producer; refresh metadata often so
+		// the consumer picks them up quickly after first produce.
+		kgo.MetadataMaxAge(5*time.Second),
+		kgo.DisableAutoCommit(),
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka consumer: %w", err)
@@ -63,12 +70,17 @@ func NewConsumer(brokers []string, groupID string, topics []string) (*Consumer, 
 
 func (c *Consumer) Poll(ctx context.Context) ([]*kgo.Record, error) {
 	fetches := c.client.PollFetches(ctx)
-	if errs := fetches.Errors(); len(errs) > 0 {
-		for _, err := range errs {
-			log.Printf("Kafka fetch error: %v", err)
-		}
-		return nil, fmt.Errorf("kafka fetch errors occurred")
+	if fetches.IsClientClosed() {
+		return nil, fmt.Errorf("kafka client closed")
 	}
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
+	// Per-partition errors (e.g. a topic that does not exist yet) are logged
+	// but do not discard records fetched from healthy partitions.
+	fetches.EachError(func(topic string, partition int32, err error) {
+		log.Printf("Kafka fetch error on %s[%d]: %v", topic, partition, err)
+	})
 
 	var records []*kgo.Record
 	fetches.EachRecord(func(r *kgo.Record) {

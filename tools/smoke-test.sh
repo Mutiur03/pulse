@@ -1,82 +1,62 @@
-#!/bin/bash
-set -e
+#!/usr/bin/env bash
+# End-to-end smoke test: ingest gateway -> Kafka -> stream processor -> ClickHouse.
+# Exits non-zero if the posted event or span does not show up in ClickHouse.
+set -euo pipefail
 
-echo "==> Smoke Test: Ingest → Kafka → ClickHouse"
-echo ""
+INGEST_URL="${INGEST_URL:-http://localhost:8080}"
+CLICKHOUSE_URL="${CLICKHOUSE_URL:-http://localhost:8123}"
+TIMEOUT="${SMOKE_TIMEOUT:-90}"
 
-# Colors for output
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-NC='\033[0m' # No Color
+RUN_ID="smoke_$(date +%s)_$RANDOM"
+TRACE_ID="$(head -c16 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+SPAN_ID="$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
 
-echo -e "${BLUE}Step 1: Sending test event to ingest gateway${NC}"
-curl -X POST http://localhost:8080/v1/events \
-  -H "Content-Type: application/json" \
-  -d '{
-    "project_id": "1",
-    "event": "$pageview",
-    "timestamp": "2026-10-15T05:00:00Z",
-    "distinct_id": "user_123",
-    "session_id": "sess_abc",
-    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-    "properties": {
-      "$current_url": "https://example.com/home",
-      "title": "Home Page"
-    }
-  }'
-echo ""
-echo ""
+ch() { curl -fsS "$CLICKHOUSE_URL/" --data-binary "$1"; }
 
-echo -e "${BLUE}Step 2: Sending test trace to ingest gateway${NC}"
-curl -X POST http://localhost:8080/v1/traces \
-  -H "Content-Type: application/json" \
-  -d '[{
-    "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
-    "span_id": "00f067aa0ba902b7",
-    "name": "GET /api/checkout"
-  }]'
-echo ""
-echo ""
+fail() { echo "FAIL: $*" >&2; exit 1; }
 
-echo -e "${BLUE}Step 3: Waiting 10 seconds for stream processor to consume and write${NC}"
-sleep 10
+wait_for() {
+  local name="$1" url="$2" deadline=$((SECONDS + TIMEOUT))
+  until curl -fsS "$url" >/dev/null 2>&1; do
+    (( SECONDS < deadline )) || fail "$name not reachable at $url"
+    sleep 2
+  done
+  echo "ok: $name is up"
+}
 
-echo -e "${BLUE}Step 4: Querying ClickHouse for events${NC}"
-docker exec clickhouse clickhouse-client --query "
-SELECT 
-  project_id, 
-  event, 
-  timestamp, 
-  distinct_id, 
-  session_id, 
-  trace_id,
-  properties
-FROM events 
-WHERE project_id = 1 
-ORDER BY timestamp DESC 
-LIMIT 5
-FORMAT Vertical"
-echo ""
+wait_rows() {
+  local label="$1" query="$2" deadline=$((SECONDS + TIMEOUT)) n
+  while :; do
+    n="$(ch "$query" 2>/dev/null || echo 0)"
+    [[ "$n" =~ ^[0-9]+$ ]] || n=0
+    if (( n > 0 )); then echo "ok: $label found in ClickHouse ($n row)"; return 0; fi
+    (( SECONDS < deadline )) || fail "$label not found in ClickHouse after ${TIMEOUT}s"
+    sleep 2
+  done
+}
 
-echo -e "${BLUE}Step 5: Querying ClickHouse for spans${NC}"
-docker exec clickhouse clickhouse-client --query "
-SELECT 
-  project_id, 
-  trace_id, 
-  span_id, 
-  span_name, 
-  timestamp
-FROM spans 
-WHERE project_id = 1 
-ORDER BY timestamp DESC 
-LIMIT 5
-FORMAT Vertical"
-echo ""
+echo "==> run id $RUN_ID, trace $TRACE_ID"
+wait_for "ingest gateway" "$INGEST_URL/health"
+wait_for "clickhouse" "$CLICKHOUSE_URL/ping"
 
-echo -e "${GREEN}✓ Smoke test complete!${NC}"
-echo ""
-echo "If you see data above, the end-to-end flow is working:"
-echo "  1. Ingest gateway received the requests"
-echo "  2. Data was produced to Kafka"
-echo "  3. Stream processor consumed from Kafka"
-echo "  4. Data was inserted into ClickHouse"
+echo "==> POST /v1/events"
+code=$(curl -sS -o /dev/stderr -w '%{http_code}' -X POST "$INGEST_URL/v1/events" \
+  -H 'Content-Type: application/json' \
+  -d "{\"project_id\":\"1\",\"event\":\"\$pageview\",\"timestamp\":\"$NOW\",\"distinct_id\":\"$RUN_ID\",\"session_id\":\"sess_$RUN_ID\",\"trace_id\":\"$TRACE_ID\",\"properties\":{\"\$current_url\":\"https://example.com/home\"}}")
+echo; [[ "$code" == 202 ]] || fail "events endpoint returned $code"
+
+echo "==> POST /v1/traces"
+code=$(curl -sS -o /dev/stderr -w '%{http_code}' -X POST "$INGEST_URL/v1/traces" \
+  -H 'Content-Type: application/json' \
+  -d "[{\"project_id\":\"1\",\"trace_id\":\"$TRACE_ID\",\"span_id\":\"$SPAN_ID\",\"name\":\"GET /api/checkout\",\"service_name\":\"smoke\",\"timestamp\":\"$NOW\",\"duration_ns\":1500000}]")
+echo; [[ "$code" == 202 ]] || fail "traces endpoint returned $code"
+
+echo "==> waiting for rows in ClickHouse"
+wait_rows "event" "SELECT count() FROM events WHERE distinct_id = '$RUN_ID' AND trace_id = '$TRACE_ID'"
+wait_rows "span"  "SELECT count() FROM spans WHERE trace_id = '$TRACE_ID' AND span_id = '$SPAN_ID'"
+
+echo "==> joined view by trace_id"
+ch "SELECT e.event, e.distinct_id, s.span_name, s.duration_ns FROM events e INNER JOIN spans s ON e.trace_id = s.trace_id WHERE e.trace_id = '$TRACE_ID' FORMAT PrettyCompactMonoBlock"
+
+echo "PASS: event and span landed in ClickHouse"

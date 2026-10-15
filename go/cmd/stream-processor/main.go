@@ -69,17 +69,18 @@ func main() {
 
 	log.Println("Stream processor started")
 
-	ticker := time.NewTicker(5 * time.Second)
-	defer ticker.Stop()
-
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case <-ticker.C:
+		default:
 			records, err := consumer.Poll(ctx)
 			if err != nil {
+				if ctx.Err() != nil {
+					return
+				}
 				log.Printf("Failed to poll: %v", err)
+				time.Sleep(time.Second)
 				continue
 			}
 
@@ -104,10 +105,12 @@ func main() {
 				}
 			}
 
+			ok := true
 			if len(events) > 0 {
 				log.Printf("Processing %d events", len(events))
-				if err := chClient.InsertEvents(ctx, events); err != nil {
+				if err := retry(ctx, func() error { return chClient.InsertEvents(ctx, events) }); err != nil {
 					log.Printf("Failed to insert events: %v", err)
+					ok = false
 				} else {
 					log.Printf("Successfully inserted %d events", len(events))
 				}
@@ -115,16 +118,43 @@ func main() {
 
 			if len(spans) > 0 {
 				log.Printf("Processing %d spans", len(spans))
-				if err := chClient.InsertSpans(ctx, spans); err != nil {
+				if err := retry(ctx, func() error { return chClient.InsertSpans(ctx, spans) }); err != nil {
 					log.Printf("Failed to insert spans: %v", err)
+					ok = false
 				} else {
 					log.Printf("Successfully inserted %d spans", len(spans))
 				}
 			}
 
+			if !ok {
+				// Only reached on shutdown: leave offsets uncommitted so the
+				// batch is redelivered on the next start.
+				return
+			}
 			if err := consumer.Commit(ctx); err != nil {
 				log.Printf("Failed to commit: %v", err)
 			}
+		}
+	}
+}
+
+// retry runs fn until it succeeds or ctx is cancelled, backing off up to 30s.
+// Blocking here keeps offsets uncommitted, so no batch is skipped.
+func retry(ctx context.Context, fn func() error) error {
+	backoff := time.Second
+	for {
+		err := fn()
+		if err == nil || ctx.Err() != nil {
+			return err
+		}
+		log.Printf("ClickHouse write failed, retrying in %s: %v", backoff, err)
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case <-time.After(backoff):
+		}
+		if backoff < 30*time.Second {
+			backoff *= 2
 		}
 	}
 }

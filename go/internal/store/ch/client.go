@@ -60,7 +60,7 @@ func (c *Client) InsertEvents(ctx context.Context, events []map[string]interface
 
 		timestamp := time.Now()
 		if ts, ok := event["timestamp"].(string); ok {
-			if parsed, err := time.Parse(time.RFC3339, ts); err == nil {
+			if parsed, err := time.Parse(time.RFC3339Nano, ts); err == nil {
 				timestamp = parsed
 			}
 		}
@@ -104,29 +104,44 @@ func (c *Client) InsertSpans(ctx context.Context, spans []map[string]interface{}
 		return nil
 	}
 
-	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO spans (project_id, trace_id, span_id, span_name)")
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO spans (project_id, timestamp, trace_id, span_id, parent_span_id, span_name, span_kind, service_name, duration_ns, status_code, session_id)")
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
 
 	for _, span := range spans {
 		projectID := uint64(1)
-		traceID := ""
-		if tid, ok := span["trace_id"].(string); ok {
-			traceID = tid
+		if pid, ok := span["project_id"].(string); ok {
+			if id, err := strconv.ParseUint(pid, 10, 64); err == nil {
+				projectID = id
+			}
 		}
 
-		spanID := ""
-		if sid, ok := span["span_id"].(string); ok {
-			spanID = sid
+		timestamp := time.Now()
+		if ts, ok := span["timestamp"].(string); ok {
+			if parsed, err := time.Parse(time.RFC3339Nano, ts); err == nil {
+				timestamp = parsed
+			}
 		}
 
-		name := ""
-		if n, ok := span["name"].(string); ok {
-			name = n
+		var duration uint64
+		if d, ok := span["duration_ns"].(float64); ok && d > 0 {
+			duration = uint64(d)
 		}
 
-		if err := batch.Append(projectID, traceID, spanID, name); err != nil {
+		if err := batch.Append(
+			projectID,
+			timestamp,
+			str(span, "trace_id"),
+			str(span, "span_id"),
+			str(span, "parent_span_id"),
+			str(span, "name"),
+			str(span, "kind"),
+			str(span, "service_name"),
+			duration,
+			str(span, "status_code"),
+			str(span, "session_id"),
+		); err != nil {
 			return fmt.Errorf("failed to append to batch: %w", err)
 		}
 	}
@@ -136,6 +151,13 @@ func (c *Client) InsertSpans(ctx context.Context, spans []map[string]interface{}
 	}
 
 	return nil
+}
+
+func str(m map[string]interface{}, key string) string {
+	if v, ok := m[key].(string); ok {
+		return v
+	}
+	return ""
 }
 
 func (c *Client) Close() error {

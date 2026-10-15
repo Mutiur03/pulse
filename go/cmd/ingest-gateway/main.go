@@ -20,14 +20,26 @@ type Event struct {
 	ProjectID  string                 `json:"project_id"`
 	Event      string                 `json:"event"`
 	Timestamp  time.Time              `json:"timestamp"`
+	DistinctID string                 `json:"distinct_id,omitempty"`
+	SessionID  string                 `json:"session_id,omitempty"`
 	Properties map[string]interface{} `json:"properties"`
 	TraceID    string                 `json:"trace_id,omitempty"`
+	SpanID     string                 `json:"span_id,omitempty"`
 }
 
-type OTLPSpan struct {
-	TraceID string `json:"trace_id"`
-	SpanID  string `json:"span_id"`
-	Name    string `json:"name"`
+// Span is a simplified JSON span. Full OTLP/protobuf support comes later.
+type Span struct {
+	ProjectID    string    `json:"project_id,omitempty"`
+	TraceID      string    `json:"trace_id"`
+	SpanID       string    `json:"span_id"`
+	ParentSpanID string    `json:"parent_span_id,omitempty"`
+	Name         string    `json:"name"`
+	Kind         string    `json:"kind,omitempty"`
+	ServiceName  string    `json:"service_name,omitempty"`
+	Timestamp    time.Time `json:"timestamp"`
+	DurationNs   uint64    `json:"duration_ns,omitempty"`
+	StatusCode   string    `json:"status_code,omitempty"`
+	SessionID    string    `json:"session_id,omitempty"`
 }
 
 func main() {
@@ -68,6 +80,13 @@ func main() {
 			return
 		}
 
+		if event.Event == "" {
+			http.Error(w, "event is required", http.StatusBadRequest)
+			return
+		}
+		if event.ProjectID == "" {
+			event.ProjectID = "1"
+		}
 		if event.Timestamp.IsZero() {
 			event.Timestamp = time.Now()
 		}
@@ -95,21 +114,36 @@ func main() {
 			return
 		}
 
-		var spans []OTLPSpan
+		var spans []Span
 		if err := json.NewDecoder(r.Body).Decode(&spans); err != nil {
 			http.Error(w, "invalid JSON", http.StatusBadRequest)
 			return
 		}
 
+		for i := range spans {
+			span := &spans[i]
+			if span.TraceID == "" || span.SpanID == "" {
+				http.Error(w, "trace_id and span_id are required", http.StatusBadRequest)
+				return
+			}
+			if span.ProjectID == "" {
+				span.ProjectID = "1"
+			}
+			if span.Timestamp.IsZero() {
+				span.Timestamp = time.Now()
+			}
+		}
+
 		for _, span := range spans {
 			value, err := json.Marshal(span)
 			if err != nil {
-				continue
+				http.Error(w, "failed to marshal span", http.StatusInternalServerError)
+				return
 			}
-
-			key := []byte(span.TraceID)
-			if err := producer.Produce(r.Context(), "raw.spans", key, value); err != nil {
+			if err := producer.Produce(r.Context(), "raw.spans", []byte(span.TraceID), value); err != nil {
 				log.Printf("Failed to produce span: %v", err)
+				http.Error(w, "failed to produce span", http.StatusInternalServerError)
+				return
 			}
 		}
 

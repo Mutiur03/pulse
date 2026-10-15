@@ -1,4 +1,4 @@
-.PHONY: help generate build test lint clean docker-build compose-up compose-down
+.PHONY: help generate build test lint clean docker-build compose-up compose-down smoke-test e2e
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -48,8 +48,13 @@ docker-build: ## Build Docker images
 	docker build -f deploy/compose/Dockerfile.web -t pulse/web:latest .
 	docker build -f workers/ai-worker/Dockerfile -t pulse/ai-worker:latest ./workers/ai-worker
 
-compose-up: ## Start Docker Compose stack
-	cd deploy/compose && docker compose up -d
+compose-up: ## Start Docker Compose stack and wait until healthy
+	cd deploy/compose && docker compose up -d --build --wait
 
 compose-down: ## Stop Docker Compose stack
 	cd deploy/compose && docker compose down
+
+smoke-test: ## Assert an event and a span reach ClickHouse (stack must be running)
+	./tools/smoke-test.sh
+
+e2e: compose-up smoke-test ## Start the stack and run the smoke test

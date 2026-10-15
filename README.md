@@ -111,7 +111,7 @@ Run the smoke test to verify the complete data flow (ingest → Kafka → ClickH
 ./tools/smoke-test.sh
 ```
 
-This sends test events and traces, waits for processing, and queries ClickHouse to verify the data was stored.
+This posts an event and a span with a unique trace ID, then polls ClickHouse until both rows exist. It exits non-zero if either is missing after 90 seconds (`SMOKE_TIMEOUT`). ClickHouse tables are created on every startup by the `clickhouse-migrate` service from `schemas/clickhouse/*.sql`. MinIO is optional and starts only with `docker compose --profile objectstore up`.
 
 ### Manual Testing
 
