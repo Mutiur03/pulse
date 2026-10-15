@@ -52,7 +52,12 @@ test('trace waterfall spans browser, backend and database', async ({ page }) => 
   for (const source of ['browser', 'backend', 'database']) {
     await expect(wf.locator(`[data-testid=span-row][data-source=${source}]`).first()).toBeVisible();
   }
-  await wf.locator('[data-testid=span-row][data-source=database]').first().click();
+  // Pick a query span; connection spans (sql.connector.connect) carry no statement.
+  await wf
+    .locator('[data-testid=span-row][data-source=database]')
+    .filter({ hasNotText: /connect/i })
+    .first()
+    .click();
   const panel = page.getByTestId('span-panel');
   await expect(panel).toContainText('db.statement');
   if (failing.error_count > 0) await expect(wf.getByTestId('marker-error').first()).toBeAttached();
