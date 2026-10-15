@@ -54,3 +54,12 @@ export function handleAuthError(e: unknown) {
     window.location.href = `/login?next=${encodeURIComponent(location.pathname + location.search)}`;
   }
 }
+
+/** The id of the project the user is looking at, once known. */
+export async function currentProjectId(): Promise<number> {
+  const stored = storedProject();
+  if (stored !== undefined) return stored;
+  const p = currentContext(await api.me()).project;
+  if (!p) throw new Error('Create a project first.');
+  return p.id;
+}

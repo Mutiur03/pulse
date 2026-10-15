@@ -10,6 +10,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/issues"
@@ -99,8 +100,15 @@ type Server struct {
 	ReplayObjects ObjectGetter
 	// ReplayRetentionDays is shown to users; 0 means the default.
 	ReplayRetentionDays int
-	SecureCookie        bool
-	Now                 func() time.Time
+	// Alerts manages alert rules and channels; nil disables alerting.
+	Alerts       AlertStore
+	AlertMetrics AlertMetrics
+	// AlertSender delivers test notifications.
+	AlertSender interface {
+		Send(ctx context.Context, c alerts.Channel, p alerts.Payload) error
+	}
+	SecureCookie bool
+	Now          func() time.Time
 }
 
 func (s *Server) now() time.Time {

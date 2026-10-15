@@ -27,6 +27,18 @@ export type ReplayList = Schemas['ReplayList'];
 export type ReplayDetail = Schemas['ReplayDetail'];
 export type SessionTrace = Schemas['SessionTrace'];
 export type ListReplaysQuery = NonNullable<operations['listReplays']['parameters']['query']>;
+export type AlertRule = Schemas['AlertRule'];
+export type AlertRuleInput = Schemas['AlertRuleInput'];
+export type AlertDetail = Schemas['AlertDetail'];
+export type AlertHistoryEntry = Schemas['AlertHistoryEntry'];
+export type AlertPreview = Schemas['AlertPreview'];
+export type AlertMetric = Schemas['AlertMetric'];
+export type AlertComparison = Schemas['AlertComparison'];
+export type AlertState = Schemas['AlertState'];
+export type AlertChannel = Schemas['AlertChannel'];
+export type AlertChannelInput = Schemas['AlertChannelInput'];
+export type AlertChannelKind = Schemas['AlertChannelKind'];
+export type AlertChannelTest = Schemas['AlertChannelTest'];
 export type EventName = Schemas['EventName'];
 export type FunnelQuery = Schemas['FunnelQuery'];
 export type FunnelResult = Schemas['FunnelResult'];
@@ -193,6 +205,51 @@ export class APIClient {
 
   getTrace(traceId: string, projectId?: number): Promise<Trace> {
     return this.request('GET', `/v1/traces/${encodeURIComponent(traceId)}`, { project_id: projectId });
+  }
+
+  listAlerts(projectId: number): Promise<AlertRule[]> {
+    return this.request('GET', `/v1/projects/${projectId}/alerts`);
+  }
+
+  getAlert(projectId: number, id: number): Promise<AlertDetail> {
+    return this.request('GET', `/v1/projects/${projectId}/alerts/${id}`);
+  }
+
+  createAlert(projectId: number, rule: AlertRuleInput): Promise<AlertRule> {
+    return this.request('POST', `/v1/projects/${projectId}/alerts`, undefined, rule);
+  }
+
+  updateAlert(projectId: number, id: number, rule: AlertRuleInput): Promise<AlertRule> {
+    return this.request('PUT', `/v1/projects/${projectId}/alerts/${id}`, undefined, rule);
+  }
+
+  deleteAlert(projectId: number, id: number): Promise<void> {
+    return this.request('DELETE', `/v1/projects/${projectId}/alerts/${id}`);
+  }
+
+  /** Mutes notifications for the given minutes; 0 unmutes. */
+  muteAlert(projectId: number, id: number, minutes: number): Promise<AlertRule> {
+    return this.request('POST', `/v1/projects/${projectId}/alerts/${id}/mute`, undefined, { minutes });
+  }
+
+  previewAlert(projectId: number, rule: AlertRuleInput): Promise<AlertPreview> {
+    return this.request('POST', `/v1/projects/${projectId}/alerts/preview`, undefined, rule);
+  }
+
+  listAlertChannels(projectId: number): Promise<AlertChannel[]> {
+    return this.request('GET', `/v1/projects/${projectId}/alert-channels`);
+  }
+
+  createAlertChannel(projectId: number, channel: AlertChannelInput): Promise<AlertChannel> {
+    return this.request('POST', `/v1/projects/${projectId}/alert-channels`, undefined, channel);
+  }
+
+  deleteAlertChannel(projectId: number, id: number): Promise<void> {
+    return this.request('DELETE', `/v1/projects/${projectId}/alert-channels/${id}`);
+  }
+
+  testAlertChannel(projectId: number, id: number): Promise<AlertChannelTest> {
+    return this.request('POST', `/v1/projects/${projectId}/alert-channels/${id}/test`);
   }
 
   listReplays(query: ListReplaysQuery = {}): Promise<ReplayList> {

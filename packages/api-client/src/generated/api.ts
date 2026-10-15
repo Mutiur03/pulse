@@ -574,6 +574,147 @@ export interface paths {
         patch: operations["updateIssue"];
         trace?: never;
     };
+    "/v1/projects/{project_id}/alerts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List alert rules with their current state
+         * @description Alerting rules come first, then no-data, then OK.
+         */
+        get: operations["listAlerts"];
+        put?: never;
+        /** Create an alert rule */
+        post: operations["createAlert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/alerts/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chart a rule's metric against its threshold
+         * @description Buckets the metric by the rule's window over the last 24 windows (at most 7 days). Event-driven metrics (new_issue, issue_regression) have no chart and return supported false.
+         */
+        post: operations["previewAlert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/alerts/{alert_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a rule with its recent history */
+        get: operations["getAlert"];
+        /**
+         * Update a rule
+         * @description Changing the condition or disabling the rule resets its state to OK.
+         */
+        put: operations["updateAlert"];
+        post?: never;
+        /** Delete a rule and its history */
+        delete: operations["deleteAlert"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/alerts/{alert_id}/mute": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Mute or unmute a rule's notifications
+         * @description A muted rule keeps evaluating and recording history but sends nothing until the mute ends. Minutes 0 unmutes.
+         */
+        post: operations["muteAlert"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/alert-channels": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List notification channels
+         * @description Webhook signing secrets are only returned when a channel is created.
+         */
+        get: operations["listAlertChannels"];
+        put?: never;
+        /**
+         * Add a notification channel
+         * @description Webhook channels get a signing secret, returned only in this response. Each webhook request carries X-Pulse-Signature "t=<unix>,v1=<hex>", where v1 is HMAC-SHA256(secret, "<unix>.<body>").
+         */
+        post: operations["createAlertChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/alert-channels/{channel_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /** Delete a channel and remove it from rules */
+        delete: operations["deleteAlertChannel"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/alert-channels/{channel_id}/test": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Send a test notification */
+        post: operations["testAlertChannel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -943,6 +1084,142 @@ export interface components {
         IssueUpdate: {
             status: components["schemas"]["IssueStatus"];
         };
+        /**
+         * @description error_count (errors in the window), error_rate (errors per minute), failure_rate (percent of server requests that failed), latency_p95 and latency_p99 (server span milliseconds), throughput (server requests per minute; use lt to catch drops), event_count (product events named by event_name), new_issue and issue_regression (fire on each issue event).
+         * @enum {string}
+         */
+        AlertMetric: "error_count" | "error_rate" | "failure_rate" | "latency_p95" | "latency_p99" | "throughput" | "event_count" | "new_issue" | "issue_regression";
+        /** @enum {string} */
+        AlertComparison: "gt" | "gte" | "lt" | "lte";
+        /** @enum {string} */
+        AlertState: "ok" | "alerting" | "no_data";
+        AlertRuleInput: {
+            name: string;
+            metric: components["schemas"]["AlertMetric"];
+            comparison?: components["schemas"]["AlertComparison"];
+            /** Format: double */
+            threshold?: number;
+            /** @default 300 */
+            window_seconds: number;
+            /** @default 60 */
+            interval_seconds: number;
+            service?: string;
+            /** @description HTTP route of server spans; for browser errors and events, a URL substring. */
+            route?: string;
+            environment?: string;
+            event_name?: string;
+            /** @description Repeat while firing, and don't re-page a flapping rule, within this time. 0 disables. */
+            renotify_seconds?: number;
+            channel_ids?: number[];
+            /** @default true */
+            enabled: boolean;
+        };
+        AlertRule: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            project_id: number;
+            name: string;
+            metric: components["schemas"]["AlertMetric"];
+            comparison: components["schemas"]["AlertComparison"];
+            /** Format: double */
+            threshold: number;
+            window_seconds: number;
+            interval_seconds: number;
+            service: string;
+            route: string;
+            environment: string;
+            event_name: string;
+            renotify_seconds: number;
+            channel_ids: number[];
+            enabled: boolean;
+            /** Format: date-time */
+            muted_until?: string;
+            state: components["schemas"]["AlertState"];
+            /** Format: date-time */
+            state_since: string;
+            /** Format: double */
+            last_value?: number;
+            /** Format: date-time */
+            last_evaluated_at?: string;
+            /** Format: date-time */
+            last_notified_at?: string;
+            /** @description The rule in words, e.g. "error_rate > 5/min over 5m". */
+            condition: string;
+            unit: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AlertHistoryEntry: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            at: string;
+            state: components["schemas"]["AlertState"];
+            previous: components["schemas"]["AlertState"];
+            /** Format: double */
+            value?: number;
+            /** @description firing, still_firing, resolved, or empty when nothing was sent. */
+            notice: string;
+            /** @description Why a notice was held back (muted, cooldown). */
+            suppressed: string;
+            /** @description Channels that failed to deliver. */
+            failures: string;
+            /** Format: int64 */
+            issue_id?: number;
+            trace_id: string;
+            message: string;
+        };
+        AlertDetail: {
+            rule: components["schemas"]["AlertRule"];
+            history: components["schemas"]["AlertHistoryEntry"][];
+        };
+        AlertMute: {
+            minutes: number;
+        };
+        AlertPoint: {
+            /** Format: date-time */
+            at: string;
+            /** Format: double */
+            value: number;
+        };
+        AlertPreview: {
+            supported: boolean;
+            points: components["schemas"]["AlertPoint"][];
+            /** Format: double */
+            threshold: number;
+            comparison: components["schemas"]["AlertComparison"];
+            unit: string;
+            bucket_seconds: number;
+            /**
+             * Format: double
+             * @description The value an evaluation would see now; absent when there is no data.
+             */
+            current?: number;
+        };
+        /** @enum {string} */
+        AlertChannelKind: "email" | "webhook" | "slack";
+        AlertChannelInput: {
+            name: string;
+            kind: components["schemas"]["AlertChannelKind"];
+            /** @description Email address, webhook URL or Slack incoming webhook URL. */
+            target: string;
+        };
+        AlertChannel: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            kind: components["schemas"]["AlertChannelKind"];
+            target: string;
+            /** @description Webhook signing secret; only present when the channel is created. */
+            secret?: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        AlertChannelTest: {
+            ok: boolean;
+            error?: string;
+        };
     };
     responses: {
         /** @description Not found */
@@ -983,6 +1260,8 @@ export interface components {
         };
     };
     parameters: {
+        AlertPath: number;
+        ChannelPath: number;
         SessionPath: string;
         OrgPath: number;
         ProjectPath: number;
@@ -1927,6 +2206,286 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAlerts: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Rules */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRule"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertRuleInput"];
+            };
+        };
+        responses: {
+            /** @description The new rule */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRule"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    previewAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertRuleInput"];
+            };
+        };
+        responses: {
+            /** @description The chart */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                alert_id: components["parameters"]["AlertPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The rule */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                alert_id: components["parameters"]["AlertPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertRuleInput"];
+            };
+        };
+        responses: {
+            /** @description The updated rule */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRule"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                alert_id: components["parameters"]["AlertPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    muteAlert: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                alert_id: components["parameters"]["AlertPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertMute"];
+            };
+        };
+        responses: {
+            /** @description The rule */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertRule"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listAlertChannels: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Channels */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertChannel"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createAlertChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AlertChannelInput"];
+            };
+        };
+        responses: {
+            /** @description The new channel */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertChannel"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteAlertChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                channel_id: components["parameters"]["ChannelPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    testAlertChannel: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                channel_id: components["parameters"]["ChannelPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Delivery result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AlertChannelTest"];
+                };
+            };
             404: components["responses"]["NotFound"];
         };
     };

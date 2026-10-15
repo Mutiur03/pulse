@@ -240,6 +240,9 @@ services:
     container_name: query-api
     ports:
       - "8081:8081"
+    # Lets webhook channels reach receivers on the host (e.g. local tests).
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     environment:
       # Local stack is plain HTTP; keep the default (true) behind HTTPS.
       COOKIE_SECURE: "false"
@@ -295,11 +298,22 @@ services:
       REDIS_ADDR: redis:6379
       CLICKHOUSE_ADDR: clickhouse:9000
       POSTGRES_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable
+      SMTP_ADDR: mailpit:1025
+      SMTP_FROM: "Pulse Alerts <alerts@pulse.local>"
+      APP_URL: http://localhost:3000
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
     depends_on:
       kafka:
         condition: service_healthy
       redis:
         condition: service_healthy
+      mailpit:
+        condition: service_started
+      postgres-migrate:
+        condition: service_completed_successfully
+      clickhouse-migrate:
+        condition: service_completed_successfully
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8083/health"]
       interval: 5s

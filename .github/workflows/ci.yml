@@ -189,7 +189,7 @@ jobs:
           DEMO_API_URL: http://localhost:8090
         run: ./tools/smoke-test.sh
 
-      - name: Funnel SQL against ClickHouse
+      - name: Funnel and alert SQL against ClickHouse
         working-directory: go
         env:
           PULSE_TEST_CLICKHOUSE: localhost:9000

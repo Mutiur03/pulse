@@ -24,6 +24,41 @@ const (
 	SessionScopes = "session.Scopes"
 )
 
+// Defines values for AlertChannelKind.
+const (
+	Email   AlertChannelKind = "email"
+	Slack   AlertChannelKind = "slack"
+	Webhook AlertChannelKind = "webhook"
+)
+
+// Defines values for AlertComparison.
+const (
+	Gt  AlertComparison = "gt"
+	Gte AlertComparison = "gte"
+	Lt  AlertComparison = "lt"
+	Lte AlertComparison = "lte"
+)
+
+// Defines values for AlertMetric.
+const (
+	ErrorCount      AlertMetric = "error_count"
+	ErrorRate       AlertMetric = "error_rate"
+	EventCount      AlertMetric = "event_count"
+	FailureRate     AlertMetric = "failure_rate"
+	IssueRegression AlertMetric = "issue_regression"
+	LatencyP95      AlertMetric = "latency_p95"
+	LatencyP99      AlertMetric = "latency_p99"
+	NewIssue        AlertMetric = "new_issue"
+	Throughput      AlertMetric = "throughput"
+)
+
+// Defines values for AlertState.
+const (
+	AlertStateAlerting AlertState = "alerting"
+	AlertStateNoData   AlertState = "no_data"
+	AlertStateOk       AlertState = "ok"
+)
+
 // Defines values for InviteRole.
 const (
 	InviteRoleMember InviteRole = "member"
@@ -86,6 +121,151 @@ const (
 	ListTracesParamsStatusError ListTracesParamsStatus = "error"
 	ListTracesParamsStatusOk    ListTracesParamsStatus = "ok"
 )
+
+// AlertChannel defines model for AlertChannel.
+type AlertChannel struct {
+	CreatedAt time.Time        `json:"created_at"`
+	Id        int64            `json:"id"`
+	Kind      AlertChannelKind `json:"kind"`
+	Name      string           `json:"name"`
+
+	// Secret Webhook signing secret; only present when the channel is created.
+	Secret *string `json:"secret,omitempty"`
+	Target string  `json:"target"`
+}
+
+// AlertChannelInput defines model for AlertChannelInput.
+type AlertChannelInput struct {
+	Kind AlertChannelKind `json:"kind"`
+	Name string           `json:"name"`
+
+	// Target Email address, webhook URL or Slack incoming webhook URL.
+	Target string `json:"target"`
+}
+
+// AlertChannelKind defines model for AlertChannelKind.
+type AlertChannelKind string
+
+// AlertChannelTest defines model for AlertChannelTest.
+type AlertChannelTest struct {
+	Error *string `json:"error,omitempty"`
+	Ok    bool    `json:"ok"`
+}
+
+// AlertComparison defines model for AlertComparison.
+type AlertComparison string
+
+// AlertDetail defines model for AlertDetail.
+type AlertDetail struct {
+	History []AlertHistoryEntry `json:"history"`
+	Rule    AlertRule           `json:"rule"`
+}
+
+// AlertHistoryEntry defines model for AlertHistoryEntry.
+type AlertHistoryEntry struct {
+	At time.Time `json:"at"`
+
+	// Failures Channels that failed to deliver.
+	Failures string `json:"failures"`
+	Id       int64  `json:"id"`
+	IssueId  *int64 `json:"issue_id,omitempty"`
+	Message  string `json:"message"`
+
+	// Notice firing, still_firing, resolved, or empty when nothing was sent.
+	Notice   string     `json:"notice"`
+	Previous AlertState `json:"previous"`
+	State    AlertState `json:"state"`
+
+	// Suppressed Why a notice was held back (muted, cooldown).
+	Suppressed string   `json:"suppressed"`
+	TraceId    string   `json:"trace_id"`
+	Value      *float64 `json:"value,omitempty"`
+}
+
+// AlertMetric error_count (errors in the window), error_rate (errors per minute), failure_rate (percent of server requests that failed), latency_p95 and latency_p99 (server span milliseconds), throughput (server requests per minute; use lt to catch drops), event_count (product events named by event_name), new_issue and issue_regression (fire on each issue event).
+type AlertMetric string
+
+// AlertMute defines model for AlertMute.
+type AlertMute struct {
+	Minutes int `json:"minutes"`
+}
+
+// AlertPoint defines model for AlertPoint.
+type AlertPoint struct {
+	At    time.Time `json:"at"`
+	Value float64   `json:"value"`
+}
+
+// AlertPreview defines model for AlertPreview.
+type AlertPreview struct {
+	BucketSeconds int             `json:"bucket_seconds"`
+	Comparison    AlertComparison `json:"comparison"`
+
+	// Current The value an evaluation would see now; absent when there is no data.
+	Current   *float64     `json:"current,omitempty"`
+	Points    []AlertPoint `json:"points"`
+	Supported bool         `json:"supported"`
+	Threshold float64      `json:"threshold"`
+	Unit      string       `json:"unit"`
+}
+
+// AlertRule defines model for AlertRule.
+type AlertRule struct {
+	ChannelIds []int64         `json:"channel_ids"`
+	Comparison AlertComparison `json:"comparison"`
+
+	// Condition The rule in words, e.g. "error_rate > 5/min over 5m".
+	Condition       string     `json:"condition"`
+	CreatedAt       time.Time  `json:"created_at"`
+	Enabled         bool       `json:"enabled"`
+	Environment     string     `json:"environment"`
+	EventName       string     `json:"event_name"`
+	Id              int64      `json:"id"`
+	IntervalSeconds int        `json:"interval_seconds"`
+	LastEvaluatedAt *time.Time `json:"last_evaluated_at,omitempty"`
+	LastNotifiedAt  *time.Time `json:"last_notified_at,omitempty"`
+	LastValue       *float64   `json:"last_value,omitempty"`
+
+	// Metric error_count (errors in the window), error_rate (errors per minute), failure_rate (percent of server requests that failed), latency_p95 and latency_p99 (server span milliseconds), throughput (server requests per minute; use lt to catch drops), event_count (product events named by event_name), new_issue and issue_regression (fire on each issue event).
+	Metric          AlertMetric `json:"metric"`
+	MutedUntil      *time.Time  `json:"muted_until,omitempty"`
+	Name            string      `json:"name"`
+	ProjectId       int64       `json:"project_id"`
+	RenotifySeconds int         `json:"renotify_seconds"`
+	Route           string      `json:"route"`
+	Service         string      `json:"service"`
+	State           AlertState  `json:"state"`
+	StateSince      time.Time   `json:"state_since"`
+	Threshold       float64     `json:"threshold"`
+	Unit            string      `json:"unit"`
+	WindowSeconds   int         `json:"window_seconds"`
+}
+
+// AlertRuleInput defines model for AlertRuleInput.
+type AlertRuleInput struct {
+	ChannelIds      *[]int64         `json:"channel_ids,omitempty"`
+	Comparison      *AlertComparison `json:"comparison,omitempty"`
+	Enabled         *bool            `json:"enabled,omitempty"`
+	Environment     *string          `json:"environment,omitempty"`
+	EventName       *string          `json:"event_name,omitempty"`
+	IntervalSeconds *int             `json:"interval_seconds,omitempty"`
+
+	// Metric error_count (errors in the window), error_rate (errors per minute), failure_rate (percent of server requests that failed), latency_p95 and latency_p99 (server span milliseconds), throughput (server requests per minute; use lt to catch drops), event_count (product events named by event_name), new_issue and issue_regression (fire on each issue event).
+	Metric AlertMetric `json:"metric"`
+	Name   string      `json:"name"`
+
+	// RenotifySeconds Repeat while firing, and don't re-page a flapping rule, within this time. 0 disables.
+	RenotifySeconds *int `json:"renotify_seconds,omitempty"`
+
+	// Route HTTP route of server spans; for browser errors and events, a URL substring.
+	Route         *string  `json:"route,omitempty"`
+	Service       *string  `json:"service,omitempty"`
+	Threshold     *float64 `json:"threshold,omitempty"`
+	WindowSeconds *int     `json:"window_seconds,omitempty"`
+}
+
+// AlertState defines model for AlertState.
+type AlertState string
 
 // ApiKey defines model for ApiKey.
 type ApiKey struct {
@@ -487,6 +667,12 @@ type User struct {
 	Name          string `json:"name"`
 }
 
+// AlertPath defines model for AlertPath.
+type AlertPath = int64
+
+// ChannelPath defines model for ChannelPath.
+type ChannelPath = int64
+
 // From defines model for From.
 type From = time.Time
 
@@ -691,6 +877,21 @@ type CreateProjectJSONRequestBody = ProjectInput
 // UpdateProjectJSONRequestBody defines body for UpdateProject for application/json ContentType.
 type UpdateProjectJSONRequestBody = ProjectInput
 
+// CreateAlertChannelJSONRequestBody defines body for CreateAlertChannel for application/json ContentType.
+type CreateAlertChannelJSONRequestBody = AlertChannelInput
+
+// CreateAlertJSONRequestBody defines body for CreateAlert for application/json ContentType.
+type CreateAlertJSONRequestBody = AlertRuleInput
+
+// PreviewAlertJSONRequestBody defines body for PreviewAlert for application/json ContentType.
+type PreviewAlertJSONRequestBody = AlertRuleInput
+
+// UpdateAlertJSONRequestBody defines body for UpdateAlert for application/json ContentType.
+type UpdateAlertJSONRequestBody = AlertRuleInput
+
+// MuteAlertJSONRequestBody defines body for MuteAlert for application/json ContentType.
+type MuteAlertJSONRequestBody = AlertMute
+
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
 	// Health check
@@ -768,6 +969,39 @@ type ServerInterface interface {
 	// Rename a project
 	// (PATCH /v1/projects/{project_id})
 	UpdateProject(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
+	// List notification channels
+	// (GET /v1/projects/{project_id}/alert-channels)
+	ListAlertChannels(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
+	// Add a notification channel
+	// (POST /v1/projects/{project_id}/alert-channels)
+	CreateAlertChannel(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
+	// Delete a channel and remove it from rules
+	// (DELETE /v1/projects/{project_id}/alert-channels/{channel_id})
+	DeleteAlertChannel(w http.ResponseWriter, r *http.Request, projectId ProjectPath, channelId ChannelPath)
+	// Send a test notification
+	// (POST /v1/projects/{project_id}/alert-channels/{channel_id}/test)
+	TestAlertChannel(w http.ResponseWriter, r *http.Request, projectId ProjectPath, channelId ChannelPath)
+	// List alert rules with their current state
+	// (GET /v1/projects/{project_id}/alerts)
+	ListAlerts(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
+	// Create an alert rule
+	// (POST /v1/projects/{project_id}/alerts)
+	CreateAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
+	// Chart a rule's metric against its threshold
+	// (POST /v1/projects/{project_id}/alerts/preview)
+	PreviewAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
+	// Delete a rule and its history
+	// (DELETE /v1/projects/{project_id}/alerts/{alert_id})
+	DeleteAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath, alertId AlertPath)
+	// Get a rule with its recent history
+	// (GET /v1/projects/{project_id}/alerts/{alert_id})
+	GetAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath, alertId AlertPath)
+	// Update a rule
+	// (PUT /v1/projects/{project_id}/alerts/{alert_id})
+	UpdateAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath, alertId AlertPath)
+	// Mute or unmute a rule's notifications
+	// (POST /v1/projects/{project_id}/alerts/{alert_id}/mute)
+	MuteAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath, alertId AlertPath)
 	// List the project's ingest keys
 	// (GET /v1/projects/{project_id}/keys)
 	ListKeys(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
@@ -951,6 +1185,72 @@ func (_ Unimplemented) CreateProject(w http.ResponseWriter, r *http.Request) {
 // Rename a project
 // (PATCH /v1/projects/{project_id})
 func (_ Unimplemented) UpdateProject(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List notification channels
+// (GET /v1/projects/{project_id}/alert-channels)
+func (_ Unimplemented) ListAlertChannels(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Add a notification channel
+// (POST /v1/projects/{project_id}/alert-channels)
+func (_ Unimplemented) CreateAlertChannel(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a channel and remove it from rules
+// (DELETE /v1/projects/{project_id}/alert-channels/{channel_id})
+func (_ Unimplemented) DeleteAlertChannel(w http.ResponseWriter, r *http.Request, projectId ProjectPath, channelId ChannelPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Send a test notification
+// (POST /v1/projects/{project_id}/alert-channels/{channel_id}/test)
+func (_ Unimplemented) TestAlertChannel(w http.ResponseWriter, r *http.Request, projectId ProjectPath, channelId ChannelPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List alert rules with their current state
+// (GET /v1/projects/{project_id}/alerts)
+func (_ Unimplemented) ListAlerts(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Create an alert rule
+// (POST /v1/projects/{project_id}/alerts)
+func (_ Unimplemented) CreateAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Chart a rule's metric against its threshold
+// (POST /v1/projects/{project_id}/alerts/preview)
+func (_ Unimplemented) PreviewAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Delete a rule and its history
+// (DELETE /v1/projects/{project_id}/alerts/{alert_id})
+func (_ Unimplemented) DeleteAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath, alertId AlertPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a rule with its recent history
+// (GET /v1/projects/{project_id}/alerts/{alert_id})
+func (_ Unimplemented) GetAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath, alertId AlertPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Update a rule
+// (PUT /v1/projects/{project_id}/alerts/{alert_id})
+func (_ Unimplemented) UpdateAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath, alertId AlertPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Mute or unmute a rule's notifications
+// (POST /v1/projects/{project_id}/alerts/{alert_id}/mute)
+func (_ Unimplemented) MuteAlert(w http.ResponseWriter, r *http.Request, projectId ProjectPath, alertId AlertPath) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -1715,6 +2015,368 @@ func (siw *ServerInterfaceWrapper) UpdateProject(w http.ResponseWriter, r *http.
 	handler.ServeHTTP(w, r.WithContext(ctx))
 }
 
+// ListAlertChannels operation middleware
+func (siw *ServerInterfaceWrapper) ListAlertChannels(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAlertChannels(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// CreateAlertChannel operation middleware
+func (siw *ServerInterfaceWrapper) CreateAlertChannel(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAlertChannel(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// DeleteAlertChannel operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAlertChannel(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "channel_id" -------------
+	var channelId ChannelPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "channel_id", runtime.ParamLocationPath, chi.URLParam(r, "channel_id"), &channelId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "channel_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAlertChannel(w, r, projectId, channelId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// TestAlertChannel operation middleware
+func (siw *ServerInterfaceWrapper) TestAlertChannel(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "channel_id" -------------
+	var channelId ChannelPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "channel_id", runtime.ParamLocationPath, chi.URLParam(r, "channel_id"), &channelId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "channel_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.TestAlertChannel(w, r, projectId, channelId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// ListAlerts operation middleware
+func (siw *ServerInterfaceWrapper) ListAlerts(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListAlerts(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// CreateAlert operation middleware
+func (siw *ServerInterfaceWrapper) CreateAlert(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.CreateAlert(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// PreviewAlert operation middleware
+func (siw *ServerInterfaceWrapper) PreviewAlert(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.PreviewAlert(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// DeleteAlert operation middleware
+func (siw *ServerInterfaceWrapper) DeleteAlert(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "alert_id" -------------
+	var alertId AlertPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "alert_id", runtime.ParamLocationPath, chi.URLParam(r, "alert_id"), &alertId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "alert_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.DeleteAlert(w, r, projectId, alertId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// GetAlert operation middleware
+func (siw *ServerInterfaceWrapper) GetAlert(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "alert_id" -------------
+	var alertId AlertPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "alert_id", runtime.ParamLocationPath, chi.URLParam(r, "alert_id"), &alertId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "alert_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetAlert(w, r, projectId, alertId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// UpdateAlert operation middleware
+func (siw *ServerInterfaceWrapper) UpdateAlert(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "alert_id" -------------
+	var alertId AlertPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "alert_id", runtime.ParamLocationPath, chi.URLParam(r, "alert_id"), &alertId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "alert_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateAlert(w, r, projectId, alertId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// MuteAlert operation middleware
+func (siw *ServerInterfaceWrapper) MuteAlert(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Path parameter "alert_id" -------------
+	var alertId AlertPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "alert_id", runtime.ParamLocationPath, chi.URLParam(r, "alert_id"), &alertId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "alert_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.MuteAlert(w, r, projectId, alertId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
 // ListKeys operation middleware
 func (siw *ServerInterfaceWrapper) ListKeys(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -2368,6 +3030,39 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Patch(options.BaseURL+"/v1/projects/{project_id}", wrapper.UpdateProject)
 	})
 	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/alert-channels", wrapper.ListAlertChannels)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/alert-channels", wrapper.CreateAlertChannel)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/projects/{project_id}/alert-channels/{channel_id}", wrapper.DeleteAlertChannel)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/alert-channels/{channel_id}/test", wrapper.TestAlertChannel)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/alerts", wrapper.ListAlerts)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/alerts", wrapper.CreateAlert)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/alerts/preview", wrapper.PreviewAlert)
+	})
+	r.Group(func(r chi.Router) {
+		r.Delete(options.BaseURL+"/v1/projects/{project_id}/alerts/{alert_id}", wrapper.DeleteAlert)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/alerts/{alert_id}", wrapper.GetAlert)
+	})
+	r.Group(func(r chi.Router) {
+		r.Put(options.BaseURL+"/v1/projects/{project_id}/alerts/{alert_id}", wrapper.UpdateAlert)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/alerts/{alert_id}/mute", wrapper.MuteAlert)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/keys", wrapper.ListKeys)
 	})
 	r.Group(func(r chi.Router) {
@@ -2404,100 +3099,132 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

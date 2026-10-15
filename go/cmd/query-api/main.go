@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api"
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/auth"
@@ -81,6 +82,9 @@ func main() {
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: os.Getenv("COOKIE_SECURE") != "false",
 	}
+
+	srv.Alerts, srv.AlertMetrics = &alerts.Store{DB: db}, chClient
+	srv.AlertSender = &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL}
 
 	// A typed nil would look non-nil through the interface.
 	if objects := replay.Connect(); objects != nil {

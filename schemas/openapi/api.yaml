@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: Pulse Query API
-  version: 1.2.0
+  version: 1.3.0
   description: >
     Read API for traces, issues, product events and funnels stored by Pulse.
     Everything under /v1 except POST /v1/auth/login and /v1/auth/signup needs
@@ -780,6 +780,223 @@ paths:
           $ref: '#/components/responses/BadRequest'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/alerts:
+    get:
+      summary: List alert rules with their current state
+      description: Alerting rules come first, then no-data, then OK.
+      operationId: listAlerts
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: Rules
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertRule'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Create an alert rule
+      operationId: createAlert
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRuleInput'
+      responses:
+        '201':
+          description: The new rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/alerts/preview:
+    post:
+      summary: Chart a rule's metric against its threshold
+      description: >
+        Buckets the metric by the rule's window over the last 24 windows (at
+        most 7 days). Event-driven metrics (new_issue, issue_regression) have
+        no chart and return supported false.
+      operationId: previewAlert
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRuleInput'
+      responses:
+        '200':
+          description: The chart
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/alerts/{alert_id}:
+    get:
+      summary: Get a rule with its recent history
+      operationId: getAlert
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/AlertPath'
+      responses:
+        '200':
+          description: The rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Update a rule
+      description: Changing the condition or disabling the rule resets its state to OK.
+      operationId: updateAlert
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/AlertPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertRuleInput'
+      responses:
+        '200':
+          description: The updated rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete a rule and its history
+      operationId: deleteAlert
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/AlertPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/alerts/{alert_id}/mute:
+    post:
+      summary: Mute or unmute a rule's notifications
+      description: >
+        A muted rule keeps evaluating and recording history but sends
+        nothing until the mute ends. Minutes 0 unmutes.
+      operationId: muteAlert
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/AlertPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertMute'
+      responses:
+        '200':
+          description: The rule
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertRule'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/alert-channels:
+    get:
+      summary: List notification channels
+      description: Webhook signing secrets are only returned when a channel is created.
+      operationId: listAlertChannels
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: Channels
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AlertChannel'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Add a notification channel
+      description: >
+        Webhook channels get a signing secret, returned only in this response.
+        Each webhook request carries X-Pulse-Signature "t=<unix>,v1=<hex>",
+        where v1 is HMAC-SHA256(secret, "<unix>.<body>").
+      operationId: createAlertChannel
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AlertChannelInput'
+      responses:
+        '201':
+          description: The new channel
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertChannel'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/alert-channels/{channel_id}:
+    delete:
+      summary: Delete a channel and remove it from rules
+      operationId: deleteAlertChannel
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/ChannelPath'
+      responses:
+        '204':
+          description: Deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/alert-channels/{channel_id}/test:
+    post:
+      summary: Send a test notification
+      operationId: testAlertChannel
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/ChannelPath'
+      responses:
+        '200':
+          description: Delivery result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AlertChannelTest'
+        '404':
+          $ref: '#/components/responses/NotFound'
 components:
   securitySchemes:
     session:
@@ -787,6 +1004,20 @@ components:
       in: cookie
       name: pulse_session
   parameters:
+    AlertPath:
+      name: alert_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
+    ChannelPath:
+      name: channel_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
     SessionPath:
       name: session_id
       in: path
@@ -1553,3 +1784,253 @@ components:
       properties:
         status:
           $ref: '#/components/schemas/IssueStatus'
+    AlertMetric:
+      type: string
+      description: >
+        error_count (errors in the window), error_rate (errors per minute),
+        failure_rate (percent of server requests that failed), latency_p95 and
+        latency_p99 (server span milliseconds), throughput (server requests per
+        minute; use lt to catch drops), event_count (product events named by
+        event_name), new_issue and issue_regression (fire on each issue event).
+      enum: [error_count, error_rate, failure_rate, latency_p95, latency_p99, throughput, event_count, new_issue, issue_regression]
+    AlertComparison:
+      type: string
+      enum: [gt, gte, lt, lte]
+    AlertState:
+      type: string
+      enum: [ok, alerting, no_data]
+    AlertRuleInput:
+      type: object
+      required: [name, metric]
+      properties:
+        name:
+          type: string
+        metric:
+          $ref: '#/components/schemas/AlertMetric'
+        comparison:
+          $ref: '#/components/schemas/AlertComparison'
+        threshold:
+          type: number
+          format: double
+        window_seconds:
+          type: integer
+          minimum: 60
+          maximum: 86400
+          default: 300
+        interval_seconds:
+          type: integer
+          minimum: 10
+          maximum: 3600
+          default: 60
+        service:
+          type: string
+        route:
+          type: string
+          description: HTTP route of server spans; for browser errors and events, a URL substring.
+        environment:
+          type: string
+        event_name:
+          type: string
+        renotify_seconds:
+          type: integer
+          minimum: 0
+          description: Repeat while firing, and don't re-page a flapping rule, within this time. 0 disables.
+        channel_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        enabled:
+          type: boolean
+          default: true
+    AlertRule:
+      type: object
+      required: [id, project_id, name, metric, comparison, threshold, window_seconds, interval_seconds, service, route,
+        environment, event_name, renotify_seconds, channel_ids, enabled, state, state_since, condition, unit, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        metric:
+          $ref: '#/components/schemas/AlertMetric'
+        comparison:
+          $ref: '#/components/schemas/AlertComparison'
+        threshold:
+          type: number
+          format: double
+        window_seconds:
+          type: integer
+        interval_seconds:
+          type: integer
+        service:
+          type: string
+        route:
+          type: string
+        environment:
+          type: string
+        event_name:
+          type: string
+        renotify_seconds:
+          type: integer
+        channel_ids:
+          type: array
+          items:
+            type: integer
+            format: int64
+        enabled:
+          type: boolean
+        muted_until:
+          type: string
+          format: date-time
+        state:
+          $ref: '#/components/schemas/AlertState'
+        state_since:
+          type: string
+          format: date-time
+        last_value:
+          type: number
+          format: double
+        last_evaluated_at:
+          type: string
+          format: date-time
+        last_notified_at:
+          type: string
+          format: date-time
+        condition:
+          type: string
+          description: The rule in words, e.g. "error_rate > 5/min over 5m".
+        unit:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    AlertHistoryEntry:
+      type: object
+      required: [id, at, state, previous, notice, suppressed, failures, trace_id, message]
+      properties:
+        id:
+          type: integer
+          format: int64
+        at:
+          type: string
+          format: date-time
+        state:
+          $ref: '#/components/schemas/AlertState'
+        previous:
+          $ref: '#/components/schemas/AlertState'
+        value:
+          type: number
+          format: double
+        notice:
+          type: string
+          description: firing, still_firing, resolved, or empty when nothing was sent.
+        suppressed:
+          type: string
+          description: Why a notice was held back (muted, cooldown).
+        failures:
+          type: string
+          description: Channels that failed to deliver.
+        issue_id:
+          type: integer
+          format: int64
+        trace_id:
+          type: string
+        message:
+          type: string
+    AlertDetail:
+      type: object
+      required: [rule, history]
+      properties:
+        rule:
+          $ref: '#/components/schemas/AlertRule'
+        history:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlertHistoryEntry'
+    AlertMute:
+      type: object
+      required: [minutes]
+      properties:
+        minutes:
+          type: integer
+          minimum: 0
+          maximum: 43200
+    AlertPoint:
+      type: object
+      required: [at, value]
+      properties:
+        at:
+          type: string
+          format: date-time
+        value:
+          type: number
+          format: double
+    AlertPreview:
+      type: object
+      required: [supported, points, threshold, comparison, unit, bucket_seconds]
+      properties:
+        supported:
+          type: boolean
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/AlertPoint'
+        threshold:
+          type: number
+          format: double
+        comparison:
+          $ref: '#/components/schemas/AlertComparison'
+        unit:
+          type: string
+        bucket_seconds:
+          type: integer
+        current:
+          type: number
+          format: double
+          description: The value an evaluation would see now; absent when there is no data.
+    AlertChannelKind:
+      type: string
+      enum: [email, webhook, slack]
+    AlertChannelInput:
+      type: object
+      required: [name, kind, target]
+      properties:
+        name:
+          type: string
+        kind:
+          $ref: '#/components/schemas/AlertChannelKind'
+        target:
+          type: string
+          description: Email address, webhook URL or Slack incoming webhook URL.
+    AlertChannel:
+      type: object
+      required: [id, name, kind, target, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        kind:
+          $ref: '#/components/schemas/AlertChannelKind'
+        target:
+          type: string
+        secret:
+          type: string
+          description: Webhook signing secret; only present when the channel is created.
+        created_at:
+          type: string
+          format: date-time
+    AlertChannelTest:
+      type: object
+      required: [ok]
+      properties:
+        ok:
+          type: boolean
+        error:
+          type: string

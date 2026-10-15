@@ -1,3 +1,6 @@
+import { createHmac } from 'node:crypto';
+import { createServer } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
 
 const email = process.env.PULSE_EMAIL ?? 'demo@pulse.local';
@@ -393,4 +396,140 @@ test('a recorded demo session with an error replays and is linked from its issue
   await page.getByTestId('trace-replay-link').click();
   await expect(page).toHaveURL(new RegExp(`/replays/${session}\\?t=\\d+`));
   await expect(page.locator('.replayer-wrapper iframe')).toBeAttached();
+});
+
+// The query API and alerting worker run in containers; they reach a receiver
+// on this machine through host.docker.internal.
+const webhookHost = process.env.WEBHOOK_HOST ?? 'host.docker.internal';
+
+interface Hook {
+  signature: string;
+  raw: string;
+  body: { test?: boolean; notice: string; rule_id: number; state: string; value?: number; url: string };
+}
+
+function verify(secret: string, h: Hook): boolean {
+  const parts = Object.fromEntries(h.signature.split(',').map((p) => p.split('=') as [string, string]));
+  const want = createHmac('sha256', secret).update(`${parts.t}.${h.raw}`).digest('hex');
+  return want === parts.v1;
+}
+
+test('an error count rule fires by email and signed webhook, then resolves', async ({ page, browser, request }) => {
+  test.setTimeout(300_000);
+  const hooks: Hook[] = [];
+  const receiver = createServer((req, res) => {
+    let raw = '';
+    req.on('data', (c) => (raw += c));
+    req.on('end', () => {
+      hooks.push({ signature: String(req.headers['x-pulse-signature'] ?? ''), raw, body: JSON.parse(raw) });
+      res.end('ok');
+    });
+  });
+  await new Promise<void>((r) => receiver.listen(0, '0.0.0.0', r));
+  const port = (receiver.address() as AddressInfo).port;
+  const tag = Date.now().toString(36);
+  const inbox = `oncall-${tag}@pulse.local`;
+
+  try {
+    await login(page);
+    await page.getByRole('link', { name: 'Alerts' }).click();
+    await expect(page).toHaveURL(/\/alerts$/);
+    await page.getByRole('link', { name: 'Channels' }).click();
+
+    // An email channel and a signed webhook channel.
+    await page.getByLabel('Channel name').fill(`On-call ${tag}`);
+    await page.getByLabel('Target').fill(inbox);
+    await page.getByRole('button', { name: 'Add channel' }).click();
+    await expect(page.locator(`[data-testid=channel-row][data-name="On-call ${tag}"]`)).toBeVisible();
+    await page.getByLabel('Channel name').fill(`Hook ${tag}`);
+    await page.getByLabel('Kind').selectOption('webhook');
+    await page.getByLabel('Target').fill(`http://${webhookHost}:${port}/hook`);
+    await page.getByRole('button', { name: 'Add channel' }).click();
+    const secret = (await page.getByTestId('channel-secret').locator('code').textContent())!.trim();
+    expect(secret).toMatch(/^whsec_/);
+
+    // Test-send reaches the receiver with a valid signature.
+    const hookRow = page.locator(`[data-testid=channel-row][data-name="Hook ${tag}"]`);
+    await hookRow.getByTestId('channel-test').click();
+    await expect(hookRow.getByTestId('channel-test-result')).toHaveText('Sent');
+    expect(hooks[0].body.test).toBe(true);
+    expect(verify(secret, hooks[0])).toBe(true);
+    expect(verify('whsec_wrong', hooks[0])).toBe(false);
+    await shot(page, '26-alert-channels');
+
+    // Any error in the last minute, checked every 10 seconds.
+    await page.goto('/alerts/new');
+    await page.getByLabel('Name').fill(`Demo errors ${tag}`);
+    await page.getByLabel('Metric').selectOption('error_count');
+    await page.getByLabel('Comparison').selectOption('gt');
+    await page.getByLabel('Threshold').fill('0');
+    await page.getByLabel('Window').selectOption('60');
+    await page.getByLabel('Interval').selectOption('10');
+    for (const name of [`On-call ${tag}`, `Hook ${tag}`]) {
+      await page.locator('label', { hasText: name }).getByTestId('rule-channel').check();
+    }
+    await expect(page.getByTestId('alert-chart').or(page.getByText('No data for this metric yet.'))).toBeVisible();
+    await shot(page, '27-alert-new', false);
+    await page.getByRole('button', { name: 'Save rule' }).click();
+    await expect(page).toHaveURL(/\/alerts\/\d+$/);
+    const ruleId = Number(page.url().split('/').pop());
+
+    // Throw errors in the browser demo.
+    const ctx = await browser.newContext();
+    const app = await ctx.newPage();
+    await app.goto(`${demo}/?replay=0`);
+    for (let i = 0; i < 2; i++) await app.locator('#boom').click();
+    await app.waitForTimeout(3000);
+    await ctx.close();
+
+    await expect(page.getByTestId('alert-state')).toHaveAttribute('data-state', 'alerting', { timeout: 90_000 });
+    await expect(page.locator('[data-testid=history-entry][data-state=alerting][data-notice=firing]').first()).toBeVisible();
+    await expect(page.getByTestId('history-issue').first()).toBeVisible();
+
+    await expect.poll(() => hooks.some((h) => h.body.rule_id === ruleId && h.body.notice === 'firing'), { timeout: 30_000 }).toBe(true);
+    const fired = hooks.find((h) => h.body.rule_id === ruleId && h.body.notice === 'firing')!;
+    expect(verify(secret, fired)).toBe(true);
+    expect(fired.body.state).toBe('alerting');
+    expect(fired.body.value).toBeGreaterThan(0);
+    expect(fired.body.url).toMatch(new RegExp(`/alerts/${ruleId}$`));
+
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get(`${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${inbox}"`)}`);
+          const { messages } = (await res.json()) as { messages?: { Subject: string }[] };
+          return (messages ?? []).map((m) => m.Subject);
+        },
+        { timeout: 30_000 },
+      )
+      .toContain(`[Alerting] Demo errors ${tag}`);
+    await shot(page, '28-alert-firing', false);
+
+    await page.goto('/alerts');
+    await expect(page.locator(`[data-testid=alert-row][data-name="Demo errors ${tag}"]`)).toHaveAttribute('data-state', 'alerting');
+    await shot(page, '29-alerts-list');
+
+    // With no new errors the window empties and the rule resolves.
+    await page.goto(`/alerts/${ruleId}`);
+    await expect(page.getByTestId('alert-state')).toHaveAttribute('data-state', 'ok', { timeout: 120_000 });
+    await expect.poll(() => hooks.some((h) => h.body.rule_id === ruleId && h.body.notice === 'resolved'), { timeout: 30_000 }).toBe(true);
+    await expect
+      .poll(
+        async () => {
+          const res = await request.get(`${mailpit}/api/v1/search?query=${encodeURIComponent(`to:"${inbox}"`)}`);
+          const { messages } = (await res.json()) as { messages?: { Subject: string }[] };
+          return (messages ?? []).map((m) => m.Subject);
+        },
+        { timeout: 30_000 },
+      )
+      .toContain(`[Resolved] Demo errors ${tag}`);
+    await expect(page.locator('[data-testid=history-entry][data-state=ok][data-notice=resolved]').first()).toBeVisible();
+
+    // Snoozing mutes notifications.
+    await page.getByTestId('snooze-1h').click();
+    await expect(page.getByTestId('alert-notifications')).toContainText('muted until');
+    await shot(page, '30-alert-resolved', false);
+  } finally {
+    receiver.close();
+  }
 });
