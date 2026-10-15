@@ -28,3 +28,12 @@ export const ranges: Record<string, number> = { '15m': 15 * 60e3, '1h': 3600e3, 
 export function fromRange(r: string | undefined, def = '24h'): string {
   return new Date(Date.now() - (ranges[r ?? def] ?? ranges[def])).toISOString();
 }
+
+/** Milliseconds as m:ss or h:mm:ss. */
+export function duration(msTotal: number): string {
+  const s = Math.max(0, Math.floor(msTotal / 1000));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = String(s % 60).padStart(2, '0');
+  return h ? `${h}:${String(m).padStart(2, '0')}:${sec}` : `${m}:${sec}`;
+}

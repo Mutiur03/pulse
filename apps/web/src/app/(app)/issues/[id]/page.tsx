@@ -78,11 +78,22 @@ export default function IssuePage({ params }: { params: Promise<{ id: string }> 
                 title="Stack trace"
                 description={ev ? `${ev.exception_type}: ${ev.message}` : undefined}
                 actions={
-                  ev?.trace_id && (
-                    <Link href={`/traces/${ev.trace_id}`} className="text-xs text-primary hover:underline" data-testid="issue-trace-link">
-                      View trace →
-                    </Link>
-                  )
+                  <div className="flex gap-3">
+                    {ev?.session_id && (
+                      <Link
+                        href={`/replays/${ev.session_id}?t=${Date.parse(ev.timestamp)}`}
+                        className="text-xs text-primary hover:underline"
+                        data-testid="issue-replay-link"
+                      >
+                        Watch replay →
+                      </Link>
+                    )}
+                    {ev?.trace_id && (
+                      <Link href={`/traces/${ev.trace_id}`} className="text-xs text-primary hover:underline" data-testid="issue-trace-link">
+                        View trace →
+                      </Link>
+                    )}
+                  </div>
                 }
               />
               <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-zinc-300" data-testid="stack">
@@ -97,6 +108,7 @@ export default function IssuePage({ params }: { params: Promise<{ id: string }> 
                     <Th>When</Th>
                     <Th>User</Th>
                     <Th>Trace</Th>
+                    <Th>Replay</Th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-border">
@@ -108,6 +120,20 @@ export default function IssuePage({ params }: { params: Promise<{ id: string }> 
                         {e.trace_id ? (
                           <Link href={`/traces/${e.trace_id}`} className="text-primary hover:underline" onClick={(x) => x.stopPropagation()}>
                             {e.trace_id.slice(0, 8)}
+                          </Link>
+                        ) : (
+                          '—'
+                        )}
+                      </Td>
+                      <Td>
+                        {e.session_id ? (
+                          <Link
+                            href={`/replays/${e.session_id}?t=${Date.parse(e.timestamp)}`}
+                            className="text-primary hover:underline"
+                            onClick={(x) => x.stopPropagation()}
+                            data-testid="occurrence-replay-link"
+                          >
+                            Watch
                           </Link>
                         ) : (
                           '—'

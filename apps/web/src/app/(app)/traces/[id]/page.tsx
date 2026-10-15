@@ -17,6 +17,7 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
   }, [rows, sel]);
   const span = rows.find((r) => r.span.span_id === sel)?.span;
   const t = trace.data;
+  const session = rows.find((r) => r.span.session_id)?.span.session_id;
 
   return (
     <>
@@ -39,6 +40,11 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
               </span>
               <span className={t.error_count ? 'text-red-300' : ''}>{t.error_count} errors</span>
               <span>{time(t.start_time)}</span>
+              {session && (
+                <Link href={`/replays/${session}?t=${Date.parse(t.start_time)}`} className="text-primary hover:underline" data-testid="trace-replay-link">
+                  Watch replay →
+                </Link>
+              )}
             </div>
           )
         }

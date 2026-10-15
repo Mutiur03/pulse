@@ -93,9 +93,14 @@ type Server struct {
 	// Mail sends reset, invite and verification emails; nil drops them.
 	Mail mail.Sender
 	// AppURL is the web app's public base URL used in email links.
-	AppURL       string
-	SecureCookie bool
-	Now          func() time.Time
+	AppURL string
+	// Replays and ReplayObjects serve session replay; nil disables it.
+	Replays       ReplayReader
+	ReplayObjects ObjectGetter
+	// ReplayRetentionDays is shown to users; 0 means the default.
+	ReplayRetentionDays int
+	SecureCookie        bool
+	Now                 func() time.Time
 }
 
 func (s *Server) now() time.Time {

@@ -37,6 +37,7 @@
     "@opentelemetry/instrumentation-xml-http-request": "^0.223.0",
     "@opentelemetry/resources": "^2.12.0",
     "@opentelemetry/sdk-trace-web": "^2.12.0",
+    "@rrweb/record": "2.1.7",
     "web-vitals": "^6.2.3"
   },
   "type": "module",

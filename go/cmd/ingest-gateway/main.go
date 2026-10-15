@@ -14,6 +14,8 @@ import (
 	"github.com/Mutiur03/pulse/internal/ingest"
 	"github.com/Mutiur03/pulse/internal/kafka"
 	"github.com/Mutiur03/pulse/internal/keys"
+	"github.com/Mutiur03/pulse/internal/replay"
+	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/telemetry"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
@@ -50,10 +52,19 @@ func main() {
 		Limiter:  &keys.Limiter{Redis: rdb},
 	}
 
+	var opts []ingest.Option
+	if objects := replay.Connect(); objects != nil {
+		chClient, err := ch.NewClient(cfg.ClickHouseAddr)
+		if err != nil {
+			log.Fatalf("Failed to create ClickHouse client: %v", err)
+		}
+		defer func() { _ = chClient.Close() }()
+		opts = append(opts, ingest.WithReplay(&replay.Writer{Objects: objects, Meta: chClient}))
+	}
 	addr := fmt.Sprintf(":%d", cfg.IngestGatewayPort)
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           ingest.NewHandler(producer, auth),
+		Handler:           ingest.NewHandler(producer, auth, opts...),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

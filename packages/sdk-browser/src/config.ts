@@ -36,6 +36,11 @@ export interface PulseConfig {
   /** Disable OTel tracing (events/errors still work). */
   tracing?: boolean;
   debug?: boolean;
+  /**
+   * Session replay. Off unless set. The recorder is a separate chunk that is
+   * only downloaded for sampled sessions.
+   */
+  replay?: ReplayConfig;
   /** Replace the OTLP exporter, e.g. to send spans elsewhere or in tests. */
   spanExporter?: SpanExporter;
 }
@@ -65,4 +70,19 @@ export interface ErrorPayload {
   session_id: string;
   distinct_id: string;
   url: string;
+}
+
+export interface ReplayConfig {
+  /** Share of sessions to record, 0 to 1. Default 1. */
+  sampleRate?: number;
+  /** Mask every input, textarea and select value. Default true. */
+  maskAllInputs?: boolean;
+  /** CSS selector whose text is replaced with asterisks. */
+  maskTextSelector?: string;
+  /** CSS selector of elements that are not recorded at all (shown as a blank box). */
+  blockSelector?: string;
+  /** Send a chunk at least this often. Default 5000 ms. */
+  chunkIntervalMs?: number;
+  /** Send a chunk early once its JSON reaches this size. Default 512 KB. */
+  maxChunkBytes?: number;
 }

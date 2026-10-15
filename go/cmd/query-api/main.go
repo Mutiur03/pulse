@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -19,6 +20,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/mail"
 	"github.com/Mutiur03/pulse/internal/orgs"
 	"github.com/Mutiur03/pulse/internal/projects"
+	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/telemetry"
 	"github.com/go-chi/chi/v5"
@@ -74,9 +76,18 @@ func main() {
 			Addr: os.Getenv("SMTP_ADDR"), From: os.Getenv("SMTP_FROM"),
 			User: os.Getenv("SMTP_USER"), Password: os.Getenv("SMTP_PASSWORD"),
 		}),
-		AppURL: os.Getenv("APP_URL"),
+		AppURL:  os.Getenv("APP_URL"),
+		Replays: chClient,
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: os.Getenv("COOKIE_SECURE") != "false",
+	}
+
+	// A typed nil would look non-nil through the interface.
+	if objects := replay.Connect(); objects != nil {
+		srv.ReplayObjects = objects
+	}
+	if d, err := strconv.Atoi(os.Getenv("REPLAY_RETENTION_DAYS")); err == nil {
+		srv.ReplayRetentionDays = d
 	}
 
 	r := chi.NewRouter()

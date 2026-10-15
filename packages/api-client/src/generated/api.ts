@@ -485,6 +485,60 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/replays": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Recorded sessions */
+        get: operations["listReplays"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/replays/{session_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A recorded session with its errors and traces */
+        get: operations["getReplay"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/replays/{session_id}/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * All rrweb events of the session in playback order
+         * @description Streams the stored chunks as one JSON array.
+         */
+        get: operations["getReplayEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/issues": {
         parameters: {
             query?: never;
@@ -777,6 +831,47 @@ export interface components {
                 [key: string]: string;
             };
         };
+        ReplaySummary: {
+            session_id: string;
+            distinct_id: string;
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: string;
+            /** Format: int64 */
+            duration_ms: number;
+            /** Format: int64 */
+            page_count: number;
+            /** Format: int64 */
+            error_count: number;
+            /** Format: int64 */
+            chunk_count: number;
+            urls: string[];
+        };
+        ReplayList: {
+            replays: components["schemas"]["ReplaySummary"][];
+            /** @description How long replays are kept. */
+            retention_days: number;
+        };
+        SessionTrace: {
+            trace_id: string;
+            /** Format: date-time */
+            start: string;
+            name: string;
+            service_name: string;
+            /** Format: int64 */
+            duration_ns: number;
+            /** Format: int64 */
+            span_count: number;
+            /** Format: int64 */
+            error_count: number;
+        };
+        ReplayDetail: {
+            summary: components["schemas"]["ReplaySummary"];
+            errors: components["schemas"]["ErrorOccurrence"][];
+            traces: components["schemas"]["SessionTrace"][];
+            retention_days: number;
+        };
         ErrorOccurrence: {
             /** Format: date-time */
             timestamp: string;
@@ -888,6 +983,7 @@ export interface components {
         };
     };
     parameters: {
+        SessionPath: string;
         OrgPath: number;
         ProjectPath: number;
         /** @description Start of the time range. Default 24 hours ago. */
@@ -1658,6 +1754,93 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Trace"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listReplays: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+                limit?: components["parameters"]["Limit"];
+                has_errors?: boolean;
+                /** @description Distinct id of the user. */
+                user?: string;
+                /** @description Substring of a visited URL. */
+                url?: string;
+                min_duration_ms?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sessions, newest first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayList"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getReplay: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+            };
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The session */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReplayDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getReplayEvents: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+            };
+            header?: never;
+            path: {
+                session_id: components["parameters"]["SessionPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description rrweb events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": Record<string, never>[];
                 };
             };
             404: components["responses"]["NotFound"];

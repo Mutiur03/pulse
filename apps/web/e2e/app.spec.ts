@@ -5,9 +5,9 @@ const password = process.env.PULSE_PASSWORD ?? 'pulse-demo';
 // Set SCREENSHOT_DIR to save a screenshot of each main page.
 const shots = process.env.SCREENSHOT_DIR;
 
-async function shot(page: Page, name: string) {
+async function shot(page: Page, name: string, idle = true) {
   if (!shots) return;
-  await page.waitForLoadState('networkidle');
+  if (idle) await page.waitForLoadState('networkidle');
   await page.screenshot({ path: `${shots}/${name}.png`, fullPage: true });
 }
 
@@ -319,4 +319,73 @@ test('owners invite new and existing users into their organization', async ({ pa
   await page.getByTestId('member-row').filter({ hasText: fresh }).getByRole('button', { name: 'Remove' }).click();
   await expect(page.getByTestId('member-row')).toHaveCount(2);
   await shot(page, '20-members');
+});
+
+const demo = process.env.DEMO_URL ?? 'http://localhost:5173';
+
+test('a recorded demo session with an error replays and is linked from its issue', async ({ page, browser }) => {
+  test.setTimeout(150_000);
+  // Record a session in the browser demo: type into a masked input, then throw.
+  const ctx = await browser.newContext();
+  const app = await ctx.newPage();
+  await app.goto(`${demo}/?replay=1`);
+  const session = await app.waitForFunction(() => (window as unknown as { pulseSession?: string }).pulseSession).then((h) => h.jsonValue());
+  await app.locator('#email').pressSequentially('jane@private.example', { delay: 60 });
+  await app.locator('a[data-route]').first().click();
+  await app.waitForTimeout(3000);
+  await app.locator('#boom').click();
+  await app.waitForResponse((r) => r.url().includes('/v1/replay') && r.status() === 202, { timeout: 20_000 });
+  await app.waitForTimeout(1000);
+  await ctx.close();
+
+  await login(page);
+  await expect(async () => {
+    await page.goto('/replays');
+    await expect(page.locator(`[data-testid=replay-row][data-session="${session}"]`)).toBeVisible({ timeout: 3000 });
+    await expect(page.locator(`[data-testid=replay-row][data-session="${session}"]`)).not.toHaveAttribute('data-errors', '0', { timeout: 1000 });
+  }).toPass({ timeout: 45_000 });
+  await shot(page, '21-replays');
+
+  // Nothing typed, masked or blocked was stored.
+  const stored = await page.request.get(`/api/v1/replays/${session}/events`);
+  expect(stored.ok()).toBeTruthy();
+  const raw = await stored.text();
+  expect(raw).toContain('"pulse"');
+  expect(raw).not.toContain('jane@private.example');
+  expect(raw).not.toContain('Jane Example');
+  expect(raw).not.toContain('not recorded');
+
+  await page.locator(`[data-testid=replay-row][data-session="${session}"]`).getByRole('link').first().click();
+  await expect(page.locator('.replayer-wrapper iframe')).toBeAttached();
+  await expect(page.getByTestId('replay-timeline').getByTestId('marker-error').first()).toBeAttached();
+  await page.getByTestId('tab-errors').click();
+  await expect(page.getByTestId('replay-error').first()).toContainText('cannot read properties');
+  const before = await page.getByTestId('replay-time').textContent();
+  await page.getByTestId('replay-play').click();
+  await expect(page.getByTestId('replay-time')).not.toHaveText(before ?? '', { timeout: 10_000 });
+  await shot(page, '22-replay-player', false);
+
+  // The issue for the thrown error links to this session at the error time.
+  await expect(async () => {
+    await page.goto('/issues');
+    await page.getByTestId('issue-row').filter({ hasText: 'cannot read properties' }).first().getByRole('link').first().click();
+    await expect(page.locator(`[data-testid=occurrence-replay-link][href^="/replays/${session}?t="]`)).toBeVisible({ timeout: 3000 });
+  }).toPass({ timeout: 45_000 });
+  await shot(page, '23-issue-replay-link');
+  await page.locator(`[data-testid=occurrence-replay-link][href^="/replays/${session}?t="]`).click();
+  await expect(page).toHaveURL(new RegExp(`/replays/${session}\\?t=\\d+`));
+  await expect(page.locator('.replayer-wrapper iframe')).toBeAttached();
+  await expect(page.getByTestId('replay-error').first()).toBeVisible();
+  await shot(page, '24-replay-from-issue', false);
+
+  // Traces from the session link back to the replay at their start.
+  const detail = await page.request.get(`/api/v1/replays/${session}`);
+  const { traces } = (await detail.json()) as { traces: { trace_id: string }[] };
+  expect(traces.length).toBeGreaterThan(0);
+  await page.goto(`/traces/${traces[0].trace_id}`);
+  await expect(page.getByTestId('trace-replay-link')).toBeVisible();
+  await shot(page, '25-trace-replay-link');
+  await page.getByTestId('trace-replay-link').click();
+  await expect(page).toHaveURL(new RegExp(`/replays/${session}\\?t=\\d+`));
+  await expect(page.locator('.replayer-wrapper iframe')).toBeAttached();
 });

@@ -1,12 +1,17 @@
 package ingest
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/Mutiur03/pulse/internal/replay"
 )
 
 type fakeProducer struct {
@@ -121,5 +126,48 @@ func TestKeyAuth(t *testing.T) {
 	rec = do(t, h, http.MethodPost, "/v1/events", "", body)
 	if rec.Code != 429 || rec.Header().Get("Retry-After") != "1" {
 		t.Errorf("rate limited: %d %v", rec.Code, rec.Header())
+	}
+}
+
+type fakeReplay struct{ stored []replay.Chunk }
+
+func (f *fakeReplay) Store(_ context.Context, project uint64, c replay.Chunk) error {
+	if project != 42 {
+		return errors.New("wrong project")
+	}
+	f.stored = append(f.stored, c)
+	return nil
+}
+
+func TestReplayRoute(t *testing.T) {
+	chunk := `{"session_id":"s1","events":[{"type":4,"timestamp":1,"data":{"href":"https://a.example/"}}]}`
+	var gzBody bytes.Buffer
+	zw := gzip.NewWriter(&gzBody)
+	_, _ = zw.Write([]byte(chunk))
+	_ = zw.Close()
+
+	if rec := do(t, NewHandler(&fakeProducer{}, &fakeAuth{}), "POST", "/v1/replay", "text/plain", chunk); rec.Code != 503 {
+		t.Errorf("without storage: %d", rec.Code)
+	}
+	sink := &fakeReplay{}
+	h := NewHandler(&fakeProducer{}, &fakeAuth{}, WithReplay(sink))
+	cases := []struct {
+		path, body string
+		want       int
+	}{
+		{"/v1/replay?enc=none", chunk, 202},
+		{"/v1/replay?enc=gzip", gzBody.String(), 202},
+		{"/v1/replay?enc=gzip", chunk, 400},
+		{"/v1/replay", `{"session_id":"s1","events":[]}`, 400},
+		{"/v1/replay?key=pk_wrong_0123456789abc", chunk, 401},
+		{"/v1/replay", strings.Repeat("x", replay.MaxCompressed+1), 413},
+	}
+	for _, c := range cases {
+		if rec := do(t, h, "POST", c.path, "text/plain", c.body); rec.Code != c.want {
+			t.Errorf("%s: %d want %d (%s)", c.path, rec.Code, c.want, rec.Body)
+		}
+	}
+	if len(sink.stored) != 2 {
+		t.Errorf("stored %d", len(sink.stored))
 	}
 }

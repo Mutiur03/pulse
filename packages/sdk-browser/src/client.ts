@@ -1,10 +1,11 @@
-import { SpanStatusCode, trace } from '@opentelemetry/api';
+import { SpanKind, SpanStatusCode, trace } from '@opentelemetry/api';
 import type { ErrorPayload, EventPayload, Properties, PulseConfig } from './config';
 import { Identity } from './identity';
 import { describeElement, safeUrl } from './privacy';
 import { DEFAULT_SESSION_TIMEOUT, Session } from './session';
 import { activeSpanIds, startTracing, type Tracing } from './tracing';
 import { Transport } from './transport';
+import { sampled, type ReplayHandle } from './replay';
 
 const TRACER = '@pulse/browser';
 
@@ -19,6 +20,10 @@ export class PulseClient {
   private pendingClick?: EventPayload;
   /** Trace of the current page view; web vitals are reported on it. */
   private pageIds: { trace_id?: string; span_id?: string } = {};
+  /** Set once the lazily loaded recorder is running. */
+  replay?: ReplayHandle;
+  private replayUrl: string;
+  private stopped = false;
 
   constructor(readonly config: PulseConfig) {
     const endpoint = config.endpoint.replace(/\/$/, '');
@@ -32,6 +37,22 @@ export class PulseClient {
     };
     this.events = new Transport({ url: `${endpoint}/v1/events${q}`, storageKey: 'pulse_q_events', ...t });
     this.errors = new Transport({ url: `${endpoint}/v1/errors${q}`, storageKey: 'pulse_q_errors', ...t });
+    this.replayUrl = `${endpoint}/v1/replay${q}`;
+  }
+
+  /** Starts session replay if configured and this session is sampled. */
+  private async startReplay(): Promise<void> {
+    const rc = this.config.replay;
+    if (!rc || !sampled(this.session.peek(), rc.sampleRate ?? 1)) return;
+    const { startRecorder } = await import('./recorder');
+    if (this.stopped) return;
+    this.replay = startRecorder({
+      url: this.replayUrl,
+      sessionId: () => this.session.peek(),
+      distinctId: () => this.identity.distinctId,
+      config: rc,
+    });
+    if (this.pageIds.trace_id) this.replay.mark('pageview', { trace_id: this.pageIds.trace_id, path: location.pathname });
   }
 
   start(): void {
@@ -58,6 +79,9 @@ export class PulseClient {
         distinctId: () => this.identity.distinctId,
         userId: () => this.identity.userId,
         onSpanStart: (span) => {
+          if (span.kind === SpanKind.CLIENT) {
+            this.replay?.mark('request', { trace_id: span.spanContext().traceId, name: span.name });
+          }
           const p = this.pendingClick;
           if (p && !p.trace_id && span.name === 'click') {
             const sc = span.spanContext();
@@ -78,6 +102,7 @@ export class PulseClient {
     if (auto.pageviews !== false) this.watchPageviews();
     if (auto.errors !== false) this.watchErrors();
     if (auto.webVitals !== false) void this.watchVitals();
+    void this.startReplay().catch(() => undefined);
   }
 
   capture(event: string, properties: Properties = {}, ids: { trace_id?: string; span_id?: string } = activeSpanIds()): EventPayload {
@@ -120,6 +145,7 @@ export class PulseClient {
       ids = { trace_id: sc.traceId, span_id: sc.spanId };
       span.end();
     }
+    this.replay?.mark('error', { trace_id: ids.trace_id, type: e.name || 'Error', message: e.message.slice(0, 200) });
     this.errors.push({
       timestamp: new Date().toISOString(),
       platform: 'browser',
@@ -137,13 +163,15 @@ export class PulseClient {
   }
 
   async flush(): Promise<void> {
-    await Promise.all([this.events.flush(), this.errors.flush(), this.tracing?.provider.forceFlush()]);
+    await Promise.all([this.events.flush(), this.errors.flush(), this.tracing?.provider.forceFlush(), this.replay?.flush()]);
   }
 
   async shutdown(): Promise<void> {
+    this.stopped = true;
     this.cleanups.forEach((fn) => fn());
     this.cleanups = [];
     await this.flush();
+    this.replay?.stop();
     this.events.stop();
     this.errors.stop();
     if (this.tracing) {
@@ -155,6 +183,7 @@ export class PulseClient {
   private beacon(): void {
     this.events.beacon();
     this.errors.beacon();
+    this.replay?.beacon();
     void this.tracing?.provider.forceFlush();
   }
 
@@ -178,6 +207,7 @@ export class PulseClient {
         span.end();
       }
       this.pageIds = ids;
+      this.replay?.mark('pageview', { trace_id: ids.trace_id, path: location.pathname });
       this.capture('$pageview', { $title: document.title, $referrer: document.referrer ? safeUrl(document.referrer) : '' }, ids);
     };
     fire();

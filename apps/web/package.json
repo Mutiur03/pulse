@@ -12,6 +12,7 @@
   },
   "dependencies": {
     "@pulse/api-client": "workspace:*",
+    "@rrweb/replay": "2.1.7",
     "clsx": "2",
     "next": "15.1.4",
     "react": "^19.0.0",

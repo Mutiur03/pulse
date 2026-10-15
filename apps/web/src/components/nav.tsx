@@ -9,6 +9,7 @@ import { cn } from '@/lib/cn';
 const links = [
   { href: '/traces', label: 'Traces', icon: 'M3 12h4l3-8 4 16 3-8h4' },
   { href: '/issues', label: 'Issues', icon: 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z' },
+  { href: '/replays', label: 'Replays', icon: 'M4 5h16v14H4zM10 9l5 3-5 3z' },
   { href: '/events', label: 'Events', icon: 'M4 6h16M4 12h16M4 18h10' },
   { href: '/funnels', label: 'Funnels', icon: 'M3 4h18l-7 9v6l-4 2v-8L3 4Z' },
   { href: '/settings', label: 'Settings', icon: 'M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7 7 0 0 0-2-1.2L14.5 3h-5l-.4 2.6a7 7 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7 7 0 0 0 2 1.2l.4 2.6h5l.4-2.6a7 7 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z' },

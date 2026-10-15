@@ -12,6 +12,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Mutiur03/pulse/internal/replay"
 )
 
 // Producer is the subset of the Kafka producer the handlers need.
@@ -29,8 +31,11 @@ const (
 )
 
 // NewHandler returns the ingest HTTP routes.
-func NewHandler(p Producer, auth Authenticator) http.Handler {
+func NewHandler(p Producer, auth Authenticator, opts ...Option) http.Handler {
 	h := &handler{p: p, auth: auth}
+	for _, o := range opts {
+		o(h)
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"ingest-gateway"}`))
@@ -39,13 +44,26 @@ func NewHandler(p Producer, auth Authenticator) http.Handler {
 	mux.HandleFunc("/v1/traces", h.post(h.traces))
 	mux.HandleFunc("/v1/errors", h.post(h.errors))
 	mux.HandleFunc("/v1/logs", h.post(h.logs))
+	mux.HandleFunc("/v1/replay", h.post(h.replayChunk))
 	return cors(mux)
 }
 
 type handler struct {
-	p    Producer
-	auth Authenticator
+	p       Producer
+	auth    Authenticator
+	replays ReplaySink
 }
+
+// Option configures optional routes.
+type Option func(*handler)
+
+// ReplaySink stores session replay chunks.
+type ReplaySink interface {
+	Store(ctx context.Context, project uint64, c replay.Chunk) error
+}
+
+// WithReplay enables POST /v1/replay.
+func WithReplay(s ReplaySink) Option { return func(h *handler) { h.replays = s } }
 
 // ErrUnauthorized is returned by an Authenticator for unknown or revoked keys.
 var ErrUnauthorized = errors.New("unauthorized")
@@ -270,4 +288,31 @@ func cors(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// replay accepts one rrweb chunk: ?enc=gzip for a gzip body (the SDK keeps
+// Content-Type text/plain so the request stays CORS-simple), else JSON.
+func (h *handler) replayChunk(r *http.Request, body []byte, project string) (int, *apiError) {
+	if h.replays == nil {
+		return 0, &apiError{http.StatusServiceUnavailable, "replay storage is not configured"}
+	}
+	if len(body) > replay.MaxCompressed {
+		return 0, &apiError{http.StatusRequestEntityTooLarge, "replay chunk too large"}
+	}
+	c, err := replay.Decode(body, r.URL.Query().Get("enc") == "gzip")
+	var inv *replay.ErrInvalid
+	if errors.As(err, &inv) {
+		return 0, &apiError{http.StatusBadRequest, inv.Msg}
+	} else if err != nil {
+		return 0, &apiError{http.StatusBadRequest, "invalid chunk"}
+	}
+	pid, err := strconv.ParseUint(project, 10, 64)
+	if err != nil {
+		return 0, &apiError{http.StatusInternalServerError, "bad project"}
+	}
+	if err := h.replays.Store(r.Context(), pid, c); err != nil {
+		log.Printf("replay store failed: %v", err)
+		return 0, &apiError{http.StatusServiceUnavailable, "replay storage unavailable"}
+	}
+	return len(c.Events), nil
 }

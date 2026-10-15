@@ -9,6 +9,9 @@ init({
   serviceName: 'browser-demo',
   environment: 'local',
   flushIntervalMs: 2000,
+  // Session replay: record every session unless ?replay=0. Text under .private
+  // is masked and .secret is not recorded at all.
+  replay: { sampleRate: Number(params.get('replay') ?? 1), maskTextSelector: '.private', blockSelector: '.secret' },
   // Allow trace headers to the Go API so its spans join the browser trace.
   propagateTraceHeaderCorsUrls: [new RegExp('^' + goApi.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))],
 });
@@ -97,4 +100,6 @@ on('reject', () => {
 });
 
 addEventListener('pagehide', () => void flush());
-log(`session ${getClient()?.session.peek()}`);
+const session = getClient()?.session.peek();
+(window as unknown as { pulseSession?: string }).pulseSession = session;
+log(`session ${session}`);

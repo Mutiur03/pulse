@@ -22,6 +22,11 @@ export type Member = Schemas['Member'];
 export type Invite = Schemas['Invite'];
 export type InviteInfo = Schemas['InviteInfo'];
 export type Role = Org['role'];
+export type ReplaySummary = Schemas['ReplaySummary'];
+export type ReplayList = Schemas['ReplayList'];
+export type ReplayDetail = Schemas['ReplayDetail'];
+export type SessionTrace = Schemas['SessionTrace'];
+export type ListReplaysQuery = NonNullable<operations['listReplays']['parameters']['query']>;
 export type EventName = Schemas['EventName'];
 export type FunnelQuery = Schemas['FunnelQuery'];
 export type FunnelResult = Schemas['FunnelResult'];
@@ -188,6 +193,19 @@ export class APIClient {
 
   getTrace(traceId: string, projectId?: number): Promise<Trace> {
     return this.request('GET', `/v1/traces/${encodeURIComponent(traceId)}`, { project_id: projectId });
+  }
+
+  listReplays(query: ListReplaysQuery = {}): Promise<ReplayList> {
+    return this.request('GET', '/v1/replays', query as Query);
+  }
+
+  getReplay(sessionId: string): Promise<ReplayDetail> {
+    return this.request('GET', `/v1/replays/${encodeURIComponent(sessionId)}`);
+  }
+
+  /** rrweb events of the session in playback order. */
+  replayEvents(sessionId: string): Promise<unknown[]> {
+    return this.request('GET', `/v1/replays/${encodeURIComponent(sessionId)}/events`);
   }
 
   listIssues(query: ListIssuesQuery = {}): Promise<IssueList> {
