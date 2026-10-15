@@ -52,11 +52,32 @@ code=$(curl -sS -o /dev/stderr -w '%{http_code}' -X POST "$INGEST_URL/v1/traces"
   -d "[{\"project_id\":\"1\",\"trace_id\":\"$TRACE_ID\",\"span_id\":\"$SPAN_ID\",\"name\":\"GET /api/checkout\",\"service_name\":\"smoke\",\"timestamp\":\"$NOW\",\"duration_ns\":1500000}]")
 echo; [[ "$code" == 202 ]] || fail "traces endpoint returned $code"
 
+echo "==> POST /v1/traces (OTLP/HTTP JSON)"
+OTLP_SPAN_ID="$(head -c8 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+START_NS="$(date +%s)000000000"
+END_NS="$(( $(date +%s) + 1 ))000000000"
+code=$(curl -sS -o /dev/stderr -w '%{http_code}' -X POST "$INGEST_URL/v1/traces" \
+  -H 'Content-Type: application/json' \
+  -d "{\"resourceSpans\":[{\"resource\":{\"attributes\":[{\"key\":\"service.name\",\"value\":{\"stringValue\":\"smoke-otlp\"}},{\"key\":\"pulse.project_id\",\"value\":{\"stringValue\":\"1\"}}]},\"scopeSpans\":[{\"scope\":{\"name\":\"smoke\"},\"spans\":[{\"traceId\":\"$TRACE_ID\",\"spanId\":\"$OTLP_SPAN_ID\",\"parentSpanId\":\"$SPAN_ID\",\"name\":\"SELECT orders\",\"kind\":3,\"startTimeUnixNano\":\"$START_NS\",\"endTimeUnixNano\":\"$END_NS\",\"attributes\":[{\"key\":\"db.system\",\"value\":{\"stringValue\":\"postgresql\"}},{\"key\":\"session.id\",\"value\":{\"stringValue\":\"sess_$RUN_ID\"}}],\"status\":{\"code\":1}}]}]}]}")
+echo; [[ "$code" == 202 ]] || fail "OTLP traces endpoint returned $code"
+
+echo "==> POST /v1/errors"
+code=$(curl -sS -o /dev/stderr -w '%{http_code}' -X POST "$INGEST_URL/v1/errors" \
+  -H 'Content-Type: text/plain' \
+  -d "[{\"project_id\":\"1\",\"timestamp\":\"$NOW\",\"platform\":\"browser\",\"exception_type\":\"TypeError\",\"message\":\"smoke $RUN_ID\",\"stack\":\"TypeError: smoke\\n    at pay (app.js:1:1)\",\"trace_id\":\"$TRACE_ID\",\"span_id\":\"$SPAN_ID\",\"session_id\":\"sess_$RUN_ID\",\"distinct_id\":\"$RUN_ID\"}]")
+echo; [[ "$code" == 202 ]] || fail "errors endpoint returned $code"
+
 echo "==> waiting for rows in ClickHouse"
 wait_rows "event" "SELECT count() FROM events WHERE distinct_id = '$RUN_ID' AND trace_id = '$TRACE_ID'"
 wait_rows "span"  "SELECT count() FROM spans WHERE trace_id = '$TRACE_ID' AND span_id = '$SPAN_ID'"
 
+wait_rows "OTLP span" "SELECT count() FROM spans WHERE trace_id = '$TRACE_ID' AND span_id = '$OTLP_SPAN_ID' AND parent_span_id = '$SPAN_ID' AND service_name = 'smoke-otlp' AND db_system = 'postgresql' AND duration_ns = 1000000000 AND session_id = 'sess_$RUN_ID'"
+wait_rows "error" "SELECT count() FROM errors WHERE trace_id = '$TRACE_ID' AND message = 'smoke $RUN_ID' AND stack LIKE '%at pay%' AND fingerprint != ''"
+
+echo "==> everything on trace $TRACE_ID"
+ch "SELECT 'span' AS kind, span_name AS name, service_name AS source FROM spans WHERE trace_id = '$TRACE_ID' UNION ALL SELECT 'error', message, exception_type FROM errors WHERE trace_id = '$TRACE_ID' FORMAT PrettyCompactMonoBlock"
+
 echo "==> joined view by trace_id"
 ch "SELECT e.event, e.distinct_id, s.span_name, s.duration_ns FROM events e INNER JOIN spans s ON e.trace_id = s.trace_id WHERE e.trace_id = '$TRACE_ID' FORMAT PrettyCompactMonoBlock"
 
-echo "PASS: event and span landed in ClickHouse"
+echo "PASS: event, spans (simple and OTLP) and error landed in ClickHouse"

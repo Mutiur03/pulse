@@ -37,7 +37,7 @@ func main() {
 		_ = chClient.Close()
 	}()
 
-	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, "stream-processor", []string{"raw.events", "raw.spans"})
+	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, "stream-processor", []string{"raw.events", "raw.spans", "raw.errors"})
 	if err != nil {
 		log.Fatalf("Failed to create Kafka consumer: %v", err)
 	}
@@ -90,6 +90,7 @@ func main() {
 
 			var events []map[string]interface{}
 			var spans []map[string]interface{}
+			var errs []map[string]interface{}
 
 			for _, record := range records {
 				var data map[string]interface{}
@@ -102,6 +103,8 @@ func main() {
 					events = append(events, data)
 				} else if record.Topic == "raw.spans" {
 					spans = append(spans, data)
+				} else if record.Topic == "raw.errors" {
+					errs = append(errs, data)
 				}
 			}
 
@@ -123,6 +126,15 @@ func main() {
 					ok = false
 				} else {
 					log.Printf("Successfully inserted %d spans", len(spans))
+				}
+			}
+
+			if len(errs) > 0 {
+				if err := retry(ctx, func() error { return chClient.InsertErrors(ctx, errs) }); err != nil {
+					log.Printf("Failed to insert errors: %v", err)
+					ok = false
+				} else {
+					log.Printf("Successfully inserted %d errors", len(errs))
 				}
 			}
 

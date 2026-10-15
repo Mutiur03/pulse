@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Pulse browser demo</title>
+  <style>
+    body { font: 15px/1.5 system-ui, sans-serif; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
+    button { margin: 0 .5rem .5rem 0; }
+    pre { background: #f4f4f5; padding: .75rem; overflow: auto; }
+  </style>
+</head>
+<body>
+  <h1>Pulse browser demo</h1>
+  <nav>
+    <a href="/" data-route>Home</a> ·
+    <a href="/pricing" data-route>Pricing</a> ·
+    <a href="/checkout" data-route>Checkout</a>
+  </nav>
+  <p>Route: <strong id="route"></strong></p>
+
+  <label>Email (never captured) <input id="email" type="email" name="email"></label>
+  <p>
+    <button id="pay" data-pulse-event="pay_clicked">Pay (fetch /api/pay)</button>
+    <button id="xhr">Load cart (XHR)</button>
+    <button id="login">Identify as user_42</button>
+    <button id="logout">Reset</button>
+    <button id="boom">Throw error</button>
+    <button id="reject">Unhandled rejection</button>
+  </p>
+  <pre id="log"></pre>
+  <script type="module" src="/dist/main.js"></script>
+</body>
+</html>

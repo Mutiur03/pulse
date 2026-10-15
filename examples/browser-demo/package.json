@@ -1,0 +1,16 @@
+{
+  "name": "@pulse/browser-demo",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/main.ts --bundle --format=esm --splitting --outdir=public/dist --sourcemap",
+    "start": "pnpm build && node server.mjs"
+  },
+  "dependencies": {
+    "@pulse/browser": "workspace:*"
+  },
+  "devDependencies": {
+    "esbuild": "^0.24.2"
+  }
+}

@@ -2,9 +2,13 @@ package ch
 
 import (
 	"context"
+	"crypto/sha1"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"hash/fnv"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -104,7 +108,7 @@ func (c *Client) InsertSpans(ctx context.Context, spans []map[string]interface{}
 		return nil
 	}
 
-	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO spans (project_id, timestamp, trace_id, span_id, parent_span_id, span_name, span_kind, service_name, duration_ns, status_code, session_id)")
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO spans (project_id, timestamp, trace_id, span_id, parent_span_id, span_name, span_kind, service_name, duration_ns, status_code, status_message, http_route, http_status, db_system, db_statement, session_id)")
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
@@ -140,6 +144,11 @@ func (c *Client) InsertSpans(ctx context.Context, spans []map[string]interface{}
 			str(span, "service_name"),
 			duration,
 			str(span, "status_code"),
+			str(span, "status_message"),
+			str(span, "http_route"),
+			uint16(num(span, "http_status")),
+			str(span, "db_system"),
+			str(span, "db_statement"),
 			str(span, "session_id"),
 		); err != nil {
 			return fmt.Errorf("failed to append to batch: %w", err)
@@ -150,6 +159,81 @@ func (c *Client) InsertSpans(ctx context.Context, spans []map[string]interface{}
 		return fmt.Errorf("failed to send batch: %w", err)
 	}
 
+	return nil
+}
+
+func num(m map[string]interface{}, key string) float64 {
+	if v, ok := m[key].(float64); ok && v > 0 {
+		return v
+	}
+	return 0
+}
+
+func projectOf(m map[string]interface{}) uint64 {
+	if pid, ok := m["project_id"].(string); ok {
+		if id, err := strconv.ParseUint(pid, 10, 64); err == nil {
+			return id
+		}
+	}
+	return 1
+}
+
+func timeOf(m map[string]interface{}) time.Time {
+	if ts, ok := m["timestamp"].(string); ok {
+		if parsed, err := time.Parse(time.RFC3339Nano, ts); err == nil {
+			return parsed
+		}
+	}
+	return time.Now()
+}
+
+// Fingerprint groups errors into issues: exception type plus the first
+// stack frame, falling back to the message when there is no stack.
+func Fingerprint(excType, message, stack string) string {
+	frame := ""
+	for _, line := range strings.Split(stack, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "at ") || strings.Contains(line, "@") {
+			frame = line
+			break
+		}
+	}
+	key := excType + "|" + frame
+	if frame == "" {
+		key = excType + "|" + message
+	}
+	sum := sha1.Sum([]byte(key))
+	return hex.EncodeToString(sum[:])
+}
+
+// InsertErrors writes captured exceptions to the errors table.
+func (c *Client) InsertErrors(ctx context.Context, errs []map[string]interface{}) error {
+	if len(errs) == 0 {
+		return nil
+	}
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO errors (project_id, timestamp, issue_id, fingerprint, platform, exception_type, message, stack, release, environment, trace_id, span_id, session_id, distinct_id, url)")
+	if err != nil {
+		return fmt.Errorf("failed to prepare batch: %w", err)
+	}
+	for _, e := range errs {
+		fp := str(e, "fingerprint")
+		if fp == "" {
+			fp = Fingerprint(str(e, "exception_type"), str(e, "message"), str(e, "stack"))
+		}
+		h := fnv.New64a()
+		_, _ = h.Write([]byte(fp))
+		if err := batch.Append(
+			projectOf(e), timeOf(e), h.Sum64(), fp,
+			str(e, "platform"), str(e, "exception_type"), str(e, "message"), str(e, "stack"),
+			str(e, "release"), str(e, "environment"), str(e, "trace_id"), str(e, "span_id"),
+			str(e, "session_id"), str(e, "distinct_id"), str(e, "url"),
+		); err != nil {
+			return fmt.Errorf("failed to append to batch: %w", err)
+		}
+	}
+	if err := batch.Send(); err != nil {
+		return fmt.Errorf("failed to send batch: %w", err)
+	}
 	return nil
 }
 

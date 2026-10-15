@@ -91,13 +91,34 @@ jobs:
           fi
 
   typescript-check:
-    name: TypeScript Placeholder
+    name: TypeScript Build and SDK Tests
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Placeholder
-        run: echo "TypeScript packages will be built via Docker in docker-build job"
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Typecheck SDK
+        run: pnpm --filter @pulse/browser typecheck
+
+      - name: Test SDK
+        run: pnpm --filter @pulse/browser test
+
+      - name: Build all packages
+        run: pnpm -r build
+
+      - name: SDK bundle size
+        run: pnpm --filter @pulse/browser size | tee -a "$GITHUB_STEP_SUMMARY"
 
   docker-build:
     name: Docker Build
