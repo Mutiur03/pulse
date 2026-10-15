@@ -49,12 +49,12 @@ docker-build: ## Build Docker images
 	docker build -f workers/ai-worker/Dockerfile -t pulse/ai-worker:latest ./workers/ai-worker
 
 compose-up: ## Start Docker Compose stack and wait until healthy
-	cd deploy/compose && docker compose up -d --build --wait
+	cd deploy/compose && docker compose --profile demo up -d --build --wait
 
 compose-down: ## Stop Docker Compose stack
 	cd deploy/compose && docker compose down
 
-smoke-test: ## Assert an event and a span reach ClickHouse (stack must be running)
-	./tools/smoke-test.sh
+smoke-test: ## Assert events, spans, errors, issues and trace trees end to end (stack must be running)
+	DEMO_API_URL=http://localhost:8090 ./tools/smoke-test.sh
 
 e2e: compose-up smoke-test ## Start the stack and run the smoke test

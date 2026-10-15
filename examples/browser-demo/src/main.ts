@@ -1,12 +1,16 @@
 import { capture, flush, getClient, identify, init, reset } from '@pulse/browser';
 
 const params = new URLSearchParams(location.search);
+// The instrumented Go API from examples/go-demo-api (another origin).
+const goApi = params.get('api') ?? 'http://localhost:8090';
 init({
   endpoint: params.get('ingest') ?? 'http://localhost:8080',
   projectId: '1',
   serviceName: 'browser-demo',
   environment: 'local',
   flushIntervalMs: 2000,
+  // Allow trace headers to the Go API so its spans join the browser trace.
+  propagateTraceHeaderCorsUrls: [new RegExp('^' + goApi.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))],
 });
 
 const log = (msg: string) => {
@@ -33,6 +37,17 @@ on('pay', async () => {
   const body = await res.json();
   log(`/api/pay saw traceparent=${body.traceparent} baggage=${body.baggage}`);
   capture('payment_submitted', { amount: 42 });
+});
+on('orders', async () => {
+  const res = await fetch(`${goApi}/api/orders?n=3`);
+  const body = await res.json();
+  log(`Go API orders: ${body.orders?.length} rows, trace ${body.trace_id}`);
+});
+on('gopay', async () => {
+  const res = await fetch(`${goApi}/api/pay`, { method: 'POST' });
+  const body = await res.json();
+  log(`Go API pay: HTTP ${res.status} ${body.error ?? ''}, trace ${body.trace_id}`);
+  (window as unknown as { lastTrace?: string }).lastTrace = body.trace_id;
 });
 on('xhr', () => {
   const xhr = new XMLHttpRequest();

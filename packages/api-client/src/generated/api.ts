@@ -21,48 +21,17 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/v1/projects": {
+    "/v1/traces/{trace_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List projects */
-        get: operations["listProjects"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/events": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Query events */
-        get: operations["queryEvents"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/v1/traces/{traceId}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Get trace by ID */
+        /**
+         * Get a full trace
+         * @description Returns every span of the trace (browser, backend and database) as a tree, with errors and product events attached to the span they happened in. Spans whose parent was never received are returned as extra roots with `orphan: true`.
+         */
         get: operations["getTrace"];
         put?: never;
         post?: never;
@@ -72,38 +41,185 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List issues */
+        get: operations["listIssues"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/issues/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get an issue with its most recent events */
+        get: operations["getIssue"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** Change an issue's status */
+        patch: operations["updateIssue"];
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        Project: {
-            id?: number;
-            name?: string;
-            project_key?: string;
+        Health: {
+            status: string;
+            service: string;
         };
-        Event: {
-            event?: string;
-            /** Format: date-time */
-            timestamp?: string;
-            properties?: {
-                [key: string]: unknown;
-            };
-            trace_id?: string;
+        Error: {
+            error: string;
         };
         Trace: {
-            trace_id?: string;
-            spans?: components["schemas"]["Span"][];
-        };
-        Span: {
-            span_id?: string;
-            name?: string;
+            trace_id: string;
             /** Format: date-time */
-            timestamp?: string;
-            duration_ns?: number;
+            start_time: string;
+            /** Format: int64 */
+            duration_ns: number;
+            span_count: number;
+            error_count: number;
+            services: string[];
+            roots: components["schemas"]["SpanNode"][];
+            /** @description Product events on this trace not tied to a received span. */
+            events: components["schemas"]["ProductEvent"][];
+        };
+        /** @enum {string} */
+        SpanSource: "browser" | "backend" | "database";
+        SpanNode: {
+            span_id: string;
+            parent_span_id: string;
+            name: string;
+            kind: string;
+            service_name: string;
+            source: components["schemas"]["SpanSource"];
+            /** Format: date-time */
+            start_time: string;
+            /** Format: int64 */
+            duration_ns: number;
+            status_code: string;
+            status_message?: string;
+            http_route?: string;
+            http_status?: number;
+            db_system?: string;
+            db_statement?: string;
+            session_id?: string;
+            depth: number;
+            /** @description True when the span's parent is not part of the trace data. */
+            orphan: boolean;
+            children: components["schemas"]["SpanNode"][];
+            errors: components["schemas"]["ErrorOccurrence"][];
+            events: components["schemas"]["ProductEvent"][];
+        };
+        ErrorOccurrence: {
+            /** Format: date-time */
+            timestamp: string;
+            /** Format: int64 */
+            issue_id: number;
+            exception_type: string;
+            message: string;
+            stack?: string;
+            culprit?: string;
+            trace_id: string;
+            span_id: string;
+            service_name: string;
+            platform: string;
+            session_id?: string;
+            distinct_id?: string;
+            url?: string;
+        };
+        ProductEvent: {
+            event: string;
+            /** Format: date-time */
+            timestamp: string;
+            distinct_id: string;
+            session_id: string;
+            span_id: string;
+            properties: {
+                [key: string]: unknown;
+            };
+        };
+        /** @enum {string} */
+        IssueStatus: "unresolved" | "resolved" | "ignored";
+        Issue: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            project_id: number;
+            fingerprint: string;
+            title: string;
+            exception_type: string;
+            culprit: string;
+            platform: string;
+            service_name: string;
+            status: components["schemas"]["IssueStatus"];
+            /** Format: date-time */
+            first_seen: string;
+            /** Format: date-time */
+            last_seen: string;
+            /** Format: int64 */
+            count: number;
+            sample_trace_id: string;
+            sample_span_id?: string;
+            /** Format: date-time */
+            resolved_at?: string;
+            times_regressed: number;
+        };
+        IssueList: {
+            issues: components["schemas"]["Issue"][];
+            /** Format: int64 */
+            total: number;
+            limit: number;
+            offset: number;
+        };
+        IssueDetail: {
+            issue: components["schemas"]["Issue"];
+            recent_events: components["schemas"]["ErrorOccurrence"][];
+        };
+        IssueUpdate: {
+            status: components["schemas"]["IssueStatus"];
         };
     };
-    responses: never;
-    parameters: never;
+    responses: {
+        /** @description Not found */
+        NotFound: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+        /** @description Invalid request */
+        BadRequest: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
+    };
+    parameters: {
+        ProjectID: number;
+        IssueID: number;
+    };
     requestBodies: never;
     headers: never;
     pathItems: never;
@@ -125,74 +241,25 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": {
-                        status?: string;
-                        service?: string;
-                    };
-                };
-            };
-        };
-    };
-    listProjects: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of projects */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        projects?: components["schemas"]["Project"][];
-                    };
-                };
-            };
-        };
-    };
-    queryEvents: {
-        parameters: {
-            query?: {
-                project_id?: number;
-                start_time?: string;
-                end_time?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description List of events */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": {
-                        events?: components["schemas"]["Event"][];
-                    };
+                    "application/json": components["schemas"]["Health"];
                 };
             };
         };
     };
     getTrace: {
         parameters: {
-            query?: never;
+            query?: {
+                project_id?: components["parameters"]["ProjectID"];
+            };
             header?: never;
             path: {
-                traceId: string;
+                trace_id: string;
             };
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description Trace details */
+            /** @description Trace tree */
             200: {
                 headers: {
                     [name: string]: unknown;
@@ -201,6 +268,90 @@ export interface operations {
                     "application/json": components["schemas"]["Trace"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listIssues: {
+        parameters: {
+            query?: {
+                project_id?: components["parameters"]["ProjectID"];
+                status?: components["schemas"]["IssueStatus"];
+                service?: string;
+                /** @description Case-insensitive match on title or culprit. */
+                query?: string;
+                sort?: "last_seen" | "first_seen" | "count";
+                limit?: number;
+                offset?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description A page of issues */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    getIssue: {
+        parameters: {
+            query?: {
+                events_limit?: number;
+            };
+            header?: never;
+            path: {
+                id: components["parameters"]["IssueID"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Issue detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["IssueDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateIssue: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                id: components["parameters"]["IssueID"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["IssueUpdate"];
+            };
+        };
+        responses: {
+            /** @description Updated issue */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Issue"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

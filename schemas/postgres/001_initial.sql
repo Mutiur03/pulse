@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS persons (
     updated_at TIMESTAMP DEFAULT NOW()
 );
 
-CREATE INDEX idx_persons_project_id ON persons(project_id);
+CREATE INDEX IF NOT EXISTS idx_persons_project_id ON persons(project_id);
 
 CREATE TABLE IF NOT EXISTS person_distinct_ids (
     project_id BIGINT NOT NULL REFERENCES projects(id),
@@ -26,7 +26,7 @@ CREATE TABLE IF NOT EXISTS person_distinct_ids (
     PRIMARY KEY (project_id, distinct_id)
 );
 
-CREATE INDEX idx_person_distinct_ids_person_id ON person_distinct_ids(person_id);
+CREATE INDEX IF NOT EXISTS idx_person_distinct_ids_person_id ON person_distinct_ids(person_id);
 
 CREATE TABLE IF NOT EXISTS issues (
     id BIGSERIAL PRIMARY KEY,
@@ -40,5 +40,5 @@ CREATE TABLE IF NOT EXISTS issues (
     UNIQUE(project_id, fingerprint)
 );
 
-CREATE INDEX idx_issues_project_id ON issues(project_id);
-CREATE INDEX idx_issues_status ON issues(status);
+CREATE INDEX IF NOT EXISTS idx_issues_project_id ON issues(project_id);
+CREATE INDEX IF NOT EXISTS idx_issues_status ON issues(status);

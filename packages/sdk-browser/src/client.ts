@@ -16,6 +16,9 @@ export class PulseClient {
   private tracing?: Tracing;
   private cleanups: (() => void)[] = [];
   private lastPath?: string;
+  private pendingClick?: EventPayload;
+  /** Trace of the current page view; web vitals are reported on it. */
+  private pageIds: { trace_id?: string; span_id?: string } = {};
 
   constructor(readonly config: PulseConfig) {
     const endpoint = config.endpoint.replace(/\/$/, '');
@@ -32,11 +35,36 @@ export class PulseClient {
 
   start(): void {
     const auto = this.config.autocapture ?? {};
+    // Registered before tracing starts so the user-interaction
+    // instrumentation does not wrap it: otherwise every click would get an
+    // extra span for the SDK's own listener on top of the app's handler.
+    if (auto.clicks !== false) {
+      this.listen(document, 'click', (e) => {
+        const target = e.target;
+        if (!(target instanceof Element)) return;
+        const payload = this.capture('$autocapture', { $event_type: 'click', ...describeElement(target) });
+        // The app's click handler span starts right after this listener; the
+        // span processor below copies its ids onto this event.
+        this.pendingClick = payload;
+        setTimeout(() => {
+          if (this.pendingClick === payload) this.pendingClick = undefined;
+        });
+      }, true);
+    }
     if (this.config.tracing !== false) {
       this.tracing = startTracing(this.config, {
         sessionId: () => this.session.peek(),
         distinctId: () => this.identity.distinctId,
         userId: () => this.identity.userId,
+        onSpanStart: (span) => {
+          const p = this.pendingClick;
+          if (p && !p.trace_id && span.name === 'click') {
+            const sc = span.spanContext();
+            p.trace_id = sc.traceId;
+            p.span_id = sc.spanId;
+            this.pendingClick = undefined;
+          }
+        },
       });
     }
     this.session.setRotateListener((id) => this.capture('$session_start', { $session_id: id }));
@@ -47,24 +75,18 @@ export class PulseClient {
     this.listen(window, 'online', () => void this.flush());
 
     if (auto.pageviews !== false) this.watchPageviews();
-    if (auto.clicks !== false) {
-      this.listen(document, 'click', (e) => {
-        const target = e.target;
-        if (target instanceof Element) this.capture('$autocapture', { $event_type: 'click', ...describeElement(target) });
-      }, true);
-    }
     if (auto.errors !== false) this.watchErrors();
     if (auto.webVitals !== false) void this.watchVitals();
   }
 
-  capture(event: string, properties: Properties = {}): void {
+  capture(event: string, properties: Properties = {}, ids: { trace_id?: string; span_id?: string } = activeSpanIds()): EventPayload {
     const payload: EventPayload = {
       project_id: this.config.projectId,
       event,
       timestamp: new Date().toISOString(),
       distinct_id: this.identity.distinctId,
       session_id: this.session.touch(),
-      ...activeSpanIds(),
+      ...ids,
       properties: {
         $current_url: safeUrl(location.href),
         $pathname: location.pathname,
@@ -73,6 +95,7 @@ export class PulseClient {
       },
     };
     this.events.push(payload);
+    return payload;
   }
 
   identify(userId: string, traits: Properties = {}): void {
@@ -146,7 +169,17 @@ export class PulseClient {
       const path = location.pathname + location.search;
       if (path === this.lastPath) return;
       this.lastPath = path;
-      this.capture('$pageview', { $title: document.title, $referrer: document.referrer ? safeUrl(document.referrer) : '' });
+      // Inside a navigation click the click's trace is active; otherwise give
+      // the page view its own short span so it is always traceable.
+      let ids = activeSpanIds();
+      if (!ids.trace_id && this.tracing) {
+        const span = trace.getTracer(TRACER).startSpan('pageview', { attributes: { 'url.path': location.pathname } });
+        const sc = span.spanContext();
+        ids = { trace_id: sc.traceId, span_id: sc.spanId };
+        span.end();
+      }
+      this.pageIds = ids;
+      this.capture('$pageview', { $title: document.title, $referrer: document.referrer ? safeUrl(document.referrer) : '' }, ids);
     };
     fire();
     // SPA route changes: wrap pushState/replaceState and listen for back/forward.
@@ -190,7 +223,7 @@ export class PulseClient {
         $rating: m.rating,
         $metric_id: m.id,
         $navigation_type: m.navigationType,
-      });
+      }, this.pageIds);
     onLCP(report);
     onINP(report);
     onCLS(report);

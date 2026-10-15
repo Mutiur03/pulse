@@ -28,6 +28,7 @@ export interface IdentitySource {
   sessionId(): string;
   distinctId(): string;
   userId(): string | undefined;
+  onSpanStart?(span: Span): void;
 }
 
 export const ATTR_SESSION = 'session.id';
@@ -42,6 +43,7 @@ export class IdentitySpanProcessor implements SpanProcessor {
     span.setAttribute(ATTR_DISTINCT, this.ids.distinctId());
     const user = this.ids.userId();
     if (user) span.setAttribute(ATTR_USER, user);
+    this.ids.onSpanStart?.(span);
   }
   onEnd(_span: ReadableSpan): void {}
   forceFlush(): Promise<void> {
@@ -83,12 +85,18 @@ export interface Tracing {
 
 export function startTracing(cfg: PulseConfig, ids: IdentitySource): Tracing {
   const endpoint = cfg.endpoint.replace(/\/$/, '');
-  const exporter = new OTLPTraceExporter({
-    url: `${endpoint}/v1/traces?project_id=${encodeURIComponent(cfg.projectId)}`,
-  });
+  const exporter =
+    cfg.spanExporter ??
+    new OTLPTraceExporter({
+      url: `${endpoint}/v1/traces?project_id=${encodeURIComponent(cfg.projectId)}`,
+    });
   const resource = resourceFromAttributes({
     'service.name': cfg.serviceName ?? 'browser',
     'pulse.project_id': cfg.projectId,
+    // Lets the backend tell browser spans apart (and skip deriving errors
+    // from them, since browser errors are sent to /v1/errors directly).
+    'telemetry.sdk.language': 'webjs',
+    'telemetry.sdk.name': 'pulse-browser',
     ...(cfg.release ? { 'service.version': cfg.release } : {}),
     ...(cfg.environment ? { 'deployment.environment.name': cfg.environment } : {}),
   });

@@ -20,6 +20,7 @@ const (
 	TopicEvents = "raw.events"
 	TopicSpans  = "raw.spans"
 	TopicErrors = "raw.errors"
+	TopicLogs   = "raw.logs"
 
 	maxBody = 5 << 20 // 5 MiB
 )
@@ -34,6 +35,7 @@ func NewHandler(p Producer) http.Handler {
 	mux.HandleFunc("/v1/events", h.post(h.events))
 	mux.HandleFunc("/v1/traces", h.post(h.traces))
 	mux.HandleFunc("/v1/errors", h.post(h.errors))
+	mux.HandleFunc("/v1/logs", h.post(h.logs))
 	return cors(mux)
 }
 
@@ -58,6 +60,13 @@ func (h *handler) post(fn func(r *http.Request, body []byte, project string) (in
 		n, aerr := fn(r, body, projectID(r))
 		if aerr != nil {
 			http.Error(w, aerr.msg, aerr.code)
+			return
+		}
+		if isProtobuf(r) {
+			// OTLP/HTTP protobuf clients expect 200 with an empty
+			// Export*ServiceResponse, which encodes to zero bytes.
+			w.Header().Set("Content-Type", "application/x-protobuf")
+			w.WriteHeader(http.StatusOK)
 			return
 		}
 		w.Header().Set("Content-Type", "application/json")
@@ -130,20 +139,32 @@ func (h *handler) events(r *http.Request, body []byte, project string) (int, *ap
 	return len(events), h.produceAll(r.Context(), TopicEvents, keys, vals)
 }
 
+func isProtobuf(r *http.Request) bool {
+	return strings.Contains(r.Header.Get("Content-Type"), "protobuf")
+}
+
 func (h *handler) traces(r *http.Request, body []byte, project string) (int, *apiError) {
-	ct := r.Header.Get("Content-Type")
-	if strings.Contains(ct, "protobuf") {
-		return 0, &apiError{http.StatusUnsupportedMediaType, "only OTLP/HTTP JSON is supported"}
-	}
 	var spans []Span
+	var errs []ErrorEvent
 	trimmed := bytes.TrimSpace(body)
-	if len(trimmed) > 0 && trimmed[0] == '{' {
-		var err error
-		if spans, err = DecodeOTLPTraces(trimmed, project); err != nil {
+	switch {
+	case isProtobuf(r):
+		batch, err := DecodeOTLPTraces(body, true, project)
+		if err != nil {
+			return 0, &apiError{http.StatusBadRequest, "invalid OTLP protobuf"}
+		}
+		spans, errs = batch.Spans, batch.Errors
+	case len(trimmed) > 0 && trimmed[0] == '{':
+		batch, err := DecodeOTLPTraces(trimmed, false, project)
+		if err != nil {
 			return 0, &apiError{http.StatusBadRequest, "invalid OTLP JSON"}
 		}
-	} else if err := json.Unmarshal(trimmed, &spans); err != nil {
-		return 0, &apiError{http.StatusBadRequest, "invalid JSON"}
+		spans, errs = batch.Spans, batch.Errors
+	default:
+		// Simple JSON array of spans.
+		if err := json.Unmarshal(trimmed, &spans); err != nil {
+			return 0, &apiError{http.StatusBadRequest, "invalid JSON"}
+		}
 	}
 	keys := make([]string, len(spans))
 	vals := make([]interface{}, len(spans))
@@ -160,7 +181,28 @@ func (h *handler) traces(r *http.Request, body []byte, project string) (int, *ap
 		}
 		keys[i], vals[i] = s.TraceID, s
 	}
-	return len(spans), h.produceAll(r.Context(), TopicSpans, keys, vals)
+	if aerr := h.produceAll(r.Context(), TopicSpans, keys, vals); aerr != nil {
+		return 0, aerr
+	}
+	ekeys := make([]string, len(errs))
+	evals := make([]interface{}, len(errs))
+	for i := range errs {
+		ekeys[i], evals[i] = errs[i].ProjectID, &errs[i]
+	}
+	return len(spans), h.produceAll(r.Context(), TopicErrors, ekeys, evals)
+}
+
+func (h *handler) logs(r *http.Request, body []byte, project string) (int, *apiError) {
+	recs, err := DecodeOTLPLogs(bytes.TrimSpace(body), isProtobuf(r), project)
+	if err != nil {
+		return 0, &apiError{http.StatusBadRequest, "invalid OTLP logs payload"}
+	}
+	keys := make([]string, len(recs))
+	vals := make([]interface{}, len(recs))
+	for i := range recs {
+		keys[i], vals[i] = recs[i].ProjectID, &recs[i]
+	}
+	return len(recs), h.produceAll(r.Context(), TopicLogs, keys, vals)
 }
 
 func (h *handler) errors(r *http.Request, body []byte, project string) (int, *apiError) {

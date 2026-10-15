@@ -81,3 +81,6 @@ echo "==> joined view by trace_id"
 ch "SELECT e.event, e.distinct_id, s.span_name, s.duration_ns FROM events e INNER JOIN spans s ON e.trace_id = s.trace_id WHERE e.trace_id = '$TRACE_ID' FORMAT PrettyCompactMonoBlock"
 
 echo "PASS: event, spans (simple and OTLP) and error landed in ClickHouse"
+
+echo
+python3 "$(dirname "$0")/smoke-backend.py"

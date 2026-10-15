@@ -2,13 +2,9 @@ package ch
 
 import (
 	"context"
-	"crypto/sha1"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
-	"hash/fnv"
 	"strconv"
-	"strings"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -44,7 +40,7 @@ func (c *Client) InsertEvents(ctx context.Context, events []map[string]interface
 		return nil
 	}
 
-	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO events (project_id, event, timestamp, distinct_id, session_id, trace_id, properties)")
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO events (project_id, event, timestamp, distinct_id, session_id, trace_id, span_id, properties)")
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
@@ -91,7 +87,7 @@ func (c *Client) InsertEvents(ctx context.Context, events []map[string]interface
 			}
 		}
 
-		if err := batch.Append(projectID, eventName, timestamp, distinctID, sessionID, traceID, propsJSON); err != nil {
+		if err := batch.Append(projectID, eventName, timestamp, distinctID, sessionID, traceID, str(event, "span_id"), propsJSON); err != nil {
 			return fmt.Errorf("failed to append to batch: %w", err)
 		}
 	}
@@ -108,7 +104,7 @@ func (c *Client) InsertSpans(ctx context.Context, spans []map[string]interface{}
 		return nil
 	}
 
-	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO spans (project_id, timestamp, trace_id, span_id, parent_span_id, span_name, span_kind, service_name, duration_ns, status_code, status_message, http_route, http_status, db_system, db_statement, session_id)")
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO spans (project_id, timestamp, trace_id, span_id, parent_span_id, span_name, span_kind, service_name, platform, duration_ns, status_code, status_message, http_route, http_status, db_system, db_statement, session_id)")
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
@@ -142,6 +138,7 @@ func (c *Client) InsertSpans(ctx context.Context, spans []map[string]interface{}
 			str(span, "name"),
 			str(span, "kind"),
 			str(span, "service_name"),
+			str(span, "platform"),
 			duration,
 			str(span, "status_code"),
 			str(span, "status_message"),
@@ -187,55 +184,73 @@ func timeOf(m map[string]interface{}) time.Time {
 	return time.Now()
 }
 
-// Fingerprint groups errors into issues: exception type plus the first
-// stack frame, falling back to the message when there is no stack.
-func Fingerprint(excType, message, stack string) string {
-	frame := ""
-	for _, line := range strings.Split(stack, "\n") {
-		line = strings.TrimSpace(line)
-		if strings.HasPrefix(line, "at ") || strings.Contains(line, "@") {
-			frame = line
-			break
-		}
-	}
-	key := excType + "|" + frame
-	if frame == "" {
-		key = excType + "|" + message
-	}
-	sum := sha1.Sum([]byte(key))
-	return hex.EncodeToString(sum[:])
+// ErrorRow is one error, already grouped into an issue.
+type ErrorRow struct {
+	ProjectID     uint64
+	Timestamp     time.Time
+	IssueID       uint64
+	Fingerprint   string
+	Title         string
+	Culprit       string
+	Platform      string
+	ServiceName   string
+	ExceptionType string
+	Message       string
+	Stack         string
+	Release       string
+	Environment   string
+	TraceID       string
+	SpanID        string
+	SessionID     string
+	DistinctID    string
+	URL           string
 }
 
-// InsertErrors writes captured exceptions to the errors table.
-func (c *Client) InsertErrors(ctx context.Context, errs []map[string]interface{}) error {
-	if len(errs) == 0 {
+// InsertErrors writes grouped errors to the errors table.
+func (c *Client) InsertErrors(ctx context.Context, rows []ErrorRow) error {
+	if len(rows) == 0 {
 		return nil
 	}
-	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO errors (project_id, timestamp, issue_id, fingerprint, platform, exception_type, message, stack, release, environment, trace_id, span_id, session_id, distinct_id, url)")
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO errors (project_id, timestamp, issue_id, fingerprint, title, culprit, platform, service_name, exception_type, message, stack, release, environment, trace_id, span_id, session_id, distinct_id, url)")
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
-	for _, e := range errs {
-		fp := str(e, "fingerprint")
-		if fp == "" {
-			fp = Fingerprint(str(e, "exception_type"), str(e, "message"), str(e, "stack"))
-		}
-		h := fnv.New64a()
-		_, _ = h.Write([]byte(fp))
-		if err := batch.Append(
-			projectOf(e), timeOf(e), h.Sum64(), fp,
-			str(e, "platform"), str(e, "exception_type"), str(e, "message"), str(e, "stack"),
-			str(e, "release"), str(e, "environment"), str(e, "trace_id"), str(e, "span_id"),
-			str(e, "session_id"), str(e, "distinct_id"), str(e, "url"),
-		); err != nil {
+	for _, e := range rows {
+		if err := batch.Append(e.ProjectID, e.Timestamp, e.IssueID, e.Fingerprint, e.Title, e.Culprit, e.Platform,
+			e.ServiceName, e.ExceptionType, e.Message, e.Stack, e.Release, e.Environment, e.TraceID, e.SpanID,
+			e.SessionID, e.DistinctID, e.URL); err != nil {
 			return fmt.Errorf("failed to append to batch: %w", err)
 		}
 	}
-	if err := batch.Send(); err != nil {
-		return fmt.Errorf("failed to send batch: %w", err)
-	}
-	return nil
+	return batch.Send()
 }
+
+// InsertLogs writes OTLP log records to the logs table.
+func (c *Client) InsertLogs(ctx context.Context, logs []map[string]interface{}) error {
+	if len(logs) == 0 {
+		return nil
+	}
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO logs (project_id, timestamp, trace_id, span_id, severity, service_name, body, attributes)")
+	if err != nil {
+		return fmt.Errorf("failed to prepare batch: %w", err)
+	}
+	for _, l := range logs {
+		attrs := str(l, "attributes")
+		if attrs == "" {
+			attrs = "{}"
+		}
+		if err := batch.Append(projectOf(l), timeOf(l), str(l, "trace_id"), str(l, "span_id"), str(l, "severity"),
+			str(l, "service_name"), str(l, "body"), attrs); err != nil {
+			return fmt.Errorf("failed to append to batch: %w", err)
+		}
+	}
+	return batch.Send()
+}
+
+// ProjectOf and TimeOf parse the common fields of a decoded record.
+func ProjectOf(m map[string]interface{}) uint64     { return projectOf(m) }
+func TimeOf(m map[string]interface{}) time.Time     { return timeOf(m) }
+func Str(m map[string]interface{}, k string) string { return str(m, k) }
 
 func str(m map[string]interface{}, key string) string {
 	if v, ok := m[key].(string); ok {

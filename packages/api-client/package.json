@@ -1,7 +1,7 @@
 {
   "name": "@pulse/api-client",
   "version": "0.1.0",
-  "description": "TypeScript client for Telemetry Platform API",
+  "description": "TypeScript client for the Pulse query API",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {

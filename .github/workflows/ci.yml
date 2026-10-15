@@ -27,6 +27,10 @@ jobs:
         working-directory: go
         run: go test -v ./...
 
+      - name: Vet and build the Go demo API
+        working-directory: examples/go-demo-api
+        run: go vet ./... && go build ./...
+
       - name: Build services
         working-directory: go
         run: |
@@ -157,19 +161,21 @@ jobs:
 
       - name: Start stack
         working-directory: deploy/compose
-        run: docker compose up -d --build --wait --wait-timeout 300
+        run: docker compose --profile demo up -d --build --wait --wait-timeout 300
 
       - name: Run smoke test
+        env:
+          DEMO_API_URL: http://localhost:8090
         run: ./tools/smoke-test.sh
 
       - name: Dump logs on failure
         if: failure()
         working-directory: deploy/compose
         run: |
-          docker compose ps -a
-          docker compose logs --no-color --tail=200
+          docker compose --profile demo ps -a
+          docker compose --profile demo logs --no-color --tail=200
 
       - name: Stop stack
         if: always()
         working-directory: deploy/compose
-        run: docker compose down -v
+        run: docker compose --profile demo down -v

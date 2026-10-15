@@ -105,7 +105,9 @@ open http://localhost:3000
 
 ### End-to-End Smoke Test
 
-Run the smoke test to verify the complete data flow (ingest → Kafka → ClickHouse):
+See [docs/sending-backend-telemetry.md](docs/sending-backend-telemetry.md) for pointing OpenTelemetry SDKs or the Collector at the gateway.
+
+Run the smoke test to verify the complete data flow (ingest → Kafka → ClickHouse → query API):
 
 ```bash
 ./tools/smoke-test.sh

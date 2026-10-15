@@ -1,3 +1,5 @@
+import type { SpanExporter } from '@opentelemetry/sdk-trace-web';
+
 export interface PulseConfig {
   /** Base URL of the ingest gateway, e.g. https://ingest.example.com */
   endpoint: string;
@@ -31,6 +33,8 @@ export interface PulseConfig {
   /** Disable OTel tracing (events/errors still work). */
   tracing?: boolean;
   debug?: boolean;
+  /** Replace the OTLP exporter, e.g. to send spans elsewhere or in tests. */
+  spanExporter?: SpanExporter;
 }
 
 export type Properties = Record<string, unknown>;

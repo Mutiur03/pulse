@@ -11,7 +11,9 @@ import (
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/config"
+	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/kafka"
+	"github.com/Mutiur03/pulse/internal/processor"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/telemetry"
 )
@@ -37,7 +39,19 @@ func main() {
 		_ = chClient.Close()
 	}()
 
-	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, "stream-processor", []string{"raw.events", "raw.spans", "raw.errors"})
+	issueStore, err := connectIssues(cfg.PostgresURL)
+	if err != nil {
+		log.Fatalf("Failed to connect to Postgres: %v", err)
+	}
+	defer issueStore.Close()
+
+	producer, err := kafka.NewProducer(cfg.KafkaBootstrapServers)
+	if err != nil {
+		log.Fatalf("Failed to create Kafka producer: %v", err)
+	}
+	defer producer.Close()
+
+	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, "stream-processor", []string{"raw.events", "raw.spans", "raw.errors", "raw.logs"})
 	if err != nil {
 		log.Fatalf("Failed to create Kafka consumer: %v", err)
 	}
@@ -91,6 +105,7 @@ func main() {
 			var events []map[string]interface{}
 			var spans []map[string]interface{}
 			var errs []map[string]interface{}
+			var logs []map[string]interface{}
 
 			for _, record := range records {
 				var data map[string]interface{}
@@ -105,6 +120,8 @@ func main() {
 					spans = append(spans, data)
 				} else if record.Topic == "raw.errors" {
 					errs = append(errs, data)
+				} else if record.Topic == "raw.logs" {
+					logs = append(logs, data)
 				}
 			}
 
@@ -130,11 +147,29 @@ func main() {
 			}
 
 			if len(errs) > 0 {
-				if err := retry(ctx, func() error { return chClient.InsertErrors(ctx, errs) }); err != nil {
+				var rows []ch.ErrorRow
+				if err := retry(ctx, func() error {
+					var gerr error
+					rows, gerr = processor.GroupErrors(ctx, errs, issueStore, producer)
+					return gerr
+				}); err != nil {
+					log.Printf("Failed to group errors: %v", err)
+					return
+				}
+				if err := retry(ctx, func() error { return chClient.InsertErrors(ctx, rows) }); err != nil {
 					log.Printf("Failed to insert errors: %v", err)
 					ok = false
 				} else {
 					log.Printf("Successfully inserted %d errors", len(errs))
+				}
+			}
+
+			if len(logs) > 0 {
+				if err := retry(ctx, func() error { return chClient.InsertLogs(ctx, logs) }); err != nil {
+					log.Printf("Failed to insert logs: %v", err)
+					ok = false
+				} else {
+					log.Printf("Successfully inserted %d logs", len(logs))
 				}
 			}
 
@@ -148,6 +183,22 @@ func main() {
 			}
 		}
 	}
+}
+
+// connectIssues retries while Postgres starts up.
+func connectIssues(url string) (*issues.Store, error) {
+	var lastErr error
+	for i := 0; i < 30; i++ {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		s, err := issues.Connect(ctx, url)
+		cancel()
+		if err == nil {
+			return s, nil
+		}
+		lastErr = err
+		time.Sleep(2 * time.Second)
+	}
+	return nil, lastErr
 }
 
 // retry runs fn until it succeeds or ctx is cancelled, backing off up to 30s.

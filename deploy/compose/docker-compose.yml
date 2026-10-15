@@ -85,12 +85,36 @@ services:
       POSTGRES_PASSWORD: platform
     volumes:
       - postgres-data:/var/lib/postgresql/data
-      - ../../schemas/postgres:/docker-entrypoint-initdb.d
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U platform"]
       interval: 10s
       timeout: 5s
       retries: 5
+
+  # Applies schemas/postgres/*.sql in order on every startup (idempotent).
+  postgres-migrate:
+    image: postgres:16-alpine
+    container_name: postgres-migrate
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -e
+        for f in $$(ls /migrations/*.sql | sort); do
+          echo "applying $$f"
+          psql -v ON_ERROR_STOP=1 -q -f "$$f"
+        done
+        echo "postgres migrations applied"
+    environment:
+      PGHOST: postgres
+      PGUSER: platform
+      PGPASSWORD: platform
+      PGDATABASE: platform
+    volumes:
+      - ../../schemas/postgres:/migrations:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
 
   redis:
     image: redis:7-alpine
@@ -173,6 +197,8 @@ services:
       CLICKHOUSE_ADDR: clickhouse:9000
       POSTGRES_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable
     depends_on:
+      postgres-migrate:
+        condition: service_completed_successfully
       clickhouse-migrate:
         condition: service_completed_successfully
       kafka:
@@ -205,6 +231,8 @@ services:
       POSTGRES_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable
       QUERY_API_PORT: 8081
     depends_on:
+      postgres-migrate:
+        condition: service_completed_successfully
       clickhouse-migrate:
         condition: service_completed_successfully
       clickhouse:
@@ -246,6 +274,30 @@ services:
       timeout: 3s
       retries: 12
       start_period: 5s
+    restart: unless-stopped
+
+  # Example backend for examples/browser-demo. Start with --profile demo.
+  go-demo-api:
+    profiles: ["demo"]
+    build:
+      context: ../../examples/go-demo-api
+    container_name: go-demo-api
+    ports:
+      - "8090:8090"
+    environment:
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://ingest-gateway:8080/v1/traces
+      OTEL_SERVICE_NAME: go-demo-api
+      DATABASE_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable
+    depends_on:
+      ingest-gateway:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8090/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     restart: unless-stopped
 
   web:

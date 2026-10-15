@@ -24,6 +24,7 @@ type Span struct {
 	Name          string    `json:"name"`
 	Kind          string    `json:"kind,omitempty"`
 	ServiceName   string    `json:"service_name,omitempty"`
+	Platform      string    `json:"platform,omitempty"`
 	Timestamp     time.Time `json:"timestamp"`
 	DurationNs    uint64    `json:"duration_ns,omitempty"`
 	StatusCode    string    `json:"status_code,omitempty"`
@@ -46,9 +47,22 @@ type ErrorEvent struct {
 	Fingerprint   string    `json:"fingerprint,omitempty"`
 	Release       string    `json:"release,omitempty"`
 	Environment   string    `json:"environment,omitempty"`
+	ServiceName   string    `json:"service_name,omitempty"`
 	TraceID       string    `json:"trace_id,omitempty"`
 	SpanID        string    `json:"span_id,omitempty"`
 	SessionID     string    `json:"session_id,omitempty"`
 	DistinctID    string    `json:"distinct_id,omitempty"`
 	URL           string    `json:"url,omitempty"`
+}
+
+// LogRecord is one log line written to the raw.logs topic.
+type LogRecord struct {
+	ProjectID   string    `json:"project_id"`
+	Timestamp   time.Time `json:"timestamp"`
+	TraceID     string    `json:"trace_id,omitempty"`
+	SpanID      string    `json:"span_id,omitempty"`
+	Severity    string    `json:"severity,omitempty"`
+	ServiceName string    `json:"service_name,omitempty"`
+	Body        string    `json:"body"`
+	Attributes  string    `json:"attributes"`
 }

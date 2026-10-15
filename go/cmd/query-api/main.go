@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
@@ -11,7 +10,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Mutiur03/pulse/internal/api"
+	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/config"
+	"github.com/Mutiur03/pulse/internal/issues"
+	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/telemetry"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -25,55 +28,34 @@ func main() {
 	if err != nil {
 		log.Printf("Failed to initialize tracer: %v", err)
 	} else {
-		defer func() {
-			_ = cleanup(context.Background())
-		}()
+		defer func() { _ = cleanup(context.Background()) }()
 	}
 
+	chClient, err := ch.NewClient(cfg.ClickHouseAddr)
+	if err != nil {
+		log.Fatalf("Failed to create ClickHouse client: %v", err)
+	}
+	defer func() { _ = chClient.Close() }()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	issueStore, err := issues.Connect(ctx, cfg.PostgresURL)
+	cancel()
+	if err != nil {
+		log.Fatalf("Failed to connect to Postgres: %v", err)
+	}
+	defer issueStore.Close()
+
 	r := chi.NewRouter()
+	r.Use(middleware.RequestID)
 	r.Use(middleware.Logger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(cors)
 
-	r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusOK)
-		_ = json.NewEncoder(w).Encode(map[string]string{
-			"status":  "healthy",
-			"service": "query-api",
-		})
-	})
-
-	r.Route("/api/v1", func(r chi.Router) {
-		r.Get("/projects", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"projects": []map[string]string{},
-			})
-		})
-
-		r.Get("/events", func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"events": []map[string]interface{}{},
-			})
-		})
-
-		r.Get("/traces/{traceId}", func(w http.ResponseWriter, r *http.Request) {
-			traceID := chi.URLParam(r, "traceId")
-			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(map[string]interface{}{
-				"trace_id": traceID,
-				"spans":    []map[string]interface{}{},
-			})
-		})
-	})
+	handler := gen.HandlerFromMux(&api.Server{Traces: chClient, Issues: issueStore}, r)
 
 	addr := fmt.Sprintf(":%d", cfg.QueryAPIPort)
-	server := &http.Server{
-		Addr:    addr,
-		Handler: r,
-	}
+	server := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
 		log.Printf("Query API listening on %s", addr)
@@ -87,9 +69,23 @@ func main() {
 	<-sigChan
 
 	log.Println("Shutting down...")
-	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("Server shutdown error: %v", err)
 	}
+}
+
+// cors lets the web app on another port call the API during development.
+func cors(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+		w.Header().Set("Access-Control-Allow-Methods", "GET, PATCH, OPTIONS")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
+		if r.Method == http.MethodOptions {
+			w.WriteHeader(http.StatusNoContent)
+			return
+		}
+		next.ServeHTTP(w, r)
+	})
 }

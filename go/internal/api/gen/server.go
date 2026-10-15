@@ -19,83 +19,241 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
-// Event defines model for Event.
-type Event struct {
-	Event      *string                 `json:"event,omitempty"`
-	Properties *map[string]interface{} `json:"properties,omitempty"`
-	Timestamp  *time.Time              `json:"timestamp,omitempty"`
-	TraceId    *string                 `json:"trace_id,omitempty"`
+// Defines values for IssueStatus.
+const (
+	Ignored    IssueStatus = "ignored"
+	Resolved   IssueStatus = "resolved"
+	Unresolved IssueStatus = "unresolved"
+)
+
+// Defines values for SpanSource.
+const (
+	Backend  SpanSource = "backend"
+	Browser  SpanSource = "browser"
+	Database SpanSource = "database"
+)
+
+// Defines values for ListIssuesParamsSort.
+const (
+	Count     ListIssuesParamsSort = "count"
+	FirstSeen ListIssuesParamsSort = "first_seen"
+	LastSeen  ListIssuesParamsSort = "last_seen"
+)
+
+// Error defines model for Error.
+type Error struct {
+	Error string `json:"error"`
 }
 
-// Project defines model for Project.
-type Project struct {
-	Id         *int    `json:"id,omitempty"`
-	Name       *string `json:"name,omitempty"`
-	ProjectKey *string `json:"project_key,omitempty"`
+// ErrorOccurrence defines model for ErrorOccurrence.
+type ErrorOccurrence struct {
+	Culprit       *string   `json:"culprit,omitempty"`
+	DistinctId    *string   `json:"distinct_id,omitempty"`
+	ExceptionType string    `json:"exception_type"`
+	IssueId       int64     `json:"issue_id"`
+	Message       string    `json:"message"`
+	Platform      string    `json:"platform"`
+	ServiceName   string    `json:"service_name"`
+	SessionId     *string   `json:"session_id,omitempty"`
+	SpanId        string    `json:"span_id"`
+	Stack         *string   `json:"stack,omitempty"`
+	Timestamp     time.Time `json:"timestamp"`
+	TraceId       string    `json:"trace_id"`
+	Url           *string   `json:"url,omitempty"`
 }
 
-// Span defines model for Span.
-type Span struct {
-	DurationNs *int       `json:"duration_ns,omitempty"`
-	Name       *string    `json:"name,omitempty"`
-	SpanId     *string    `json:"span_id,omitempty"`
-	Timestamp  *time.Time `json:"timestamp,omitempty"`
+// Health defines model for Health.
+type Health struct {
+	Service string `json:"service"`
+	Status  string `json:"status"`
 }
+
+// Issue defines model for Issue.
+type Issue struct {
+	Count          int64       `json:"count"`
+	Culprit        string      `json:"culprit"`
+	ExceptionType  string      `json:"exception_type"`
+	Fingerprint    string      `json:"fingerprint"`
+	FirstSeen      time.Time   `json:"first_seen"`
+	Id             int64       `json:"id"`
+	LastSeen       time.Time   `json:"last_seen"`
+	Platform       string      `json:"platform"`
+	ProjectId      int64       `json:"project_id"`
+	ResolvedAt     *time.Time  `json:"resolved_at,omitempty"`
+	SampleSpanId   *string     `json:"sample_span_id,omitempty"`
+	SampleTraceId  string      `json:"sample_trace_id"`
+	ServiceName    string      `json:"service_name"`
+	Status         IssueStatus `json:"status"`
+	TimesRegressed int         `json:"times_regressed"`
+	Title          string      `json:"title"`
+}
+
+// IssueDetail defines model for IssueDetail.
+type IssueDetail struct {
+	Issue        Issue             `json:"issue"`
+	RecentEvents []ErrorOccurrence `json:"recent_events"`
+}
+
+// IssueList defines model for IssueList.
+type IssueList struct {
+	Issues []Issue `json:"issues"`
+	Limit  int     `json:"limit"`
+	Offset int     `json:"offset"`
+	Total  int64   `json:"total"`
+}
+
+// IssueStatus defines model for IssueStatus.
+type IssueStatus string
+
+// IssueUpdate defines model for IssueUpdate.
+type IssueUpdate struct {
+	Status IssueStatus `json:"status"`
+}
+
+// ProductEvent defines model for ProductEvent.
+type ProductEvent struct {
+	DistinctId string                 `json:"distinct_id"`
+	Event      string                 `json:"event"`
+	Properties map[string]interface{} `json:"properties"`
+	SessionId  string                 `json:"session_id"`
+	SpanId     string                 `json:"span_id"`
+	Timestamp  time.Time              `json:"timestamp"`
+}
+
+// SpanNode defines model for SpanNode.
+type SpanNode struct {
+	Children    []SpanNode        `json:"children"`
+	DbStatement *string           `json:"db_statement,omitempty"`
+	DbSystem    *string           `json:"db_system,omitempty"`
+	Depth       int               `json:"depth"`
+	DurationNs  int64             `json:"duration_ns"`
+	Errors      []ErrorOccurrence `json:"errors"`
+	Events      []ProductEvent    `json:"events"`
+	HttpRoute   *string           `json:"http_route,omitempty"`
+	HttpStatus  *int              `json:"http_status,omitempty"`
+	Kind        string            `json:"kind"`
+	Name        string            `json:"name"`
+
+	// Orphan True when the span's parent is not part of the trace data.
+	Orphan        bool       `json:"orphan"`
+	ParentSpanId  string     `json:"parent_span_id"`
+	ServiceName   string     `json:"service_name"`
+	SessionId     *string    `json:"session_id,omitempty"`
+	Source        SpanSource `json:"source"`
+	SpanId        string     `json:"span_id"`
+	StartTime     time.Time  `json:"start_time"`
+	StatusCode    string     `json:"status_code"`
+	StatusMessage *string    `json:"status_message,omitempty"`
+}
+
+// SpanSource defines model for SpanSource.
+type SpanSource string
 
 // Trace defines model for Trace.
 type Trace struct {
-	Spans   *[]Span `json:"spans,omitempty"`
-	TraceId *string `json:"trace_id,omitempty"`
+	DurationNs int64 `json:"duration_ns"`
+	ErrorCount int   `json:"error_count"`
+
+	// Events Product events on this trace not tied to a received span.
+	Events    []ProductEvent `json:"events"`
+	Roots     []SpanNode     `json:"roots"`
+	Services  []string       `json:"services"`
+	SpanCount int            `json:"span_count"`
+	StartTime time.Time      `json:"start_time"`
+	TraceId   string         `json:"trace_id"`
 }
 
-// QueryEventsParams defines parameters for QueryEvents.
-type QueryEventsParams struct {
-	ProjectId *int       `form:"project_id,omitempty" json:"project_id,omitempty"`
-	StartTime *time.Time `form:"start_time,omitempty" json:"start_time,omitempty"`
-	EndTime   *time.Time `form:"end_time,omitempty" json:"end_time,omitempty"`
+// IssueID defines model for IssueID.
+type IssueID = int64
+
+// ProjectID defines model for ProjectID.
+type ProjectID = int64
+
+// BadRequest defines model for BadRequest.
+type BadRequest = Error
+
+// NotFound defines model for NotFound.
+type NotFound = Error
+
+// ListIssuesParams defines parameters for ListIssues.
+type ListIssuesParams struct {
+	ProjectId *ProjectID   `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Status    *IssueStatus `form:"status,omitempty" json:"status,omitempty"`
+	Service   *string      `form:"service,omitempty" json:"service,omitempty"`
+
+	// Query Case-insensitive match on title or culprit.
+	Query  *string               `form:"query,omitempty" json:"query,omitempty"`
+	Sort   *ListIssuesParamsSort `form:"sort,omitempty" json:"sort,omitempty"`
+	Limit  *int                  `form:"limit,omitempty" json:"limit,omitempty"`
+	Offset *int                  `form:"offset,omitempty" json:"offset,omitempty"`
 }
+
+// ListIssuesParamsSort defines parameters for ListIssues.
+type ListIssuesParamsSort string
+
+// GetIssueParams defines parameters for GetIssue.
+type GetIssueParams struct {
+	EventsLimit *int `form:"events_limit,omitempty" json:"events_limit,omitempty"`
+}
+
+// GetTraceParams defines parameters for GetTrace.
+type GetTraceParams struct {
+	ProjectId *ProjectID `form:"project_id,omitempty" json:"project_id,omitempty"`
+}
+
+// UpdateIssueJSONRequestBody defines body for UpdateIssue for application/json ContentType.
+type UpdateIssueJSONRequestBody = IssueUpdate
 
 // ServerInterface represents all server handlers.
 type ServerInterface interface {
-	// Query events
-	// (GET /api/v1/events)
-	QueryEvents(w http.ResponseWriter, r *http.Request, params QueryEventsParams)
-	// List projects
-	// (GET /api/v1/projects)
-	ListProjects(w http.ResponseWriter, r *http.Request)
-	// Get trace by ID
-	// (GET /api/v1/traces/{traceId})
-	GetTrace(w http.ResponseWriter, r *http.Request, traceId string)
 	// Health check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// List issues
+	// (GET /v1/issues)
+	ListIssues(w http.ResponseWriter, r *http.Request, params ListIssuesParams)
+	// Get an issue with its most recent events
+	// (GET /v1/issues/{id})
+	GetIssue(w http.ResponseWriter, r *http.Request, id IssueID, params GetIssueParams)
+	// Change an issue's status
+	// (PATCH /v1/issues/{id})
+	UpdateIssue(w http.ResponseWriter, r *http.Request, id IssueID)
+	// Get a full trace
+	// (GET /v1/traces/{trace_id})
+	GetTrace(w http.ResponseWriter, r *http.Request, traceId string, params GetTraceParams)
 }
 
 // Unimplemented server implementation that returns http.StatusNotImplemented for each endpoint.
 
 type Unimplemented struct{}
 
-// Query events
-// (GET /api/v1/events)
-func (_ Unimplemented) QueryEvents(w http.ResponseWriter, r *http.Request, params QueryEventsParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// List projects
-// (GET /api/v1/projects)
-func (_ Unimplemented) ListProjects(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Get trace by ID
-// (GET /api/v1/traces/{traceId})
-func (_ Unimplemented) GetTrace(w http.ResponseWriter, r *http.Request, traceId string) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
 // Health check
 // (GET /health)
 func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List issues
+// (GET /v1/issues)
+func (_ Unimplemented) ListIssues(w http.ResponseWriter, r *http.Request, params ListIssuesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get an issue with its most recent events
+// (GET /v1/issues/{id})
+func (_ Unimplemented) GetIssue(w http.ResponseWriter, r *http.Request, id IssueID, params GetIssueParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Change an issue's status
+// (PATCH /v1/issues/{id})
+func (_ Unimplemented) UpdateIssue(w http.ResponseWriter, r *http.Request, id IssueID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Get a full trace
+// (GET /v1/traces/{trace_id})
+func (_ Unimplemented) GetTrace(w http.ResponseWriter, r *http.Request, traceId string, params GetTraceParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -108,41 +266,12 @@ type ServerInterfaceWrapper struct {
 
 type MiddlewareFunc func(http.Handler) http.Handler
 
-// QueryEvents operation middleware
-func (siw *ServerInterfaceWrapper) QueryEvents(w http.ResponseWriter, r *http.Request) {
+// GetHealth operation middleware
+func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
-	var err error
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params QueryEventsParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "start_time" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "start_time", r.URL.Query(), &params.StartTime)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "start_time", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "end_time" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "end_time", r.URL.Query(), &params.EndTime)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "end_time", Err: err})
-		return
-	}
-
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.QueryEvents(w, r, params)
+		siw.Handler.GetHealth(w, r)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -152,12 +281,136 @@ func (siw *ServerInterfaceWrapper) QueryEvents(w http.ResponseWriter, r *http.Re
 	handler.ServeHTTP(w, r.WithContext(ctx))
 }
 
-// ListProjects operation middleware
-func (siw *ServerInterfaceWrapper) ListProjects(w http.ResponseWriter, r *http.Request) {
+// ListIssues operation middleware
+func (siw *ServerInterfaceWrapper) ListIssues(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
+	var err error
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListIssuesParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "service" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "service", r.URL.Query(), &params.Service)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "service", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "query", r.URL.Query(), &params.Query)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "sort" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "sort", r.URL.Query(), &params.Sort)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "offset" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
+		return
+	}
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListProjects(w, r)
+		siw.Handler.ListIssues(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// GetIssue operation middleware
+func (siw *ServerInterfaceWrapper) GetIssue(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IssueID
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "id", runtime.ParamLocationPath, chi.URLParam(r, "id"), &id)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetIssueParams
+
+	// ------------- Optional query parameter "events_limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "events_limit", r.URL.Query(), &params.EventsLimit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "events_limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetIssue(w, r, id, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// UpdateIssue operation middleware
+func (siw *ServerInterfaceWrapper) UpdateIssue(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "id" -------------
+	var id IssueID
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "id", runtime.ParamLocationPath, chi.URLParam(r, "id"), &id)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.UpdateIssue(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -173,32 +426,28 @@ func (siw *ServerInterfaceWrapper) GetTrace(w http.ResponseWriter, r *http.Reque
 
 	var err error
 
-	// ------------- Path parameter "traceId" -------------
+	// ------------- Path parameter "trace_id" -------------
 	var traceId string
 
-	err = runtime.BindStyledParameterWithLocation("simple", false, "traceId", runtime.ParamLocationPath, chi.URLParam(r, "traceId"), &traceId)
+	err = runtime.BindStyledParameterWithLocation("simple", false, "trace_id", runtime.ParamLocationPath, chi.URLParam(r, "trace_id"), &traceId)
 	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "traceId", Err: err})
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trace_id", Err: err})
+		return
+	}
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params GetTraceParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
 		return
 	}
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetTrace(w, r, traceId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r.WithContext(ctx))
-}
-
-// GetHealth operation middleware
-func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Request) {
-	ctx := r.Context()
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetHealth(w, r)
+		siw.Handler.GetTrace(w, r, traceId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -322,16 +571,19 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	}
 
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/events", wrapper.QueryEvents)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/projects", wrapper.ListProjects)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/api/v1/traces/{traceId}", wrapper.GetTrace)
-	})
-	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/issues", wrapper.ListIssues)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/issues/{id}", wrapper.GetIssue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Patch(options.BaseURL+"/v1/issues/{id}", wrapper.UpdateIssue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/traces/{trace_id}", wrapper.GetTrace)
 	})
 
 	return r
@@ -340,18 +592,36 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"H4sIAAAAAAAC/6yVz2/iOhDH/xVr3jvmEXh7qXJbaasu0h5YtXtaVWiIh+I2sV17ghQh/vfVOKQUCBXt",
-	"9hTLHs+Pz3w92UDpau8sWY5QbCCWK6oxLa/XZFkWPjhPgQ2lbeq3ufUEBUQOxj7ANjuyQ60NG2exmr3a",
-	"59BQ1l91i0cqWa6yqSky1l5uLl2okaEAjUz/yRFkp9E4YElzowdS2Q5EmAWXlif1HHgwlumBglywWNO5",
-	"MsXT/InaC2PferSngXUTUADNbXxnBtGjHa78AySHEr4TtqcZS9yOGVOdFv8GWkIB/+R7FeU7CeWp6r13",
-	"DAHbdzdOtoxdugSMYhmMF2ZQwC9rloa08sHppmSFFquWTRkVWq3cIlJY48JUhlvlK2Rhob7OpkLAcCVB",
-	"7qiimji0anZosKYQuyiT0Xg0lqydJ4veQAFfRpPRGDLwyKsEIUdv8vUkTy8j7TxQEpqwSy2eaijgZ0Oh",
-	"ve5s5HbAmphChOL3BowEexYL6Bv/IjSjIds9zCGhbLPh65Ex8HzX9P31yzQx7JKs/qDD+wwCRe9s7KT0",
-	"/3gsn9JZ3o0T9L4yZcKVP0Zn99PozAy6XIndJDuR4rDaDlX2w0RWbql2EcUgNnWNoe07+vqoV8Kuc+e1",
-	"IG5nvdGnonkd+iI4/WD8KzwvUQ8BpeODs55QGgIx36TvVG/Pkroh7qbR8JORR7jX585bIvrcmEC6/+Oc",
-	"PJ9PU+ZbbLvMB7ilA6WJ0VTH0G6IVSpELVo1/dZhWxFWvHqL0vfO4lPFJDPUlGd+QozcxIuH+GH9t51j",
-	"ZaLqKmuPIHTVqHJF5VPnQHLpW38kQldipTStqXK+ljIzaEIFBayYfZHnlRisXOTianw1ge399k8AAAD/",
-	"/7I5MOr3CAAA",
+	"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",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

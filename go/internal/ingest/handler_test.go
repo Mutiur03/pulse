@@ -38,7 +38,9 @@ func TestRoutes(t *testing.T) {
 		{"/v1/events", "", `{"properties":{}}`, 400},
 		{"/v1/traces", "application/json", sample, 202},
 		{"/v1/traces", "application/json", `[{"trace_id":"a","span_id":"b"}]`, 202},
-		{"/v1/traces", "application/x-protobuf", "\x0a", 415},
+		{"/v1/traces", "application/x-protobuf", "\xff\xff", 400},
+		{"/v1/traces", "application/x-protobuf", "", 200},
+		{"/v1/logs", "application/json", `{"resourceLogs":[{"scopeLogs":[{"logRecords":[{"body":{"stringValue":"hi"}}]}]}]}`, 202},
 		{"/v1/errors", "", `{"message":"boom","stack":"at x"}`, 202},
 		{"/v1/errors", "", `{}`, 400},
 	}
@@ -47,7 +49,7 @@ func TestRoutes(t *testing.T) {
 			t.Errorf("%s %s: got %d want %d (%s)", c.path, c.body, rec.Code, c.want, rec.Body)
 		}
 	}
-	want := []string{TopicEvents, TopicEvents, TopicEvents, TopicSpans, TopicSpans, TopicErrors}
+	want := []string{TopicEvents, TopicEvents, TopicEvents, TopicSpans, TopicSpans, TopicErrors, TopicSpans, TopicLogs, TopicErrors}
 	if strings.Join(p.topics, ",") != strings.Join(want, ",") {
 		t.Errorf("topics %v", p.topics)
 	}
