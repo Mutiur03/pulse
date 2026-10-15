@@ -8,7 +8,7 @@ import { init, capture, identify, reset, shutdown } from '@pulse/browser';
 
 init({
   endpoint: 'https://ingest.example.com',
-  projectId: '1',
+  apiKey: 'pk_dev_local_0123456789abcdef',
   serviceName: 'web',
   // traceparent/baggage are only sent same-origin and to these URLs
   propagateTraceHeaderCorsUrls: [/^https:\/\/api\.example\.com/],

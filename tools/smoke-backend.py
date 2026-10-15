@@ -16,13 +16,20 @@ import random
 import subprocess
 import sys
 import time
+import http.cookiejar
 import urllib.request
 
 INGEST = os.environ.get("INGEST_URL", "http://localhost:8080")
+PULSE_KEY = os.environ.get("PULSE_KEY", "pk_dev_local_0123456789abcdef")
 QUERY = os.environ.get("QUERY_URL", "http://localhost:8081")
 DEMO = os.environ.get("DEMO_API_URL", "")
 TIMEOUT = float(os.environ.get("SMOKE_TIMEOUT", "90"))
 KAFKA = os.environ.get("KAFKA_CONTAINER", "kafka")
+# Dev login seeded by deploy/compose/seed/dev-seed.sql.
+EMAIL = os.environ.get("PULSE_EMAIL", "demo@pulse.local")
+PASSWORD = os.environ.get("PULSE_PASSWORD", "pulse-demo")
+JAR = http.cookiejar.CookieJar()
+OPENER = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(JAR))
 
 
 def fail(msg):
@@ -38,7 +45,7 @@ def http(method, url, body=None, headers=None):
     data = None if body is None else json.dumps(body).encode()
     req = urllib.request.Request(url, data=data, method=method, headers={"Content-Type": "application/json", **(headers or {})})
     try:
-        with urllib.request.urlopen(req, timeout=10) as r:
+        with OPENER.open(req, timeout=10) as r:
             raw = r.read()
             return r.status, json.loads(raw) if raw else None
     except urllib.error.HTTPError as e:
@@ -72,7 +79,7 @@ def attr(k, v):
 
 
 def resource(service, lang):
-    return {"attributes": [attr("service.name", service), attr("telemetry.sdk.language", lang), attr("pulse.project_id", "1")]}
+    return {"attributes": [attr("service.name", service), attr("telemetry.sdk.language", lang)]}
 
 
 def span(trace, sid, parent, name, kind, start, dur_ms, attrs=(), events=(), status=1):
@@ -104,7 +111,7 @@ def send_trace(trace, run, ids, t0):
                  [attr("db.system", "postgresql"), attr("db.statement", "SELECT * FROM orders WHERE id = $1")]),
         ]}]},
     ]}
-    status, body = http("POST", f"{INGEST}/v1/traces", payload)
+    status, body = http("POST", f"{INGEST}/v1/traces", payload, {"X-Pulse-Key": PULSE_KEY})
     if status != 202:
         fail(f"OTLP trace rejected: {status} {body}")
 
@@ -145,6 +152,13 @@ def main():
     ids = [hexid(16) for _ in range(4)]
     t0 = time.time_ns()
     print(f"==> backend smoke run {run}, trace {trace}")
+    status, _ = http("GET", f"{QUERY}/v1/issues")
+    if status != 401:
+        fail(f"query API without a session should be 401, got {status}")
+    status, me = http("POST", f"{QUERY}/v1/auth/login", {"email": EMAIL, "password": PASSWORD})
+    if status != 200 or not me.get("projects"):
+        fail(f"login failed: {status} {me}")
+    ok(f"logged in as {me['user']['email']}")
     send_trace(trace, run, ids, t0)
     ok("OTLP trace with exception accepted")
 
@@ -203,7 +217,7 @@ def main():
 
     if DEMO:
         demo_trace = hexid(32)
-        status, body = http("POST", f"{DEMO}/api/pay", {}, {"traceparent": f"00-{demo_trace}-{hexid(16)}-01", "baggage": f"session.id=sess_{run}"})
+        status, body = http("POST", f"{DEMO}/api/pay?fail=1", {}, {"traceparent": f"00-{demo_trace}-{hexid(16)}-01", "baggage": f"session.id=sess_{run}"})
         if status != 402:
             fail(f"demo /api/pay: {status} {body}")
 

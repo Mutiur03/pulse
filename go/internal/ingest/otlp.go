@@ -348,12 +348,9 @@ func nanos(n uint64) time.Time {
 	return time.Unix(0, int64(n)).UTC()
 }
 
-func projectFor(res kv, def string) string {
-	if p := res["pulse.project_id"]; p != "" {
-		return p
-	}
-	return def
-}
+// projectFor ignores any project claimed in the payload: the project always
+// comes from the authenticated ingest key.
+func projectFor(_ kv, def string) string { return def }
 
 // platform from the resource: "go", "python", "nodejs", "webjs", ...
 func platform(res kv) string {
@@ -361,6 +358,53 @@ func platform(res kv) string {
 		return p
 	}
 	return "backend"
+}
+
+const (
+	maxAttrs     = 128
+	maxAttrValue = 4096
+	maxEvents    = 64
+)
+
+var resourceKeys = []string{"service.name", "service.version", "deployment.environment.name",
+	"deployment.environment", "telemetry.sdk.language", "telemetry.sdk.name", "host.name"}
+
+func clip(v string) string {
+	if len(v) > maxAttrValue {
+		return v[:maxAttrValue]
+	}
+	return v
+}
+
+func spanAttributes(span, res kv) map[string]string {
+	out := make(map[string]string, len(span)+len(resourceKeys))
+	for k, v := range span {
+		if len(out) >= maxAttrs {
+			break
+		}
+		out[k] = clip(v)
+	}
+	for _, k := range resourceKeys {
+		if v := res[k]; v != "" {
+			out["resource."+k] = clip(v)
+		}
+	}
+	return out
+}
+
+func spanEvents(evs []rawEvent) []SpanEvent {
+	var out []SpanEvent
+	for _, e := range evs {
+		if e.name == "exception" || len(out) >= maxEvents {
+			continue
+		}
+		attrs := make(map[string]string, len(e.attrs))
+		for k, v := range e.attrs {
+			attrs[k] = clip(v)
+		}
+		out = append(out, SpanEvent{Name: e.name, Time: nanos(e.time), Attributes: attrs})
+	}
+	return out
 }
 
 // TraceBatch is the result of decoding one OTLP trace export.
@@ -375,8 +419,18 @@ func mapTraces(resources []rawResource, defaultProject string) TraceBatch {
 	// its ancestors only set an ERROR status. Traces that already carry an
 	// exception event do not get extra status-only errors.
 	hasException := map[string]bool{}
+	// Session and user ids usually sit only on the server span (copied from
+	// baggage); child spans and the errors they record inherit them from any
+	// span of the same trace in this export.
+	traceSession, traceUser := map[string]string{}, map[string]string{}
 	for _, r := range resources {
 		for _, s := range r.spans {
+			if v := first(s.attrs, "session.id", "pulse.session_id"); v != "" {
+				traceSession[s.traceID] = v
+			}
+			if v := first(s.attrs, "enduser.id", "pulse.distinct_id"); v != "" {
+				traceUser[s.traceID] = v
+			}
 			for _, e := range s.events {
 				if e.name == "exception" {
 					hasException[s.traceID] = true
@@ -401,6 +455,9 @@ func mapTraces(resources []rawResource, defaultProject string) TraceBatch {
 			}
 			status, _ := strconv.ParseUint(first(s.attrs, "http.response.status_code", "http.status_code"), 10, 16)
 			session := first(s.attrs, "session.id", "pulse.session_id")
+			if session == "" {
+				session = traceSession[s.traceID]
+			}
 			b.Spans = append(b.Spans, Span{
 				ProjectID:     project,
 				TraceID:       s.traceID,
@@ -419,6 +476,8 @@ func mapTraces(resources []rawResource, defaultProject string) TraceBatch {
 				DBSystem:      first(s.attrs, "db.system.name", "db.system"),
 				DBStatement:   first(s.attrs, "db.query.text", "db.statement"),
 				SessionID:     session,
+				Attributes:    spanAttributes(s.attrs, r.attrs),
+				Events:        spanEvents(s.events),
 			})
 			if !deriveErrors {
 				continue
@@ -426,7 +485,7 @@ func mapTraces(resources []rawResource, defaultProject string) TraceBatch {
 			base := ErrorEvent{
 				ProjectID: project, Platform: plat, Release: release, Environment: env, ServiceName: service,
 				TraceID: s.traceID, SpanID: s.spanID, SessionID: session,
-				DistinctID: first(s.attrs, "enduser.id", "pulse.distinct_id"),
+				DistinctID: orDefault(first(s.attrs, "enduser.id", "pulse.distinct_id"), traceUser[s.traceID]),
 				URL:        first(s.attrs, "url.full", "http.url", "http.route", "url.path"),
 			}
 			found := false
@@ -530,4 +589,11 @@ func DecodeOTLPLogs(body []byte, isProto bool, defaultProject string) ([]LogReco
 		return nil, err
 	}
 	return mapLogs(res, defaultProject), nil
+}
+
+func orDefault(v, def string) string {
+	if v != "" {
+		return v
+	}
+	return def
 }

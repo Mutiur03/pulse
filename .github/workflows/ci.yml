@@ -153,11 +153,32 @@ jobs:
           cache-to: type=gha,mode=max
 
   e2e:
-    name: E2E Stack Smoke Test
+    name: E2E Stack, Seed and Playwright
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+          cache-dependency-path: go/go.sum
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Install Playwright Chromium
+        run: pnpm --filter @pulse/web exec playwright install --with-deps chromium
 
       - name: Start stack
         working-directory: deploy/compose
@@ -167,6 +188,40 @@ jobs:
         env:
           DEMO_API_URL: http://localhost:8090
         run: ./tools/smoke-test.sh
+
+      - name: Funnel SQL against ClickHouse
+        working-directory: go
+        env:
+          PULSE_TEST_CLICKHOUSE: localhost:9000
+        run: go test ./internal/store/ch/ -run ClickHouse -v
+
+      - name: Seed demo traffic through the SDK and Go demo API
+        run: |
+          pnpm --filter @pulse/browser build
+          pnpm --filter @pulse/browser-demo build
+          (cd examples/browser-demo && PORT=5173 node server.mjs > /tmp/demo.log 2>&1 &)
+          for i in $(seq 30); do curl -fs http://localhost:5173 >/dev/null && break; sleep 1; done
+          SEED_USERS=40 pnpm --filter @pulse/web seed
+          sleep 10
+
+      - name: Playwright e2e
+        env:
+          SCREENSHOT_DIR: ${{ runner.temp }}/screens
+        run: |
+          mkdir -p "$SCREENSHOT_DIR"
+          pnpm --filter @pulse/web e2e
+
+      - name: Upload Playwright report and screenshots
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright
+          path: |
+            apps/web/playwright-report
+            apps/web/test-results
+            ${{ runner.temp }}/screens
+          if-no-files-found: ignore
+          retention-days: 7
 
       - name: Dump logs on failure
         if: failure()

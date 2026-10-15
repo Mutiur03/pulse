@@ -137,6 +137,16 @@ func BuildTrace(traceID string, spans []ch.SpanRecord, errs []ch.ErrorRecord, ev
 			st := int(s.HTTPStatus)
 			n.HttpStatus = &st
 		}
+		if len(s.Attributes) > 0 {
+			attrs := s.Attributes
+			n.Attributes = &attrs
+		}
+		if s.SpanEvents != "" && s.SpanEvents != "[]" {
+			var evs []gen.SpanEvent
+			if json.Unmarshal([]byte(s.SpanEvents), &evs) == nil && len(evs) > 0 {
+				n.SpanEvents = &evs
+			}
+		}
 		if n.Errors == nil {
 			n.Errors = []gen.ErrorOccurrence{}
 		}

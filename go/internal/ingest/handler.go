@@ -4,9 +4,12 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"log"
+	"math"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -26,8 +29,8 @@ const (
 )
 
 // NewHandler returns the ingest HTTP routes.
-func NewHandler(p Producer) http.Handler {
-	h := &handler{p: p}
+func NewHandler(p Producer, auth Authenticator) http.Handler {
+	h := &handler{p: p, auth: auth}
 	mux := http.NewServeMux()
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"ingest-gateway"}`))
@@ -39,7 +42,21 @@ func NewHandler(p Producer) http.Handler {
 	return cors(mux)
 }
 
-type handler struct{ p Producer }
+type handler struct {
+	p    Producer
+	auth Authenticator
+}
+
+// ErrUnauthorized is returned by an Authenticator for unknown or revoked keys.
+var ErrUnauthorized = errors.New("unauthorized")
+
+// Authenticator maps a public ingest key to a project and enforces its rate
+// limit. Allow reports whether the request fits the budget and, if not, how
+// long the client should wait.
+type Authenticator interface {
+	Authenticate(ctx context.Context, key string) (projectID string, err error)
+	Allow(ctx context.Context, key string) (bool, time.Duration)
+}
 
 type apiError struct {
 	code int
@@ -57,7 +74,27 @@ func (h *handler) post(fn func(r *http.Request, body []byte, project string) (in
 			http.Error(w, "body too large or unreadable", http.StatusRequestEntityTooLarge)
 			return
 		}
-		n, aerr := fn(r, body, projectID(r))
+		key := ingestKey(r)
+		if key == "" {
+			http.Error(w, "missing ingest key", http.StatusUnauthorized)
+			return
+		}
+		project, err := h.auth.Authenticate(r.Context(), key)
+		if err != nil {
+			if errors.Is(err, ErrUnauthorized) {
+				http.Error(w, "invalid ingest key", http.StatusUnauthorized)
+			} else {
+				log.Printf("key lookup failed: %v", err)
+				http.Error(w, "key lookup unavailable", http.StatusServiceUnavailable)
+			}
+			return
+		}
+		if ok, retry := h.auth.Allow(r.Context(), key); !ok {
+			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retry.Seconds()))))
+			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
+			return
+		}
+		n, aerr := fn(r, body, project)
 		if aerr != nil {
 			http.Error(w, aerr.msg, aerr.code)
 			return
@@ -75,16 +112,13 @@ func (h *handler) post(fn func(r *http.Request, body []byte, project string) (in
 	}
 }
 
-// projectID comes from the X-Pulse-Project header or ?project_id=, default "1".
-// Query parameters are supported because sendBeacon cannot set headers.
-func projectID(r *http.Request) string {
-	if v := r.Header.Get("X-Pulse-Project"); v != "" {
+// ingestKey reads the public key from the X-Pulse-Key header or ?key=.
+// The query parameter exists because navigator.sendBeacon cannot set headers.
+func ingestKey(r *http.Request) string {
+	if v := r.Header.Get("X-Pulse-Key"); v != "" {
 		return v
 	}
-	if v := r.URL.Query().Get("project_id"); v != "" {
-		return v
-	}
-	return "1"
+	return r.URL.Query().Get("key")
 }
 
 // decodeOneOrMany accepts either a JSON object or an array of objects.
@@ -128,9 +162,7 @@ func (h *handler) events(r *http.Request, body []byte, project string) (int, *ap
 		if e.Event == "" {
 			return 0, &apiError{http.StatusBadRequest, "event is required"}
 		}
-		if e.ProjectID == "" {
-			e.ProjectID = project
-		}
+		e.ProjectID = project
 		if e.Timestamp.IsZero() {
 			e.Timestamp = time.Now().UTC()
 		}
@@ -173,9 +205,7 @@ func (h *handler) traces(r *http.Request, body []byte, project string) (int, *ap
 		if s.TraceID == "" || s.SpanID == "" {
 			return 0, &apiError{http.StatusBadRequest, "trace_id and span_id are required"}
 		}
-		if s.ProjectID == "" {
-			s.ProjectID = project
-		}
+		s.ProjectID = project
 		if s.Timestamp.IsZero() {
 			s.Timestamp = time.Now().UTC()
 		}
@@ -217,9 +247,7 @@ func (h *handler) errors(r *http.Request, body []byte, project string) (int, *ap
 		if e.Message == "" && e.ExceptionType == "" {
 			return 0, &apiError{http.StatusBadRequest, "message or exception_type is required"}
 		}
-		if e.ProjectID == "" {
-			e.ProjectID = project
-		}
+		e.ProjectID = project
 		if e.Timestamp.IsZero() {
 			e.Timestamp = time.Now().UTC()
 		}
@@ -234,7 +262,7 @@ func cors(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Access-Control-Allow-Origin", "*")
 		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
-		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Pulse-Project")
+		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Pulse-Key")
 		w.Header().Set("Access-Control-Max-Age", "86400")
 		if r.Method == http.MethodOptions {
 			w.WriteHeader(http.StatusNoContent)

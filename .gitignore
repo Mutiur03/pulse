@@ -51,3 +51,7 @@ Thumbs.db
 # Data directories
 data/
 volumes/
+
+# Playwright
+apps/web/playwright-report/
+apps/web/test-results/

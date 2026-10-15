@@ -23,7 +23,7 @@ describe('trace header propagation', () => {
     tracing = startTracing(
       {
         endpoint: 'http://ingest.test',
-        projectId: '1',
+        apiKey: 'pk_dev_local_0123456789abcdef',
         propagateTraceHeaderCorsUrls: [/^https:\/\/api\.allowed\.test/],
         autocapture: { documentLoad: false, userInteraction: false },
       },

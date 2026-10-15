@@ -3,8 +3,11 @@ import type { SpanExporter } from '@opentelemetry/sdk-trace-web';
 export interface PulseConfig {
   /** Base URL of the ingest gateway, e.g. https://ingest.example.com */
   endpoint: string;
-  /** Project the data belongs to. */
-  projectId: string;
+  /**
+   * Public ingest key from project settings (pk_...). It identifies the
+   * project; it is safe to ship in browser code and can be rotated.
+   */
+  apiKey: string;
   /** service.name for browser spans. Default "browser". */
   serviceName?: string;
   release?: string;
@@ -40,7 +43,6 @@ export interface PulseConfig {
 export type Properties = Record<string, unknown>;
 
 export interface EventPayload {
-  project_id: string;
   event: string;
   timestamp: string;
   distinct_id: string;
@@ -51,7 +53,6 @@ export interface EventPayload {
 }
 
 export interface ErrorPayload {
-  project_id: string;
   timestamp: string;
   platform: 'browser';
   exception_type: string;

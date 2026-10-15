@@ -22,7 +22,8 @@ export class PulseClient {
 
   constructor(readonly config: PulseConfig) {
     const endpoint = config.endpoint.replace(/\/$/, '');
-    const q = `?project_id=${encodeURIComponent(config.projectId)}`;
+    // sendBeacon cannot set headers, so the key travels as a query parameter.
+    const q = `?key=${encodeURIComponent(config.apiKey)}`;
     this.session = new Session(config.sessionTimeoutMs ?? DEFAULT_SESSION_TIMEOUT);
     const t = {
       batchSize: config.batchSize,
@@ -81,7 +82,6 @@ export class PulseClient {
 
   capture(event: string, properties: Properties = {}, ids: { trace_id?: string; span_id?: string } = activeSpanIds()): EventPayload {
     const payload: EventPayload = {
-      project_id: this.config.projectId,
       event,
       timestamp: new Date().toISOString(),
       distinct_id: this.identity.distinctId,
@@ -121,7 +121,6 @@ export class PulseClient {
       span.end();
     }
     this.errors.push({
-      project_id: this.config.projectId,
       timestamp: new Date().toISOString(),
       platform: 'browser',
       exception_type: e.name || 'Error',

@@ -1,4 +1,4 @@
-.PHONY: help generate build test lint clean docker-build compose-up compose-down smoke-test e2e
+.PHONY: help generate build test lint clean docker-build compose-up compose-down smoke-test e2e demo-web seed e2e-web
 
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
@@ -58,3 +58,13 @@ smoke-test: ## Assert events, spans, errors, issues and trace trees end to end (
 	DEMO_API_URL=http://localhost:8090 ./tools/smoke-test.sh
 
 e2e: compose-up smoke-test ## Start the stack and run the smoke test
+
+demo-web: ## Build and serve the browser demo on http://localhost:5173
+	pnpm --filter @pulse/browser build && pnpm --filter @pulse/browser-demo build
+	cd examples/browser-demo && PORT=5173 node server.mjs
+
+seed: ## Drive the browser demo with headless browsers to create demo traffic (demo-web must be running)
+	pnpm --filter @pulse/web seed
+
+e2e-web: ## Run the Playwright UI tests against http://localhost:3000 (after seed)
+	pnpm --filter @pulse/web e2e

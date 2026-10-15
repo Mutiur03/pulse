@@ -99,9 +99,25 @@ curl http://localhost:8081/health  # Query API
 curl http://localhost:8082/health  # Stream processor
 curl http://localhost:8083/health  # Alerting worker
 
-# Open the web UI
+# Open the web UI (local login: demo@pulse.local / pulse-demo)
 open http://localhost:3000
 ```
+
+### Demo Data and UI Tests
+
+The compose stack seeds a dev user (`demo@pulse.local` / `pulse-demo`),
+project 1 and the ingest key `pk_dev_local_0123456789abcdef`
+(`deploy/compose/seed/dev-seed.sql`). Every ingest request needs a key in the
+`X-Pulse-Key` header or `?key=`; the project is always taken from the key.
+
+```bash
+make seed       # real browsers click through the demo shop (SDK + Go demo API)
+make e2e-web    # Playwright: login, trace waterfall, issue, funnel, events, settings
+```
+
+The funnel page (`/funnels`) shows, for the users who dropped at each step,
+the top errors and backend p95 latency in their sessions next to the users
+who continued.
 
 ### End-to-End Smoke Test
 
@@ -122,8 +138,8 @@ Send a test event:
 ```bash
 curl -X POST http://localhost:8080/v1/events \
   -H "Content-Type: application/json" \
+  -H "X-Pulse-Key: pk_dev_local_0123456789abcdef" \
   -d '{
-    "project_id": "1",
     "event": "$pageview",
     "timestamp": "2026-10-15T05:00:00Z",
     "distinct_id": "user_123",
@@ -153,6 +169,7 @@ docker exec clickhouse clickhouse-client --query \
 ```bash
 curl -X POST http://localhost:8080/v1/traces \
   -H "Content-Type: application/json" \
+  -H "X-Pulse-Key: pk_dev_local_0123456789abcdef" \
   -d '[{
     "trace_id": "4bf92f3577b34da6a3ce929d0e0e4736",
     "span_id": "00f067aa0ba902b7",

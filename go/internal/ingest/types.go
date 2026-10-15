@@ -34,6 +34,17 @@ type Span struct {
 	DBSystem      string    `json:"db_system,omitempty"`
 	DBStatement   string    `json:"db_statement,omitempty"`
 	SessionID     string    `json:"session_id,omitempty"`
+	// Attributes holds the span's attributes plus a few resource attributes
+	// (prefixed "resource.").
+	Attributes map[string]string `json:"attributes,omitempty"`
+	Events     []SpanEvent       `json:"events,omitempty"`
+}
+
+// SpanEvent is a non-exception event recorded on a span.
+type SpanEvent struct {
+	Name       string            `json:"name"`
+	Time       time.Time         `json:"time"`
+	Attributes map[string]string `json:"attributes,omitempty"`
 }
 
 // ErrorEvent is a captured exception.

@@ -104,6 +104,12 @@ services:
           psql -v ON_ERROR_STOP=1 -q -f "$$f"
         done
         echo "postgres migrations applied"
+        if [ -d /seed ]; then
+          for f in $$(ls /seed/*.sql | sort); do
+            echo "seeding $$f"
+            psql -v ON_ERROR_STOP=1 -q -f "$$f"
+          done
+        fi
     environment:
       PGHOST: postgres
       PGUSER: platform
@@ -111,6 +117,8 @@ services:
       PGDATABASE: platform
     volumes:
       - ../../schemas/postgres:/migrations:ro
+      # Dev-only demo user and ingest key; remove this mount outside local dev.
+      - ./seed:/seed:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -170,6 +178,8 @@ services:
       POSTGRES_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable
       INGEST_GATEWAY_PORT: 8080
     depends_on:
+      postgres-migrate:
+        condition: service_completed_successfully
       kafka:
         condition: service_healthy
       redis:
@@ -224,6 +234,8 @@ services:
     ports:
       - "8081:8081"
     environment:
+      # Local stack is plain HTTP; keep the default (true) behind HTTPS.
+      COOKIE_SECURE: "false"
       SERVICE_NAME: query-api
       KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       REDIS_ADDR: redis:6379
@@ -287,6 +299,7 @@ services:
     environment:
       OTEL_EXPORTER_OTLP_TRACES_ENDPOINT: http://ingest-gateway:8080/v1/traces
       OTEL_SERVICE_NAME: go-demo-api
+      OTEL_EXPORTER_OTLP_HEADERS: X-Pulse-Key=pk_dev_local_0123456789abcdef
       DATABASE_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable
     depends_on:
       ingest-gateway:
@@ -307,8 +320,14 @@ services:
     container_name: web
     ports:
       - "3000:3000"
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/login"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
     environment:
-      NEXT_PUBLIC_API_URL: http://localhost:8081
+      # Server-side only: the app proxies /api/* to the query API.
+      QUERY_API_URL: http://query-api:8081
     depends_on:
       query-api:
         condition: service_healthy

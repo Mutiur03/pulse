@@ -7,22 +7,24 @@ import (
 
 // SpanRecord is a span as stored in ClickHouse.
 type SpanRecord struct {
-	Timestamp     time.Time `ch:"timestamp"`
-	TraceID       string    `ch:"trace_id"`
-	SpanID        string    `ch:"span_id"`
-	ParentSpanID  string    `ch:"parent_span_id"`
-	Name          string    `ch:"span_name"`
-	Kind          string    `ch:"span_kind"`
-	ServiceName   string    `ch:"service_name"`
-	Platform      string    `ch:"platform"`
-	DurationNs    uint64    `ch:"duration_ns"`
-	StatusCode    string    `ch:"status_code"`
-	StatusMessage string    `ch:"status_message"`
-	HTTPRoute     string    `ch:"http_route"`
-	HTTPStatus    uint16    `ch:"http_status"`
-	DBSystem      string    `ch:"db_system"`
-	DBStatement   string    `ch:"db_statement"`
-	SessionID     string    `ch:"session_id"`
+	Timestamp     time.Time         `ch:"timestamp"`
+	TraceID       string            `ch:"trace_id"`
+	SpanID        string            `ch:"span_id"`
+	ParentSpanID  string            `ch:"parent_span_id"`
+	Name          string            `ch:"span_name"`
+	Kind          string            `ch:"span_kind"`
+	ServiceName   string            `ch:"service_name"`
+	Platform      string            `ch:"platform"`
+	DurationNs    uint64            `ch:"duration_ns"`
+	StatusCode    string            `ch:"status_code"`
+	StatusMessage string            `ch:"status_message"`
+	HTTPRoute     string            `ch:"http_route"`
+	HTTPStatus    uint16            `ch:"http_status"`
+	DBSystem      string            `ch:"db_system"`
+	DBStatement   string            `ch:"db_statement"`
+	SessionID     string            `ch:"session_id"`
+	Attributes    map[string]string `ch:"attributes"`
+	SpanEvents    string            `ch:"span_events"`
 }
 
 // ErrorRecord is an error as stored in ClickHouse.
@@ -56,7 +58,7 @@ type EventRecord struct {
 const MaxTraceSpans = 10000
 
 const spanCols = `timestamp, trace_id, span_id, parent_span_id, span_name, span_kind, service_name, platform,
-	duration_ns, status_code, status_message, http_route, http_status, db_system, db_statement, session_id`
+	duration_ns, status_code, status_message, http_route, http_status, db_system, db_statement, session_id, attributes, span_events`
 
 const errorCols = `timestamp, issue_id, exception_type, message, stack, culprit, trace_id, span_id,
 	service_name, platform, session_id, distinct_id, url`

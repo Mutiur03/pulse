@@ -104,7 +104,7 @@ func (c *Client) InsertSpans(ctx context.Context, spans []map[string]interface{}
 		return nil
 	}
 
-	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO spans (project_id, timestamp, trace_id, span_id, parent_span_id, span_name, span_kind, service_name, platform, duration_ns, status_code, status_message, http_route, http_status, db_system, db_statement, session_id)")
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO spans (project_id, timestamp, trace_id, span_id, parent_span_id, span_name, span_kind, service_name, platform, duration_ns, status_code, status_message, http_route, http_status, db_system, db_statement, session_id, attributes, span_events)")
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
@@ -147,6 +147,8 @@ func (c *Client) InsertSpans(ctx context.Context, spans []map[string]interface{}
 			str(span, "db_system"),
 			str(span, "db_statement"),
 			str(span, "session_id"),
+			strMap(span["attributes"]),
+			jsonArray(span["events"]),
 		); err != nil {
 			return fmt.Errorf("failed to append to batch: %w", err)
 		}
@@ -261,4 +263,27 @@ func str(m map[string]interface{}, key string) string {
 
 func (c *Client) Close() error {
 	return c.conn.Close()
+}
+
+func strMap(v interface{}) map[string]string {
+	out := map[string]string{}
+	if m, ok := v.(map[string]interface{}); ok {
+		for k, x := range m {
+			if s, ok := x.(string); ok {
+				out[k] = s
+			}
+		}
+	}
+	return out
+}
+
+func jsonArray(v interface{}) string {
+	if v == nil {
+		return "[]"
+	}
+	b, err := json.Marshal(v)
+	if err != nil {
+		return "[]"
+	}
+	return string(b)
 }

@@ -14,7 +14,7 @@ describe('click and pageview tracing', () => {
     document.body.innerHTML = '<button id="pay" type="button">Pay</button><button id="plain" type="button">No handler</button>';
     client = new PulseClient({
       endpoint: 'http://ingest.test',
-      projectId: '1',
+      apiKey: 'pk_dev_local_0123456789abcdef',
       spanExporter: exporter,
       autocapture: { webVitals: false, errors: false, documentLoad: false },
     });

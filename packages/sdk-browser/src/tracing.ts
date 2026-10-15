@@ -88,11 +88,11 @@ export function startTracing(cfg: PulseConfig, ids: IdentitySource): Tracing {
   const exporter =
     cfg.spanExporter ??
     new OTLPTraceExporter({
-      url: `${endpoint}/v1/traces?project_id=${encodeURIComponent(cfg.projectId)}`,
+      url: `${endpoint}/v1/traces`,
+      headers: { 'X-Pulse-Key': cfg.apiKey },
     });
   const resource = resourceFromAttributes({
     'service.name': cfg.serviceName ?? 'browser',
-    'pulse.project_id': cfg.projectId,
     // Lets the backend tell browser spans apart (and skip deriving errors
     // from them, since browser errors are sent to /v1/errors directly).
     'telemetry.sdk.language': 'webjs',

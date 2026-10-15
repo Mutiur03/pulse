@@ -11,7 +11,21 @@ export type IssueList = Schemas['IssueList'];
 export type IssueDetail = Schemas['IssueDetail'];
 export type ErrorOccurrence = Schemas['ErrorOccurrence'];
 export type ProductEvent = Schemas['ProductEvent'];
+export type SpanEvent = Schemas['SpanEvent'];
+export type TraceSummary = Schemas['TraceSummary'];
+export type Me = Schemas['Me'];
+export type Project = Schemas['Project'];
+export type ApiKey = Schemas['ApiKey'];
+export type EventName = Schemas['EventName'];
+export type FunnelQuery = Schemas['FunnelQuery'];
+export type FunnelResult = Schemas['FunnelResult'];
+export type FunnelStep = Schemas['FunnelStep'];
+export type CohortHealth = Schemas['CohortHealth'];
+export type FunnelError = Schemas['FunnelError'];
 export type ListIssuesQuery = NonNullable<operations['listIssues']['parameters']['query']>;
+export type ListTracesQuery = NonNullable<operations['listTraces']['parameters']['query']>;
+export type ListEventsQuery = NonNullable<operations['listEvents']['parameters']['query']>;
+type RangeQuery = { project_id?: number; from?: string; to?: string };
 
 export class APIError extends Error {
   constructor(
@@ -36,13 +50,16 @@ export class APIClient {
     const url = `${this.baseURL.replace(/\/$/, '')}${path}${qs.size ? `?${qs}` : ''}`;
     const res = await this.fetchImpl(url, {
       method,
-      headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+      // The API rejects non-JSON mutations (CSRF protection), even bodiless ones.
+      headers: method === 'GET' ? undefined : { 'Content-Type': 'application/json' },
       body: body === undefined ? undefined : JSON.stringify(body),
+      credentials: 'same-origin',
     });
     if (!res.ok) {
       const err = (await res.json().catch(() => ({}))) as { error?: string };
       throw new APIError(res.status, err.error ?? res.statusText);
     }
+    if (res.status === 204) return undefined as T;
     return (await res.json()) as T;
   }
 
@@ -50,12 +67,52 @@ export class APIClient {
     return this.request('GET', '/health');
   }
 
+  login(email: string, password: string): Promise<Me> {
+    return this.request('POST', '/v1/auth/login', undefined, { email, password });
+  }
+
+  logout(): Promise<void> {
+    return this.request('POST', '/v1/auth/logout');
+  }
+
+  me(): Promise<Me> {
+    return this.request('GET', '/v1/auth/me');
+  }
+
+  listKeys(projectId: number): Promise<ApiKey[]> {
+    return this.request('GET', `/v1/projects/${projectId}/keys`);
+  }
+
+  rotateKey(projectId: number): Promise<ApiKey> {
+    return this.request('POST', `/v1/projects/${projectId}/keys/rotate`);
+  }
+
+  listTraces(query: ListTracesQuery = {}): Promise<Schemas['TraceList']> {
+    return this.request('GET', '/v1/traces', query as Query);
+  }
+
+  listServices(query: RangeQuery = {}): Promise<string[]> {
+    return this.request('GET', '/v1/services', query);
+  }
+
+  listEvents(query: ListEventsQuery = {}): Promise<Schemas['EventList']> {
+    return this.request('GET', '/v1/events', query as Query);
+  }
+
+  listEventNames(query: RangeQuery = {}): Promise<EventName[]> {
+    return this.request('GET', '/v1/events/names', query);
+  }
+
+  queryFunnel(body: FunnelQuery, projectId?: number): Promise<FunnelResult> {
+    return this.request('POST', '/v1/funnels/query', { project_id: projectId }, body);
+  }
+
   getTrace(traceId: string, projectId?: number): Promise<Trace> {
     return this.request('GET', `/v1/traces/${encodeURIComponent(traceId)}`, { project_id: projectId });
   }
 
   listIssues(query: ListIssuesQuery = {}): Promise<IssueList> {
-    return this.request('GET', '/v1/issues', query);
+    return this.request('GET', '/v1/issues', query as Query);
   }
 
   getIssue(id: number, eventsLimit?: number): Promise<IssueDetail> {

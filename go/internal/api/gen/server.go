@@ -6,6 +6,7 @@ package gen
 import (
 	"bytes"
 	"compress/gzip"
+	"context"
 	"encoding/base64"
 	"fmt"
 	"net/http"
@@ -19,11 +20,21 @@ import (
 	"github.com/oapi-codegen/runtime"
 )
 
+const (
+	SessionScopes = "session.Scopes"
+)
+
 // Defines values for IssueStatus.
 const (
 	Ignored    IssueStatus = "ignored"
 	Resolved   IssueStatus = "resolved"
 	Unresolved IssueStatus = "unresolved"
+)
+
+// Defines values for ProjectRole.
+const (
+	Member ProjectRole = "member"
+	Owner  ProjectRole = "owner"
 )
 
 // Defines values for SpanSource.
@@ -39,6 +50,34 @@ const (
 	FirstSeen ListIssuesParamsSort = "first_seen"
 	LastSeen  ListIssuesParamsSort = "last_seen"
 )
+
+// Defines values for ListTracesParamsStatus.
+const (
+	ListTracesParamsStatusError ListTracesParamsStatus = "error"
+	ListTracesParamsStatusOk    ListTracesParamsStatus = "ok"
+)
+
+// ApiKey defines model for ApiKey.
+type ApiKey struct {
+	CreatedAt       time.Time  `json:"created_at"`
+	Id              int64      `json:"id"`
+	ProjectId       int64      `json:"project_id"`
+	PublicKey       string     `json:"public_key"`
+	RateLimitPerSec int        `json:"rate_limit_per_sec"`
+	RevokedAt       *time.Time `json:"revoked_at,omitempty"`
+}
+
+// CohortHealth Backend health in the sessions of a group of users.
+type CohortHealth struct {
+	// ErrorSessions Sessions with at least one error.
+	ErrorSessions int64 `json:"error_sessions"`
+
+	// P95LatencyMs p95 duration of backend server spans in these sessions.
+	P95LatencyMs float32       `json:"p95_latency_ms"`
+	Sessions     int64         `json:"sessions"`
+	TopErrors    []FunnelError `json:"top_errors"`
+	Users        int64         `json:"users"`
+}
 
 // Error defines model for Error.
 type Error struct {
@@ -60,6 +99,58 @@ type ErrorOccurrence struct {
 	Timestamp     time.Time `json:"timestamp"`
 	TraceId       string    `json:"trace_id"`
 	Url           *string   `json:"url,omitempty"`
+}
+
+// EventList defines model for EventList.
+type EventList struct {
+	Events []ProductEvent `json:"events"`
+}
+
+// EventName defines model for EventName.
+type EventName struct {
+	Count int64  `json:"count"`
+	Name  string `json:"name"`
+}
+
+// FunnelError defines model for FunnelError.
+type FunnelError struct {
+	Count         int64  `json:"count"`
+	ExceptionType string `json:"exception_type"`
+	IssueId       int64  `json:"issue_id"`
+	ServiceName   string `json:"service_name"`
+	Title         string `json:"title"`
+	Users         int64  `json:"users"`
+}
+
+// FunnelQuery defines model for FunnelQuery.
+type FunnelQuery struct {
+	From          *time.Time `json:"from,omitempty"`
+	Steps         []string   `json:"steps"`
+	To            *time.Time `json:"to,omitempty"`
+	WindowSeconds *int       `json:"window_seconds,omitempty"`
+}
+
+// FunnelResult defines model for FunnelResult.
+type FunnelResult struct {
+	From          time.Time    `json:"from"`
+	Steps         []FunnelStep `json:"steps"`
+	To            time.Time    `json:"to"`
+	WindowSeconds int          `json:"window_seconds"`
+}
+
+// FunnelStep defines model for FunnelStep.
+type FunnelStep struct {
+	// Continued Users who reached this step and the next one.
+	Continued              *CohortHealth `json:"continued,omitempty"`
+	ConversionFromPrevious float32       `json:"conversion_from_previous"`
+	ConversionOverall      float32       `json:"conversion_overall"`
+
+	// Dropped Users who reached this step but not the next one.
+	Dropped *CohortHealth `json:"dropped,omitempty"`
+	Event   string        `json:"event"`
+
+	// Users Users who reached this step.
+	Users int64 `json:"users"`
 }
 
 // Health defines model for Health.
@@ -86,6 +177,9 @@ type Issue struct {
 	Status         IssueStatus `json:"status"`
 	TimesRegressed int         `json:"times_regressed"`
 	Title          string      `json:"title"`
+
+	// Trend Occurrences per hour over the last 24 hours, oldest first (list only).
+	Trend *[]int64 `json:"trend,omitempty"`
 }
 
 // IssueDetail defines model for IssueDetail.
@@ -110,6 +204,18 @@ type IssueUpdate struct {
 	Status IssueStatus `json:"status"`
 }
 
+// LoginRequest defines model for LoginRequest.
+type LoginRequest struct {
+	Email    string `json:"email"`
+	Password string `json:"password"`
+}
+
+// Me defines model for Me.
+type Me struct {
+	Projects []Project `json:"projects"`
+	User     User      `json:"user"`
+}
+
 // ProductEvent defines model for ProductEvent.
 type ProductEvent struct {
 	DistinctId string                 `json:"distinct_id"`
@@ -118,32 +224,52 @@ type ProductEvent struct {
 	SessionId  string                 `json:"session_id"`
 	SpanId     string                 `json:"span_id"`
 	Timestamp  time.Time              `json:"timestamp"`
+	TraceId    *string                `json:"trace_id,omitempty"`
+}
+
+// Project defines model for Project.
+type Project struct {
+	Id   int64       `json:"id"`
+	Name string      `json:"name"`
+	Role ProjectRole `json:"role"`
+}
+
+// ProjectRole defines model for Project.Role.
+type ProjectRole string
+
+// SpanEvent defines model for SpanEvent.
+type SpanEvent struct {
+	Attributes *map[string]string `json:"attributes,omitempty"`
+	Name       string             `json:"name"`
+	Time       time.Time          `json:"time"`
 }
 
 // SpanNode defines model for SpanNode.
 type SpanNode struct {
-	Children    []SpanNode        `json:"children"`
-	DbStatement *string           `json:"db_statement,omitempty"`
-	DbSystem    *string           `json:"db_system,omitempty"`
-	Depth       int               `json:"depth"`
-	DurationNs  int64             `json:"duration_ns"`
-	Errors      []ErrorOccurrence `json:"errors"`
-	Events      []ProductEvent    `json:"events"`
-	HttpRoute   *string           `json:"http_route,omitempty"`
-	HttpStatus  *int              `json:"http_status,omitempty"`
-	Kind        string            `json:"kind"`
-	Name        string            `json:"name"`
+	Attributes  *map[string]string `json:"attributes,omitempty"`
+	Children    []SpanNode         `json:"children"`
+	DbStatement *string            `json:"db_statement,omitempty"`
+	DbSystem    *string            `json:"db_system,omitempty"`
+	Depth       int                `json:"depth"`
+	DurationNs  int64              `json:"duration_ns"`
+	Errors      []ErrorOccurrence  `json:"errors"`
+	Events      []ProductEvent     `json:"events"`
+	HttpRoute   *string            `json:"http_route,omitempty"`
+	HttpStatus  *int               `json:"http_status,omitempty"`
+	Kind        string             `json:"kind"`
+	Name        string             `json:"name"`
 
 	// Orphan True when the span's parent is not part of the trace data.
-	Orphan        bool       `json:"orphan"`
-	ParentSpanId  string     `json:"parent_span_id"`
-	ServiceName   string     `json:"service_name"`
-	SessionId     *string    `json:"session_id,omitempty"`
-	Source        SpanSource `json:"source"`
-	SpanId        string     `json:"span_id"`
-	StartTime     time.Time  `json:"start_time"`
-	StatusCode    string     `json:"status_code"`
-	StatusMessage *string    `json:"status_message,omitempty"`
+	Orphan        bool         `json:"orphan"`
+	ParentSpanId  string       `json:"parent_span_id"`
+	ServiceName   string       `json:"service_name"`
+	SessionId     *string      `json:"session_id,omitempty"`
+	Source        SpanSource   `json:"source"`
+	SpanEvents    *[]SpanEvent `json:"span_events,omitempty"`
+	SpanId        string       `json:"span_id"`
+	StartTime     time.Time    `json:"start_time"`
+	StatusCode    string       `json:"status_code"`
+	StatusMessage *string      `json:"status_message,omitempty"`
 }
 
 // SpanSource defines model for SpanSource.
@@ -163,11 +289,49 @@ type Trace struct {
 	TraceId   string         `json:"trace_id"`
 }
 
+// TraceList defines model for TraceList.
+type TraceList struct {
+	Traces []TraceSummary `json:"traces"`
+}
+
+// TraceSummary defines model for TraceSummary.
+type TraceSummary struct {
+	DurationNs  int64     `json:"duration_ns"`
+	ErrorCount  int       `json:"error_count"`
+	HasBrowser  bool      `json:"has_browser"`
+	HttpStatus  *int      `json:"http_status,omitempty"`
+	RootName    string    `json:"root_name"`
+	RootService string    `json:"root_service"`
+	Services    []string  `json:"services"`
+	SpanCount   int       `json:"span_count"`
+	StartTime   time.Time `json:"start_time"`
+	TraceId     string    `json:"trace_id"`
+}
+
+// User defines model for User.
+type User struct {
+	Email string `json:"email"`
+	Id    int64  `json:"id"`
+	Name  string `json:"name"`
+}
+
+// From defines model for From.
+type From = time.Time
+
 // IssueID defines model for IssueID.
 type IssueID = int64
 
+// Limit defines model for Limit.
+type Limit = int
+
 // ProjectID defines model for ProjectID.
 type ProjectID = int64
+
+// ProjectPath defines model for ProjectPath.
+type ProjectPath = int64
+
+// To defines model for To.
+type To = time.Time
 
 // BadRequest defines model for BadRequest.
 type BadRequest = Error
@@ -175,8 +339,46 @@ type BadRequest = Error
 // NotFound defines model for NotFound.
 type NotFound = Error
 
+// Unauthorized defines model for Unauthorized.
+type Unauthorized = Error
+
+// ListEventsParams defines parameters for ListEvents.
+type ListEventsParams struct {
+	// ProjectId Defaults to the user's first project.
+	ProjectId  *ProjectID `form:"project_id,omitempty" json:"project_id,omitempty"`
+	Event      *string    `form:"event,omitempty" json:"event,omitempty"`
+	DistinctId *string    `form:"distinct_id,omitempty" json:"distinct_id,omitempty"`
+	SessionId  *string    `form:"session_id,omitempty" json:"session_id,omitempty"`
+
+	// From Start of the time range. Default 24 hours ago.
+	From *From `form:"from,omitempty" json:"from,omitempty"`
+
+	// To End of the time range. Default now.
+	To    *To    `form:"to,omitempty" json:"to,omitempty"`
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListEventNamesParams defines parameters for ListEventNames.
+type ListEventNamesParams struct {
+	// ProjectId Defaults to the user's first project.
+	ProjectId *ProjectID `form:"project_id,omitempty" json:"project_id,omitempty"`
+
+	// From Start of the time range. Default 24 hours ago.
+	From *From `form:"from,omitempty" json:"from,omitempty"`
+
+	// To End of the time range. Default now.
+	To *To `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// QueryFunnelParams defines parameters for QueryFunnel.
+type QueryFunnelParams struct {
+	// ProjectId Defaults to the user's first project.
+	ProjectId *ProjectID `form:"project_id,omitempty" json:"project_id,omitempty"`
+}
+
 // ListIssuesParams defines parameters for ListIssues.
 type ListIssuesParams struct {
+	// ProjectId Defaults to the user's first project.
 	ProjectId *ProjectID   `form:"project_id,omitempty" json:"project_id,omitempty"`
 	Status    *IssueStatus `form:"status,omitempty" json:"status,omitempty"`
 	Service   *string      `form:"service,omitempty" json:"service,omitempty"`
@@ -196,10 +398,54 @@ type GetIssueParams struct {
 	EventsLimit *int `form:"events_limit,omitempty" json:"events_limit,omitempty"`
 }
 
+// ListServicesParams defines parameters for ListServices.
+type ListServicesParams struct {
+	// ProjectId Defaults to the user's first project.
+	ProjectId *ProjectID `form:"project_id,omitempty" json:"project_id,omitempty"`
+
+	// From Start of the time range. Default 24 hours ago.
+	From *From `form:"from,omitempty" json:"from,omitempty"`
+
+	// To End of the time range. Default now.
+	To *To `form:"to,omitempty" json:"to,omitempty"`
+}
+
+// ListTracesParams defines parameters for ListTraces.
+type ListTracesParams struct {
+	// ProjectId Defaults to the user's first project.
+	ProjectId *ProjectID `form:"project_id,omitempty" json:"project_id,omitempty"`
+
+	// Service Only traces with a span from this service.
+	Service       *string                 `form:"service,omitempty" json:"service,omitempty"`
+	Status        *ListTracesParamsStatus `form:"status,omitempty" json:"status,omitempty"`
+	MinDurationMs *float32                `form:"min_duration_ms,omitempty" json:"min_duration_ms,omitempty"`
+	MaxDurationMs *float32                `form:"max_duration_ms,omitempty" json:"max_duration_ms,omitempty"`
+
+	// Query Case-insensitive match on span names.
+	Query *string `form:"query,omitempty" json:"query,omitempty"`
+
+	// From Start of the time range. Default 24 hours ago.
+	From *From `form:"from,omitempty" json:"from,omitempty"`
+
+	// To End of the time range. Default now.
+	To    *To    `form:"to,omitempty" json:"to,omitempty"`
+	Limit *Limit `form:"limit,omitempty" json:"limit,omitempty"`
+}
+
+// ListTracesParamsStatus defines parameters for ListTraces.
+type ListTracesParamsStatus string
+
 // GetTraceParams defines parameters for GetTrace.
 type GetTraceParams struct {
+	// ProjectId Defaults to the user's first project.
 	ProjectId *ProjectID `form:"project_id,omitempty" json:"project_id,omitempty"`
 }
+
+// LoginJSONRequestBody defines body for Login for application/json ContentType.
+type LoginJSONRequestBody = LoginRequest
+
+// QueryFunnelJSONRequestBody defines body for QueryFunnel for application/json ContentType.
+type QueryFunnelJSONRequestBody = FunnelQuery
 
 // UpdateIssueJSONRequestBody defines body for UpdateIssue for application/json ContentType.
 type UpdateIssueJSONRequestBody = IssueUpdate
@@ -209,6 +455,24 @@ type ServerInterface interface {
 	// Health check
 	// (GET /health)
 	GetHealth(w http.ResponseWriter, r *http.Request)
+	// Log in with email and password
+	// (POST /v1/auth/login)
+	Login(w http.ResponseWriter, r *http.Request)
+	// End the current session
+	// (POST /v1/auth/logout)
+	Logout(w http.ResponseWriter, r *http.Request)
+	// Current user and their projects
+	// (GET /v1/auth/me)
+	GetMe(w http.ResponseWriter, r *http.Request)
+	// Explore product events
+	// (GET /v1/events)
+	ListEvents(w http.ResponseWriter, r *http.Request, params ListEventsParams)
+	// Event names with counts
+	// (GET /v1/events/names)
+	ListEventNames(w http.ResponseWriter, r *http.Request, params ListEventNamesParams)
+	// Run a funnel
+	// (POST /v1/funnels/query)
+	QueryFunnel(w http.ResponseWriter, r *http.Request, params QueryFunnelParams)
 	// List issues
 	// (GET /v1/issues)
 	ListIssues(w http.ResponseWriter, r *http.Request, params ListIssuesParams)
@@ -218,6 +482,18 @@ type ServerInterface interface {
 	// Change an issue's status
 	// (PATCH /v1/issues/{id})
 	UpdateIssue(w http.ResponseWriter, r *http.Request, id IssueID)
+	// List the project's ingest keys
+	// (GET /v1/projects/{project_id}/keys)
+	ListKeys(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
+	// Rotate the project's ingest key
+	// (POST /v1/projects/{project_id}/keys/rotate)
+	RotateKey(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
+	// Services that sent spans in the time range
+	// (GET /v1/services)
+	ListServices(w http.ResponseWriter, r *http.Request, params ListServicesParams)
+	// Search traces
+	// (GET /v1/traces)
+	ListTraces(w http.ResponseWriter, r *http.Request, params ListTracesParams)
 	// Get a full trace
 	// (GET /v1/traces/{trace_id})
 	GetTrace(w http.ResponseWriter, r *http.Request, traceId string, params GetTraceParams)
@@ -230,6 +506,42 @@ type Unimplemented struct{}
 // Health check
 // (GET /health)
 func (_ Unimplemented) GetHealth(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Log in with email and password
+// (POST /v1/auth/login)
+func (_ Unimplemented) Login(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// End the current session
+// (POST /v1/auth/logout)
+func (_ Unimplemented) Logout(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Current user and their projects
+// (GET /v1/auth/me)
+func (_ Unimplemented) GetMe(w http.ResponseWriter, r *http.Request) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Explore product events
+// (GET /v1/events)
+func (_ Unimplemented) ListEvents(w http.ResponseWriter, r *http.Request, params ListEventsParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Event names with counts
+// (GET /v1/events/names)
+func (_ Unimplemented) ListEventNames(w http.ResponseWriter, r *http.Request, params ListEventNamesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Run a funnel
+// (POST /v1/funnels/query)
+func (_ Unimplemented) QueryFunnel(w http.ResponseWriter, r *http.Request, params QueryFunnelParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -248,6 +560,30 @@ func (_ Unimplemented) GetIssue(w http.ResponseWriter, r *http.Request, id Issue
 // Change an issue's status
 // (PATCH /v1/issues/{id})
 func (_ Unimplemented) UpdateIssue(w http.ResponseWriter, r *http.Request, id IssueID) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// List the project's ingest keys
+// (GET /v1/projects/{project_id}/keys)
+func (_ Unimplemented) ListKeys(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Rotate the project's ingest key
+// (POST /v1/projects/{project_id}/keys/rotate)
+func (_ Unimplemented) RotateKey(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Services that sent spans in the time range
+// (GET /v1/services)
+func (_ Unimplemented) ListServices(w http.ResponseWriter, r *http.Request, params ListServicesParams) {
+	w.WriteHeader(http.StatusNotImplemented)
+}
+
+// Search traces
+// (GET /v1/traces)
+func (_ Unimplemented) ListTraces(w http.ResponseWriter, r *http.Request, params ListTracesParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -281,11 +617,216 @@ func (siw *ServerInterfaceWrapper) GetHealth(w http.ResponseWriter, r *http.Requ
 	handler.ServeHTTP(w, r.WithContext(ctx))
 }
 
+// Login operation middleware
+func (siw *ServerInterfaceWrapper) Login(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Login(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// Logout operation middleware
+func (siw *ServerInterfaceWrapper) Logout(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.Logout(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// GetMe operation middleware
+func (siw *ServerInterfaceWrapper) GetMe(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.GetMe(w, r)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// ListEvents operation middleware
+func (siw *ServerInterfaceWrapper) ListEvents(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListEventsParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "event" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "event", r.URL.Query(), &params.Event)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "event", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "distinct_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "distinct_id", r.URL.Query(), &params.DistinctId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "distinct_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "session_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "session_id", r.URL.Query(), &params.SessionId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "from", r.URL.Query(), &params.From)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "to", r.URL.Query(), &params.To)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEvents(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// ListEventNames operation middleware
+func (siw *ServerInterfaceWrapper) ListEventNames(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListEventNamesParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "from", r.URL.Query(), &params.From)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "to", r.URL.Query(), &params.To)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListEventNames(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// QueryFunnel operation middleware
+func (siw *ServerInterfaceWrapper) QueryFunnel(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params QueryFunnelParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.QueryFunnel(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
 // ListIssues operation middleware
 func (siw *ServerInterfaceWrapper) ListIssues(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	var err error
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params ListIssuesParams
@@ -372,6 +913,8 @@ func (siw *ServerInterfaceWrapper) GetIssue(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetIssueParams
 
@@ -409,8 +952,206 @@ func (siw *ServerInterfaceWrapper) UpdateIssue(w http.ResponseWriter, r *http.Re
 		return
 	}
 
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.UpdateIssue(w, r, id)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// ListKeys operation middleware
+func (siw *ServerInterfaceWrapper) ListKeys(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListKeys(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// RotateKey operation middleware
+func (siw *ServerInterfaceWrapper) RotateKey(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	// ------------- Path parameter "project_id" -------------
+	var projectId ProjectPath
+
+	err = runtime.BindStyledParameterWithLocation("simple", false, "project_id", runtime.ParamLocationPath, chi.URLParam(r, "project_id"), &projectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.RotateKey(w, r, projectId)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// ListServices operation middleware
+func (siw *ServerInterfaceWrapper) ListServices(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListServicesParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "from", r.URL.Query(), &params.From)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "to", r.URL.Query(), &params.To)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListServices(w, r, params)
+	}))
+
+	for _, middleware := range siw.HandlerMiddlewares {
+		handler = middleware(handler)
+	}
+
+	handler.ServeHTTP(w, r.WithContext(ctx))
+}
+
+// ListTraces operation middleware
+func (siw *ServerInterfaceWrapper) ListTraces(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	var err error
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
+
+	// Parameter object where we will unmarshal all parameters from the context
+	var params ListTracesParams
+
+	// ------------- Optional query parameter "project_id" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "service" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "service", r.URL.Query(), &params.Service)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "service", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "status" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "min_duration_ms" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "min_duration_ms", r.URL.Query(), &params.MinDurationMs)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "min_duration_ms", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "max_duration_ms" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "max_duration_ms", r.URL.Query(), &params.MaxDurationMs)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "max_duration_ms", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "query" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "query", r.URL.Query(), &params.Query)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "from" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "from", r.URL.Query(), &params.From)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "to" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "to", r.URL.Query(), &params.To)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
+		return
+	}
+
+	// ------------- Optional query parameter "limit" -------------
+
+	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
+	if err != nil {
+		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
+		return
+	}
+
+	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		siw.Handler.ListTraces(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -434,6 +1175,8 @@ func (siw *ServerInterfaceWrapper) GetTrace(w http.ResponseWriter, r *http.Reque
 		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "trace_id", Err: err})
 		return
 	}
+
+	ctx = context.WithValue(ctx, SessionScopes, []string{})
 
 	// Parameter object where we will unmarshal all parameters from the context
 	var params GetTraceParams
@@ -574,6 +1317,24 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Get(options.BaseURL+"/health", wrapper.GetHealth)
 	})
 	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/auth/login", wrapper.Login)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/auth/logout", wrapper.Logout)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/auth/me", wrapper.GetMe)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/events", wrapper.ListEvents)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/events/names", wrapper.ListEventNames)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/funnels/query", wrapper.QueryFunnel)
+	})
+	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/issues", wrapper.ListIssues)
 	})
 	r.Group(func(r chi.Router) {
@@ -581,6 +1342,18 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Patch(options.BaseURL+"/v1/issues/{id}", wrapper.UpdateIssue)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/projects/{project_id}/keys", wrapper.ListKeys)
+	})
+	r.Group(func(r chi.Router) {
+		r.Post(options.BaseURL+"/v1/projects/{project_id}/keys/rotate", wrapper.RotateKey)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/services", wrapper.ListServices)
+	})
+	r.Group(func(r chi.Router) {
+		r.Get(options.BaseURL+"/v1/traces", wrapper.ListTraces)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/traces/{trace_id}", wrapper.GetTrace)
@@ -592,36 +1365,67 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 // Base64 encoded, gzipped, json marshaled Swagger object
 var swaggerSpec = []string{
 
-	"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",
+	"H4sIAAAAAAAC/9wcXXPbNvKvYHidSTvDWLaTdBq9pWnS+poPX+w85XwKTK4k1CTAAKAVXUb//QYLkARJ",
+	"UKIsOzPXp1oFuFjs9xfyLUpEXggOXKto+i0qqKQ5aJD467UUuflvCiqRrNBM8GgaXWgqNRFzopdANMuB",
+	"SMoXcER+gzktM01On5KlKKUidCGOojhi5qsvJch1FEec5hBNo7kBHUcqWUJOzRlzIXOqo2mUUg2PDdgo",
+	"jvS6MJuVlowvos0mjs6UKuHsN/MFgi2oXjZQWRrFkYQvJZOQRlMtSwiewbj++WkDn3ENC5B4wBuWM12D",
+	"72Cd4aIPMrV3jqbPjuMop19ZXubR9PTY/GLc/joJHnQuxV+QaHuXNoUdIRXRAolcKpCPFJkzqTQp7HdD",
+	"hHXLMyTFfld3GJ0bkobp2wJ+GJ0vRf/er3i6Ta64WA3dWov9hWljrqAKwRWgtP9K0w/wpQSF7E8E18Dx",
+	"T1oUGUuoQXLylzKYfvPO+kHCPJpG/5g0mjSxq2rySkoh7VHtm57xW5qxlEh34CaO3gn9WpQ8ffjD3wlN",
+	"5njUJo4+clrqpZDsv/Cdjs7EYgEpYZwISa5pShIJKXDNaKZQNBwUc8iLgv0Ja7RMUhQgNbO8SiRQDemM",
+	"6rHsjo1xGCObsS/lIz8orzOWzG4spr2DJdUwQ9MxK0DOFCTeNg+MhFtxs9elNr4WfrLmr6WjHmZBPGKf",
+	"klc1fHFtQBicXoqlkPoPoJk1Cm12/kqTG+ApWeK6YanRXQVKMcGV0WVKFlKUhfnTWDF1ZDH0WAlGVmbV",
+	"NwF3U0FbMb0kVJMMqNJEcCD4qYE4hkfPn80yqoEn61keOKZ4/oykpURpN9heu6spkLcgiSooV+6Cqrni",
+	"UXMWL/Nre5R/lxGYaVHM8Cb4AdNg0dumX69LziFzWlbDpFLStfmNlB5riH0Bsh96N4i77OkRsoV/SIIs",
+	"lj0Nhup/bxdpu20Q7vskKaUEnkDARpRZIa0v76lkypRmvNbx3jp8TQAlY2aXAluYiUTG24gclKKLMKgi",
+	"o9qACC4aAWQJzKynC25A3gxdxUju4JqmyU1wxdgbpWlejLevWtIEhk4qZbab2c2hHnl7zGho6Z3Z3LND",
+	"MY+6QSm6Ba7fMOvzOxJ6W0XFo3TyXIq0TDQC7CtlV6wt7EGM3jlmdyRalFyPlLcBceng4UhkAYew8S3N",
+	"Qfjcv0btVAzNdBZeubOB9KTSQg9IZ0f8Kpu6i8b/woi2R+O5y8HG6aDSULRFtrclp1/P7OIzzFHcj9O+",
+	"G9Fi/MErxlOxMjGF4KlqZUZPfj5u5UbPnp8ej8iPfLLbaw3T7gMoPOq+ibfbB19oKEIu+DDajSJH78O4",
+	"yqq12EIrxDigylwzXtocgGbZ+3k0/bSdAK3QcHPVDfU/Grknq6UgEmiyhJToJVPE4E4oTzFS5PAVI7kj",
+	"g14i+C1IdGXmHrNCwi0TpU+QJsbyNotbkDTLgttSKYriO13qujQpqu5fDI39djs0+pRR0W7I2bQs0QCh",
+	"g2QNSVKTD7SlyJm+oVhDl2q3S3L7ajsaRADLQIc5pG3h4QhnNWd8AbKQbIC1WKyZKQD+ABlqRveGvTXG",
+	"3DvjlaBEdrtnAq5oXmQw2xqQ2i1bQ8ndAXEtads0HUXowm6tAt6ZhIUEpSANZ+jDEYWWYEs3bU1u8hNF",
+	"CpBYFyVGs9BKGDbW1dKYiCwFpV2Z78eMYZabrX/ColflksYklNsiz36NwJfkLWFNpS+eKPVinVp3Pen3",
+	"pbWKgvqM7jNgUO1/A01Z1ld+VtmEnVy3EpwA17M9g/xu0rmT2nhc97TBq4UTEQQyHsf6it2YJKtK232R",
+	"EfO5goE1LTTN7hws2wqBgRDX5XN32iAZLmoFBm4CxE9RySuLEzXGx6jFggvZEpZGJRHUx8KYpICn2t9G",
+	"hP1U6BJvxIJxr5bcyStzJ759M0yVWgmZjiiLIAzvixAabwP3dpq/V1pbwQuVmXZ9bkKZYJmpsUJhGrbS",
+	"6d41dtZvBkOuNhyapswYOZqde//f9jN6KB1QaLnfcspAfOeXT3wCtTD3CyUeLQZYgH/2DVJ6WBEijqSw",
+	"frTSb7HiKBI5YOR+NarS7ZwOwgrhf1FQPiA/VGvJrku9TQpCbOwesaX2YBfuUMV318K9Q9d6J1J4uFsl",
+	"S5al0kaXo4xEjVLASqTXM2MqIR/SSLNhrTSEQ9MUCptp9KWrKtfPRpfa9yyz7/T28f0WCeNoqXUxk6LU",
+	"YanC5V4i5V3whvGwARoUVCGLJeX9yPVSlkBWS3AtnYLyR4oUVALXhClMdAt/DsBYK5JSTb2WyLUQGVBu",
+	"XZv5cnvsf2ihW5QygTGiemF3VjZ7Tx42ZiXAwB3Vdqln+1iGKqKeJU7fh9aHuwvdqKUx/m2O1OYURagf",
+	"2VuStS7R1sA2rpXi1gLmWZVaD+NtdXCPUZ6juJZiZaMH16AzJ1FNr6mCYBR4aQQzEEDczXbM6gpDYEMt",
+	"Rm1NcjpP7DoR3FZzrMZgwYhBSrQglJg0gd1CivrWSvsOMSpSiD3Fe8iWO6HYUWEO6sQWwt1FL8ZHR36L",
+	"aIvsNji2We1duqLkVrFFeQvncYjJeEYgpIsyz6lc70w0HexBjCo430MRllTNKj1tNnjOYKcbM3SebQke",
+	"hZ5tLTX+f4tpc/vOXVuyeDdh9nkTEpaPjmljU9ZDU4FQXF8lt/hJH0lkcFJKptcXRlWq0jMGB/XgWiLE",
+	"DQNvdK3MFFRzDA2G1A4Y4agS4/PAUNoHoCl5cX5G5kJao61iYksbMSnatp3ylMyxy6KI0kJCSq7X5Nwc",
+	"fURe3YJc6yXjC1LyFCSZ3J4QW2Yj5+8vLs3vCS31cpKJBeOEA6QKg6sW7sTejCjQBjjujfFkwbM1kaBL",
+	"yRWGYmQuRV4NDKp6lNDEb5TYVIuI+RF5W2qqDV5uHE2RvFTa7CWU/PPi/TvipsKIodrRv3ldJ5xGeDmC",
+	"zUtDpSiOXAMhmkYnR6dHxxhkFsBpwaJp9OTo+OgJRh96iXybLOtewsJWoIzgoTCfpdE0+h2qbkxnXO/0",
+	"+Pje5tWqfk9/YO3CKpwhmUV03RLAaPrpKo5UZVxdY4QkS0hucGObp6hZwvqG7jkoPuSPy8vzx8jIzy2u",
+	"f67YLjhRZZKAwtmjNq2w7uQmM0HpX0W6vjcStWpam7bealnC5gHZ8xZCrHlTzREaCXt6fDIEpUZr0pp1",
+	"3MbGN2JBGLcTZ2iNUL/qYluXsaLUPmd7TDHrPfI87QuBu5HZjtjV+Lxy/VKbiepq/KyNiLWvQ0r0FqLv",
+	"zqGXDl2s992dSTUZfHhVD5nJ2sDV5Ggi8SA1THT2ym6JWxPvA73hZsukGdrexOER8aoY19Ct5/HCH3Yq",
+	"dvt+3i7xbft6xxVx6H/EvksxZpcdp99cPaDsNSNcARF8K5QmtvtCcqoTdL9OPjo69rXIhISOS+/I1MRQ",
+	"e4RkvcNth0nXPfLpUPKPq5bVg2v9ZKXHF9xMkJoxyQ2T5ui1uOt/dpnTbLdWGePZhjsu6Jp8qYeogl72",
+	"JX5lJ5HJj57G/WQnLVA4aLK0Ax04oW4CNXOim21uBiSInb6JSanMZy8zltz8IUzMZBfstM0ReS1kHXnZ",
+	"oQ43lELEfE7oXIP0zzTSWgjpwjVbKKnnZaqh5OL5M+JmcIkC4G4wmcl6MDm2IyjuAYmiORA7FaMwjm2Q",
+	"WRnCCl7txK9w0ASjvLZ4Y5Rn73WIbF89TITij9F95wClNYUWkHa7TqTbYDzh8W5P6D1IaWvDh5IT6hKN",
+	"WgWaLvGgaTqrGrL37fSamZ1R5Oq0VYccWp30bvNmHQWnCh4zroArptktWJuP8m3yFSIkcXMMQy+Jqp/7",
+	"O2AhB56GtQYgqkKm//9a0xLdOdFd5255k3b6zJu7PNk9cxk+wHXrgyf4II8DIB/S7zcTEwGNe0EKugAi",
+	"5i5VP1zpzEk1sJbOTb6xdLMt9j5zUyD7qV311HFrpKlm2/h/vBf/H5xZbnIn9B7OLJPUrRtWPd3NqvrF",
+	"XJtRv4M2mTTyxgYLTCsbY7hAsArtsAyRLPs8s1MjB7LtgdycP9bynd2cmyzqs8+ik1qa30nVDmP5yyXl",
+	"C6i5/kgR1QztGEWtUsTJt2b0bTO5gfV2h/mn2XBHd4nPaL9P5O1eSY4Iu82FYkIT9I0u0D6M9GgWsUhp",
+	"r/1IEcYXoDRB6u5mwEQKXY1ohYN2fKGoCCUcVsS+aDTAMSq2byaVUWm5JtUkM45ekw/2PSUiQpQWBVkJ",
+	"eWOCdZbnkDKqIVvX/bgF1bCi60eKJDRZQij+/YCY/omPKe9VJk7uTUVfePXsTkMfo/uVocahPLd0GOR6",
+	"zXS/DzOoYxdNS+Pvli3vaDkNV5ttlaFN9IpORC+pJgrLgN6jVO/FfE3/puE4SP1Lu+Uw2ndmnnm2do0S",
+	"92YXEbXNCPuQwV5lKAQfGfmPTETqEbObqhm2R3CdMz6re2t5G3Ag8K0engyCo1/vCm5snoOkRvk5KMP5",
+	"uxUJm7b82CKhU56D84YLoDJZ1uBaqjn5VrV9/fyh23+0DT3r4ZC9rZmrH107N66rQ8YvVjMxPxFqPKeW",
+	"ALHrZzQlpW73Umv32kjUQ1/mjzVZ0qIAjs2WI3KBVme1FAqqgbAVVYQbBJsJFirB9SLND0Xgq5aU4ACF",
+	"xeOzHQyaEhO1fg6529/Bmqf7KFi0/x0Tv9k++K+YFFRrkObj/3w6fvycPp6/ePz66ttJ/OR080NgivPB",
+	"xTfo1VEGDHvvJW0i8zLLrGDZ07wOmddj/3Rlbmv/aQTLkW4jK6EZSeEWMlHk7vWZzKIpjn5MJ5PMbFgK",
+	"pae/HP9yEm2uNv8LAAD//7H1Z4KKSAAA",
 }
 
 // GetSwagger returns the content of the embedded swagger specification file

@@ -21,6 +21,185 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/login": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Log in with email and password
+         * @description Sets an HTTP-only `pulse_session` cookie on success.
+         */
+        post: operations["login"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/logout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End the current session */
+        post: operations["logout"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/auth/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Current user and their projects */
+        get: operations["getMe"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/keys": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the project's ingest keys */
+        get: operations["listKeys"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/keys/rotate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Rotate the project's ingest key
+         * @description Creates a new public key and revokes every previous one. Revoked keys stop working immediately on this gateway's cache.
+         */
+        post: operations["rotateKey"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/traces": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search traces */
+        get: operations["listTraces"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/services": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Services that sent spans in the time range */
+        get: operations["listServices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Explore product events */
+        get: operations["listEvents"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/events/names": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Event names with counts */
+        get: operations["listEventNames"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/funnels/query": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Run a funnel
+         * @description Counts users (distinct_id) reaching each step in order within the conversion window, using ClickHouse windowFunnel. For the users who dropped off after each step it reports the errors and the backend p95 latency seen in their sessions, next to the same numbers for users who went on to the next step.
+         */
+        post: operations["queryFunnel"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/traces/{trace_id}": {
         parameters: {
             query?: never;
@@ -80,6 +259,121 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        LoginRequest: {
+            email: string;
+            password: string;
+        };
+        User: {
+            /** Format: int64 */
+            id: number;
+            email: string;
+            name: string;
+        };
+        Project: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @enum {string} */
+            role: "owner" | "member";
+        };
+        Me: {
+            user: components["schemas"]["User"];
+            projects: components["schemas"]["Project"][];
+        };
+        ApiKey: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            project_id: number;
+            public_key: string;
+            rate_limit_per_sec: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            revoked_at?: string;
+        };
+        TraceSummary: {
+            trace_id: string;
+            root_name: string;
+            root_service: string;
+            services: string[];
+            /** Format: date-time */
+            start_time: string;
+            /** Format: int64 */
+            duration_ns: number;
+            span_count: number;
+            error_count: number;
+            has_browser: boolean;
+            http_status?: number;
+        };
+        TraceList: {
+            traces: components["schemas"]["TraceSummary"][];
+        };
+        EventList: {
+            events: components["schemas"]["ProductEvent"][];
+        };
+        EventName: {
+            name: string;
+            /** Format: int64 */
+            count: number;
+        };
+        FunnelQuery: {
+            steps: string[];
+            /** @default 3600 */
+            window_seconds: number;
+            /** Format: date-time */
+            from?: string;
+            /** Format: date-time */
+            to?: string;
+        };
+        /** @description Backend health in the sessions of a group of users. */
+        CohortHealth: {
+            /** Format: int64 */
+            users: number;
+            /** Format: int64 */
+            sessions: number;
+            /**
+             * Format: int64
+             * @description Sessions with at least one error.
+             */
+            error_sessions: number;
+            /** @description p95 duration of backend server spans in these sessions. */
+            p95_latency_ms: number;
+            top_errors: components["schemas"]["FunnelError"][];
+        };
+        FunnelError: {
+            /** Format: int64 */
+            issue_id: number;
+            title: string;
+            exception_type: string;
+            service_name: string;
+            /** Format: int64 */
+            users: number;
+            /** Format: int64 */
+            count: number;
+        };
+        FunnelStep: {
+            event: string;
+            /**
+             * Format: int64
+             * @description Users who reached this step.
+             */
+            users: number;
+            conversion_from_previous: number;
+            conversion_overall: number;
+            /** @description Users who reached this step but not the next one. */
+            dropped?: components["schemas"]["CohortHealth"];
+            /** @description Users who reached this step and the next one. */
+            continued?: components["schemas"]["CohortHealth"];
+        };
+        FunnelResult: {
+            steps: components["schemas"]["FunnelStep"][];
+            window_seconds: number;
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+        };
         Health: {
             status: string;
             service: string;
@@ -120,12 +414,24 @@ export interface components {
             db_system?: string;
             db_statement?: string;
             session_id?: string;
+            attributes?: {
+                [key: string]: string;
+            };
+            span_events?: components["schemas"]["SpanEvent"][];
             depth: number;
             /** @description True when the span's parent is not part of the trace data. */
             orphan: boolean;
             children: components["schemas"]["SpanNode"][];
             errors: components["schemas"]["ErrorOccurrence"][];
             events: components["schemas"]["ProductEvent"][];
+        };
+        SpanEvent: {
+            name: string;
+            /** Format: date-time */
+            time: string;
+            attributes?: {
+                [key: string]: string;
+            };
         };
         ErrorOccurrence: {
             /** Format: date-time */
@@ -151,6 +457,7 @@ export interface components {
             distinct_id: string;
             session_id: string;
             span_id: string;
+            trace_id?: string;
             properties: {
                 [key: string]: unknown;
             };
@@ -180,6 +487,8 @@ export interface components {
             /** Format: date-time */
             resolved_at?: string;
             times_regressed: number;
+            /** @description Occurrences per hour over the last 24 hours, oldest first (list only). */
+            trend?: number[];
         };
         IssueList: {
             issues: components["schemas"]["Issue"][];
@@ -215,8 +524,24 @@ export interface components {
                 "application/json": components["schemas"]["Error"];
             };
         };
+        /** @description Not logged in or bad credentials */
+        Unauthorized: {
+            headers: {
+                [name: string]: unknown;
+            };
+            content: {
+                "application/json": components["schemas"]["Error"];
+            };
+        };
     };
     parameters: {
+        ProjectPath: number;
+        /** @description Start of the time range. Default 24 hours ago. */
+        From: string;
+        /** @description End of the time range. Default now. */
+        To: string;
+        Limit: number;
+        /** @description Defaults to the user's first project. */
         ProjectID: number;
         IssueID: number;
     };
@@ -246,9 +571,269 @@ export interface operations {
             };
         };
     };
+    login: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["LoginRequest"];
+            };
+        };
+        responses: {
+            /** @description Logged in */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    logout: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Logged out */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    getMe: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Current user */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Me"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
+    listKeys: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Keys, active first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKey"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    rotateKey: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The new key */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ApiKey"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listTraces: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                /** @description Only traces with a span from this service. */
+                service?: string;
+                status?: "ok" | "error";
+                min_duration_ms?: number;
+                max_duration_ms?: number;
+                /** @description Case-insensitive match on span names. */
+                query?: string;
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Most recent matching traces */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceList"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    listServices: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Service names */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": string[];
+                };
+            };
+        };
+    };
+    listEvents: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                event?: string;
+                distinct_id?: string;
+                session_id?: string;
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Most recent matching events */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventList"];
+                };
+            };
+        };
+    };
+    listEventNames: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Event names, most frequent first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["EventName"][];
+                };
+            };
+        };
+    };
+    queryFunnel: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["FunnelQuery"];
+            };
+        };
+        responses: {
+            /** @description Funnel result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["FunnelResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
     getTrace: {
         parameters: {
             query?: {
+                /** @description Defaults to the user's first project. */
                 project_id?: components["parameters"]["ProjectID"];
             };
             header?: never;
@@ -274,6 +859,7 @@ export interface operations {
     listIssues: {
         parameters: {
             query?: {
+                /** @description Defaults to the user's first project. */
                 project_id?: components["parameters"]["ProjectID"];
                 status?: components["schemas"]["IssueStatus"];
                 service?: string;

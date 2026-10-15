@@ -19,7 +19,7 @@ describe('input privacy', () => {
       </form>`;
     client = new PulseClient({
       endpoint: 'http://ingest.test',
-      projectId: '1',
+      apiKey: 'pk_dev_local_0123456789abcdef',
       tracing: false,
       autocapture: { webVitals: false, pageviews: false, errors: false },
     });

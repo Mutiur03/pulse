@@ -8,9 +8,12 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/issues"
+	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 )
 
@@ -21,6 +24,26 @@ type TraceReader interface {
 	ErrorsByTrace(ctx context.Context, project uint64, traceID string) ([]ch.ErrorRecord, error)
 	EventsByTrace(ctx context.Context, project uint64, traceID string) ([]ch.EventRecord, error)
 	ErrorsByIssue(ctx context.Context, project, issueID uint64, limit int) ([]ch.ErrorRecord, error)
+	ListTraces(ctx context.Context, f ch.TraceFilter) ([]ch.TraceSummaryRow, error)
+	Services(ctx context.Context, project uint64, from, to time.Time) ([]string, error)
+	ListEvents(ctx context.Context, f ch.EventFilter) ([]ch.ExploredEvent, error)
+	EventNames(ctx context.Context, project uint64, from, to time.Time) ([]ch.EventNameCount, error)
+	IssueTrends(ctx context.Context, project uint64, ids []uint64, now time.Time) (map[uint64][]int64, error)
+	RunFunnel(ctx context.Context, f ch.FunnelQuery) (ch.FunnelData, error)
+}
+
+// Accounts logs users in and out.
+type Accounts interface {
+	Login(ctx context.Context, email, password, userAgent string) (string, auth.User, error)
+	Principal(ctx context.Context, token string) (*auth.Principal, error)
+	Logout(ctx context.Context, token string) error
+}
+
+// KeyStore manages ingest keys; Purge drops revoked keys from the gateway cache.
+type KeyStore interface {
+	List(ctx context.Context, projectID int64) ([]keys.APIKey, error)
+	Rotate(ctx context.Context, projectID int64) (keys.APIKey, []string, error)
+	Purge(ctx context.Context, publicKey string) error
 }
 
 type IssueStore interface {
@@ -30,8 +53,19 @@ type IssueStore interface {
 }
 
 type Server struct {
-	Traces TraceReader
-	Issues IssueStore
+	Traces       TraceReader
+	Issues       IssueStore
+	Accounts     Accounts
+	Keys         KeyStore
+	SecureCookie bool
+	Now          func() time.Time
+}
+
+func (s *Server) now() time.Time {
+	if s.Now != nil {
+		return s.Now()
+	}
+	return time.Now()
 }
 
 var _ gen.ServerInterface = (*Server)(nil)
@@ -51,11 +85,51 @@ func internal(w http.ResponseWriter, err error) {
 	writeErr(w, http.StatusInternalServerError, "internal error")
 }
 
-func project(p *gen.ProjectID) uint64 {
-	if p == nil || *p < 1 {
-		return 1
+// project resolves the requested project for the logged-in user: the given
+// id if they are a member, else their first project when none was given.
+// It writes a 404 and returns false when the user cannot read it, so other
+// projects' existence is not revealed.
+func project(w http.ResponseWriter, r *http.Request, p *gen.ProjectID) (uint64, bool) {
+	pr := auth.FromContext(r.Context())
+	if pr == nil {
+		writeErr(w, http.StatusUnauthorized, "not logged in")
+		return 0, false
 	}
-	return uint64(*p)
+	if p == nil {
+		if len(pr.Projects) == 0 {
+			writeErr(w, http.StatusNotFound, "no projects")
+			return 0, false
+		}
+		return uint64(pr.Projects[0].ID), true
+	}
+	if !pr.Can(*p) {
+		writeErr(w, http.StatusNotFound, "project not found")
+		return 0, false
+	}
+	return uint64(*p), true
+}
+
+// timeRange applies the default of the last 24 hours.
+func (s *Server) timeRange(from, to *time.Time) (time.Time, time.Time) {
+	end := s.now().UTC()
+	if to != nil {
+		end = *to
+	}
+	start := end.Add(-24 * time.Hour)
+	if from != nil {
+		start = *from
+	}
+	return start, end
+}
+
+func limit(l *int, def, max int) int {
+	if l == nil || *l < 1 {
+		return def
+	}
+	if *l > max {
+		return max
+	}
+	return *l
 }
 
 func (s *Server) GetHealth(w http.ResponseWriter, _ *http.Request) {
@@ -64,7 +138,10 @@ func (s *Server) GetHealth(w http.ResponseWriter, _ *http.Request) {
 
 func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, traceID string, params gen.GetTraceParams) {
 	traceID = strings.ToLower(traceID)
-	p := project(params.ProjectId)
+	p, ok := project(w, r, params.ProjectId)
+	if !ok {
+		return
+	}
 	ctx := r.Context()
 	spans, err := s.Traces.SpansByTrace(ctx, p, traceID)
 	if err != nil {
@@ -99,7 +176,11 @@ func toAPI(i issues.Issue) gen.Issue {
 }
 
 func (s *Server) ListIssues(w http.ResponseWriter, r *http.Request, params gen.ListIssuesParams) {
-	f := issues.ListFilter{ProjectID: int64(project(params.ProjectId)), Limit: 25}
+	p, ok := project(w, r, params.ProjectId)
+	if !ok {
+		return
+	}
+	f := issues.ListFilter{ProjectID: int64(p), Limit: 25}
 	if params.Status != nil {
 		if !issues.Status(*params.Status).Valid() {
 			writeErr(w, http.StatusBadRequest, "invalid status")
@@ -135,15 +216,31 @@ func (s *Server) ListIssues(w http.ResponseWriter, r *http.Request, params gen.L
 		internal(w, err)
 		return
 	}
+	ids := make([]uint64, len(list))
+	for i, iss := range list {
+		ids[i] = uint64(iss.ID)
+	}
+	trends, err := s.Traces.IssueTrends(r.Context(), p, ids, s.now())
+	if err != nil {
+		internal(w, err)
+		return
+	}
 	out := gen.IssueList{Issues: make([]gen.Issue, 0, len(list)), Total: total, Limit: f.Limit, Offset: f.Offset}
 	for _, i := range list {
-		out.Issues = append(out.Issues, toAPI(i))
+		a := toAPI(i)
+		if t, ok := trends[uint64(i.ID)]; ok {
+			a.Trend = &t
+		}
+		out.Issues = append(out.Issues, a)
 	}
 	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) GetIssue(w http.ResponseWriter, r *http.Request, id gen.IssueID, params gen.GetIssueParams) {
 	iss, err := s.Issues.Get(r.Context(), id)
+	if err == nil && !canRead(r, iss.ProjectID) {
+		err = issues.ErrNotFound
+	}
 	if errors.Is(err, issues.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "issue not found")
 		return
@@ -178,6 +275,14 @@ func (s *Server) UpdateIssue(w http.ResponseWriter, r *http.Request, id gen.Issu
 		writeErr(w, http.StatusBadRequest, "status must be unresolved, resolved or ignored")
 		return
 	}
+	cur, err := s.Issues.Get(r.Context(), id)
+	if errors.Is(err, issues.ErrNotFound) || (err == nil && !canRead(r, cur.ProjectID)) {
+		writeErr(w, http.StatusNotFound, "issue not found")
+		return
+	} else if err != nil {
+		internal(w, err)
+		return
+	}
 	iss, err := s.Issues.SetStatus(r.Context(), id, st)
 	if errors.Is(err, issues.ErrNotFound) {
 		writeErr(w, http.StatusNotFound, "issue not found")
@@ -187,4 +292,9 @@ func (s *Server) UpdateIssue(w http.ResponseWriter, r *http.Request, id gen.Issu
 		return
 	}
 	writeJSON(w, http.StatusOK, toAPI(iss))
+}
+
+func canRead(r *http.Request, project int64) bool {
+	p := auth.FromContext(r.Context())
+	return p != nil && p.Can(project)
 }

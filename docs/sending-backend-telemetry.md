@@ -12,11 +12,14 @@ OpenTelemetry Collector can send to it directly.
 
 gRPC (port 4317) is not supported yet; use the HTTP exporter.
 
-## Project
+## Ingest key
 
-Spans and logs go to the project in the resource attribute
-`pulse.project_id`, else the `X-Pulse-Project` header, else the
-`?project_id=` query parameter, else project `1`.
+Every request needs the project's public ingest key (Settings page), in the
+`X-Pulse-Key` header or the `?key=` query parameter. The project is taken
+from the key; any `project_id` in the payload or resource is ignored.
+Unknown or revoked keys get `401`, and requests over the key's per-second
+limit get `429` with `Retry-After`. The local compose stack seeds
+`pk_dev_local_0123456789abcdef`.
 
 ## OpenTelemetry SDKs
 
@@ -26,7 +29,8 @@ Every OTel SDK reads the standard environment variables:
 export OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:8080   # SDK appends /v1/traces and /v1/logs
 export OTEL_EXPORTER_OTLP_PROTOCOL=http/protobuf
 export OTEL_SERVICE_NAME=checkout-api
-export OTEL_RESOURCE_ATTRIBUTES=pulse.project_id=1,deployment.environment.name=production
+export OTEL_EXPORTER_OTLP_HEADERS=X-Pulse-Key=pk_dev_local_0123456789abcdef
+export OTEL_RESOURCE_ATTRIBUTES=deployment.environment.name=production
 export OTEL_PROPAGATORS=tracecontext,baggage
 ```
 
@@ -70,7 +74,7 @@ exporters:
     endpoint: http://pulse-ingest:8080
     encoding: proto          # or json
     headers:
-      X-Pulse-Project: "1"
+      X-Pulse-Key: pk_dev_local_0123456789abcdef
 
 service:
   pipelines:

@@ -40,7 +40,7 @@ func TestDecodeOTLPJSON(t *testing.T) {
 	}
 	s := b.Spans[0]
 	checks := map[string][2]string{
-		"project": {s.ProjectID, "7"}, "service": {s.ServiceName, "checkout"}, "kind": {s.Kind, "client"},
+		"project": {s.ProjectID, "1"}, "service": {s.ServiceName, "checkout"}, "kind": {s.Kind, "client"},
 		"status": {s.StatusCode, "error"}, "session": {s.SessionID, "s1"}, "db": {s.DBSystem, "postgresql"},
 		"parent": {s.ParentSpanID, "aaaaaaaaaaaaaaaa"}, "kind2": {b.Spans[1].Kind, "client"},
 	}
@@ -147,5 +147,25 @@ func TestDecodeOTLPLogs(t *testing.T) {
 	recs, err = DecodeOTLPLogs(body, true, "1")
 	if err != nil || len(recs) != 1 || recs[0].Severity != "WARN" || recs[0].TraceID != "ab" || recs[0].Timestamp.UnixNano() != 2000 {
 		t.Fatalf("%+v %v", recs, err)
+	}
+}
+
+func TestChildSpansInheritSession(t *testing.T) {
+	body := `{"resourceSpans":[{"resource":{"attributes":[{"key":"service.name","value":{"stringValue":"api"}}]},
+	 "scopeSpans":[{"spans":[
+	  {"traceId":"aa","spanId":"01","name":"POST /pay","kind":2,"attributes":[
+	   {"key":"session.id","value":{"stringValue":"sess_1"}},{"key":"enduser.id","value":{"stringValue":"u1"}}]},
+	  {"traceId":"aa","spanId":"02","parentSpanId":"01","name":"charge","events":[{"name":"exception","attributes":[
+	   {"key":"exception.type","value":{"stringValue":"E"}},{"key":"exception.message","value":{"stringValue":"declined"}}]}]},
+	  {"traceId":"bb","spanId":"03","name":"other"}]}]}]}`
+	b, err := DecodeOTLPTraces([]byte(body), false, "1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b.Spans[1].SessionID != "sess_1" || b.Spans[2].SessionID != "" {
+		t.Errorf("sessions: %q %q", b.Spans[1].SessionID, b.Spans[2].SessionID)
+	}
+	if len(b.Errors) != 1 || b.Errors[0].SessionID != "sess_1" || b.Errors[0].DistinctID != "u1" {
+		t.Errorf("error should carry the trace's session and user: %+v", b.Errors)
 	}
 }

@@ -11,6 +11,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math/rand"
 	"net/http"
 	"os"
 	"os/signal"
@@ -53,7 +54,6 @@ func setupTracing(ctx context.Context) (func(context.Context) error, error) {
 	}
 	res, err := resource.Merge(resource.Default(), resource.NewSchemaless(
 		semconv.ServiceName(env("OTEL_SERVICE_NAME", "go-demo-api")),
-		attribute.String("pulse.project_id", env("PULSE_PROJECT_ID", "1")),
 	))
 	if err != nil {
 		return nil, err
@@ -107,13 +107,33 @@ func (s *server) orders(w http.ResponseWriter, r *http.Request) {
 
 var errDeclined = errors.New("payment declined")
 
-// chargeCard does a lookup, then fails, the way a real payment bug would.
-func chargeCard(ctx context.Context, db *sql.DB, orderID int) error {
+// payFailureRate is the share of /api/pay calls that fail (PAY_FAILURE_RATE,
+// default 0.4). Failing calls are also slow, as when a payment provider
+// times out, so funnel drop-offs line up with errors and latency.
+var payFailureRate = func() float64 {
+	if v, err := strconv.ParseFloat(os.Getenv("PAY_FAILURE_RATE"), 64); err == nil && v >= 0 && v <= 1 {
+		return v
+	}
+	return 0.4
+}()
+
+// chargeCard does a lookup and calls the (simulated) payment provider.
+func chargeCard(ctx context.Context, db *sql.DB, orderID int, fail bool) error {
 	ctx, span := tracer.Start(ctx, "chargeCard")
 	defer span.End()
 	var limit int
 	if err := db.QueryRowContext(ctx, `SELECT 1000 + $1::int`, orderID).Scan(&limit); err != nil {
 		return err
+	}
+	_, provider := tracer.Start(ctx, "payment-provider authorize")
+	if fail {
+		time.Sleep(time.Duration(700+rand.Intn(1800)) * time.Millisecond)
+	} else {
+		time.Sleep(time.Duration(20+rand.Intn(80)) * time.Millisecond)
+	}
+	provider.End()
+	if !fail {
+		return nil
 	}
 	err := fmt.Errorf("%w for order %d (limit %d)", errDeclined, orderID, limit)
 	span.RecordError(err, trace.WithStackTrace(true))
@@ -121,10 +141,17 @@ func chargeCard(ctx context.Context, db *sql.DB, orderID int) error {
 	return err
 }
 
-// pay always fails: it is the demo's error endpoint.
+// pay fails for a share of calls (always with ?fail=1, never with ?fail=0).
 func (s *server) pay(w http.ResponseWriter, r *http.Request) {
 	orderID := int(time.Now().UnixNano()%9000) + 1000
-	if err := chargeCard(r.Context(), s.db, orderID); err != nil {
+	fail := rand.Float64() < payFailureRate
+	switch r.URL.Query().Get("fail") {
+	case "1":
+		fail = true
+	case "0":
+		fail = false
+	}
+	if err := chargeCard(r.Context(), s.db, orderID, fail); err != nil {
 		// The exception was recorded where it happened (chargeCard); the
 		// request span only gets an error status.
 		span := trace.SpanFromContext(r.Context())

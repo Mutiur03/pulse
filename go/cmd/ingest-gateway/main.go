@@ -13,7 +13,10 @@ import (
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/ingest"
 	"github.com/Mutiur03/pulse/internal/kafka"
+	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/telemetry"
+	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/redis/go-redis/v9"
 )
 
 func main() {
@@ -35,10 +38,22 @@ func main() {
 	}
 	defer producer.Close()
 
+	db, err := pgxpool.New(context.Background(), cfg.PostgresURL)
+	if err != nil {
+		log.Fatalf("Failed to configure Postgres: %v", err)
+	}
+	defer db.Close()
+	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	defer func() { _ = rdb.Close() }()
+	auth := &ingest.KeyAuth{
+		Resolver: &keys.Resolver{Redis: rdb, Source: &keys.Store{DB: db}},
+		Limiter:  &keys.Limiter{Redis: rdb},
+	}
+
 	addr := fmt.Sprintf(":%d", cfg.IngestGatewayPort)
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           ingest.NewHandler(producer),
+		Handler:           ingest.NewHandler(producer, auth),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 

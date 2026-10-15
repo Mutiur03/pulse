@@ -5,7 +5,7 @@ const params = new URLSearchParams(location.search);
 const goApi = params.get('api') ?? 'http://localhost:8090';
 init({
   endpoint: params.get('ingest') ?? 'http://localhost:8080',
-  projectId: '1',
+  apiKey: params.get('key') ?? 'pk_dev_local_0123456789abcdef',
   serviceName: 'browser-demo',
   environment: 'local',
   flushIntervalMs: 2000,
@@ -48,6 +48,28 @@ on('gopay', async () => {
   const body = await res.json();
   log(`Go API pay: HTTP ${res.status} ${body.error ?? ''}, trace ${body.trace_id}`);
   (window as unknown as { lastTrace?: string }).lastTrace = body.trace_id;
+});
+// Shop flow used by tools/seed-demo: checkout_started -> payment_succeeded.
+on('checkout', async () => {
+  capture('checkout_started', { items: 3 });
+  const res = await fetch(`${goApi}/api/orders?n=3`);
+  log(`checkout: orders HTTP ${res.status}`);
+});
+on('buy', async () => {
+  const fail = params.get('fail');
+  const res = await fetch(`${goApi}/api/pay${fail ? `?fail=${fail}` : ''}`, { method: 'POST' });
+  const body = await res.json();
+  (window as unknown as { lastTrace?: string }).lastTrace = body.trace_id;
+  if (res.ok) {
+    capture('payment_succeeded', { amount: 42 });
+    log(`paid, trace ${body.trace_id}`);
+  } else {
+    capture('payment_failed', { status: res.status });
+    log(`payment failed: HTTP ${res.status} ${body.error ?? ''}`);
+    setTimeout(() => {
+      throw new Error(`Payment failed: ${body.error ?? res.status}`);
+    });
+  }
 });
 on('xhr', () => {
   const xhr = new XMLHttpRequest();
