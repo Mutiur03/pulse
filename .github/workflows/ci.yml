@@ -118,6 +118,9 @@ jobs:
       - name: Test SDK
         run: pnpm --filter @pulse/browser test
 
+      - name: Test Vite plugin
+        run: pnpm --filter @pulse/vite-plugin typecheck && pnpm --filter @pulse/vite-plugin test
+
       - name: Build all packages
         run: pnpm -r build
 

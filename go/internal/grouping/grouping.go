@@ -19,6 +19,9 @@ type Frame struct {
 	Function string
 	File     string
 	InApp    bool
+	// Culprit is false when Function is not a real name (e.g. a source
+	// line used as the key), so the culprit shows only the file.
+	Culprit bool
 }
 
 // MaxFrames is how many in-app frames contribute to the fingerprint.
@@ -47,6 +50,10 @@ var notInApp = []string{
 	"chrome-extension://", "moz-extension://", "webpack/bootstrap", "java.", "javax.", "sun.", "jdk.", "kotlin.",
 	"zone.js", "@opentelemetry/",
 }
+
+// InApp reports whether a frame is application code rather than a library,
+// the runtime or the browser.
+func InApp(fn, file string) bool { return inApp(fn, file) }
 
 func inApp(fn, file string) bool {
 	s := file + " " + fn
@@ -100,28 +107,28 @@ func ParseStack(stack string) []Frame {
 			continue
 		}
 		if m := rePython.FindStringSubmatch(line); m != nil {
-			frames = append(frames, Frame{Function: m[2], File: normalizeFile(m[1]), InApp: inApp(m[2], m[1])})
+			frames = append(frames, Frame{Function: m[2], File: normalizeFile(m[1]), InApp: inApp(m[2], m[1]), Culprit: true})
 			continue
 		}
 		if m := reGoFunc.FindStringSubmatch(trimmed); m != nil && i+1 < len(lines) {
 			if f := reGoFile.FindStringSubmatch(lines[i+1]); f != nil {
-				frames = append(frames, Frame{Function: m[1], File: normalizeFile(f[1]), InApp: inApp(m[1], f[1])})
+				frames = append(frames, Frame{Function: m[1], File: normalizeFile(f[1]), InApp: inApp(m[1], f[1]), Culprit: true})
 				i++
 				continue
 			}
 		}
 		if m := reJava.FindStringSubmatch(line); m != nil && !strings.Contains(m[2], "/") {
-			frames = append(frames, Frame{Function: m[1], File: m[2], InApp: inApp(m[1], m[1])})
+			frames = append(frames, Frame{Function: m[1], File: m[2], InApp: inApp(m[1], m[1]), Culprit: true})
 			continue
 		}
 		if m := reV8.FindStringSubmatch(line); m != nil {
 			fn := strings.TrimPrefix(m[1], "new ")
-			frames = append(frames, Frame{Function: fn, File: normalizeFile(m[2]), InApp: inApp(fn, m[2])})
+			frames = append(frames, Frame{Function: fn, File: normalizeFile(m[2]), InApp: inApp(fn, m[2]), Culprit: true})
 			continue
 		}
 		if strings.Contains(trimmed, "@") && !strings.Contains(trimmed, " ") {
 			if m := reGecko.FindStringSubmatch(trimmed); m != nil {
-				frames = append(frames, Frame{Function: m[1], File: normalizeFile(m[2]), InApp: inApp(m[1], m[2])})
+				frames = append(frames, Frame{Function: m[1], File: normalizeFile(m[2]), InApp: inApp(m[1], m[2]), Culprit: true})
 			}
 		}
 	}
@@ -170,10 +177,16 @@ type Result struct {
 
 // Group computes the fingerprint, a readable title and the culprit frame.
 func Group(excType, message, stack string) Result {
+	return GroupFrames(excType, message, ParseStack(stack))
+}
+
+// GroupFrames groups by already parsed frames, innermost first. Symbolicated
+// errors use it with original files and functions, so the fingerprint does
+// not change when a new build renames or moves minified code.
+func GroupFrames(excType, message string, frames []Frame) Result {
 	if excType == "" {
 		excType = "Error"
 	}
-	frames := ParseStack(stack)
 	var keys []string
 	culprit := ""
 	for _, f := range frames {
@@ -182,7 +195,10 @@ func Group(excType, message, stack string) Result {
 		}
 		k := f.Function + "@" + f.File
 		if culprit == "" {
-			culprit = strings.TrimSpace(f.Function + " (" + f.File + ")")
+			culprit = f.File
+			if f.Function != "" && f.Culprit {
+				culprit = strings.TrimSpace(f.Function + " (" + f.File + ")")
+			}
 		}
 		keys = append(keys, k)
 		if len(keys) == MaxFrames {

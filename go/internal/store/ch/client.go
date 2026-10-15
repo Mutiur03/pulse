@@ -199,13 +199,18 @@ type ErrorRow struct {
 	ExceptionType string
 	Message       string
 	Stack         string
-	Release       string
-	Environment   string
-	TraceID       string
-	SpanID        string
-	SessionID     string
-	DistinctID    string
-	URL           string
+	// Frames is the symbolicated stack as JSON; MappedFrames counts frames
+	// resolved through a source map.
+	Frames       string
+	DebugIDs     string
+	MappedFrames uint16
+	Release      string
+	Environment  string
+	TraceID      string
+	SpanID       string
+	SessionID    string
+	DistinctID   string
+	URL          string
 }
 
 // InsertErrors writes grouped errors to the errors table.
@@ -213,13 +218,13 @@ func (c *Client) InsertErrors(ctx context.Context, rows []ErrorRow) error {
 	if len(rows) == 0 {
 		return nil
 	}
-	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO errors (project_id, timestamp, issue_id, fingerprint, title, culprit, platform, service_name, exception_type, message, stack, release, environment, trace_id, span_id, session_id, distinct_id, url)")
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO errors (project_id, timestamp, issue_id, fingerprint, title, culprit, platform, service_name, exception_type, message, stack, frames, debug_ids, mapped_frames, release, environment, trace_id, span_id, session_id, distinct_id, url)")
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
 	for _, e := range rows {
 		if err := batch.Append(e.ProjectID, e.Timestamp, e.IssueID, e.Fingerprint, e.Title, e.Culprit, e.Platform,
-			e.ServiceName, e.ExceptionType, e.Message, e.Stack, e.Release, e.Environment, e.TraceID, e.SpanID,
+			e.ServiceName, e.ExceptionType, e.Message, e.Stack, e.Frames, e.DebugIDs, e.MappedFrames, e.Release, e.Environment, e.TraceID, e.SpanID,
 			e.SessionID, e.DistinctID, e.URL); err != nil {
 			return fmt.Errorf("failed to append to batch: %w", err)
 		}

@@ -749,6 +749,13 @@ paths:
             minimum: 1
             maximum: 100
             default: 20
+        - name: symbolicate
+          in: query
+          description: >
+            Resolve every event's stack again with the source maps uploaded so
+            far. Events not fully mapped are always retried on view.
+          schema:
+            type: boolean
       responses:
         '200':
           description: Issue detail
@@ -997,12 +1004,153 @@ paths:
                 $ref: '#/components/schemas/AlertChannelTest'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/releases:
+    get:
+      summary: List the project's releases, newest first
+      operationId: listReleases
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Releases with artifact counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Release'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/releases/{release}:
+    get:
+      summary: Get a release and its uploaded artifacts
+      operationId: getRelease
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/ReleasePath'
+      responses:
+        '200':
+          description: Release detail
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ReleaseDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/releases/{release}/sourcemaps:
+    post:
+      summary: Upload source maps for a release
+      description: >
+        Authenticated with a project upload token (Authorization: Bearer pul_...),
+        not a session. Each file part is one source map; its form field name is
+        the URL or path of the generated file plus ".map" (for example
+        "~/dist/main.js.map"). The release is created on first upload. Maps with
+        a debugId are matched by it; the rest by URL.
+      operationId: uploadSourcemaps
+      security:
+        - uploadToken: []
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/ReleasePath'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              additionalProperties:
+                type: string
+                format: binary
+      responses:
+        '201':
+          description: Stored artifacts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Artifact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '413':
+          $ref: '#/components/responses/BadRequest'
+  /v1/projects/{project_id}/upload-tokens:
+    get:
+      summary: List the project's source map upload tokens
+      operationId: listUploadTokens
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: Tokens, active first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/UploadToken'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Create an upload token
+      description: The secret is returned only in this response.
+      operationId: createUploadToken
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadTokenCreate'
+      responses:
+        '201':
+          description: The token and its secret
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadTokenCreated'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/upload-tokens/{token_id}/revoke:
+    post:
+      summary: Revoke an upload token
+      operationId: revokeUploadToken
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - name: token_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The revoked token
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UploadToken'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 components:
   securitySchemes:
     session:
       type: apiKey
       in: cookie
       name: pulse_session
+    uploadToken:
+      type: http
+      scheme: bearer
   parameters:
     AlertPath:
       name: alert_id
@@ -1031,6 +1179,13 @@ components:
       schema:
         type: integer
         format: int64
+    ReleasePath:
+      name: release
+      in: path
+      required: true
+      schema:
+        type: string
+        maxLength: 200
     ProjectPath:
       name: project_id
       in: path
@@ -1681,6 +1836,129 @@ components:
         distinct_id:
           type: string
         url:
+          type: string
+        release:
+          type: string
+        frames:
+          description: Parsed stack, innermost first, resolved through source maps where possible.
+          type: array
+          items:
+            $ref: '#/components/schemas/StackFrame'
+        mapped_frames:
+          type: integer
+    StackFrame:
+      type: object
+      required: [function, file, line, column, in_app, mapped, raw_url, raw_line, raw_column]
+      properties:
+        function:
+          type: string
+        file:
+          type: string
+        line:
+          type: integer
+        column:
+          type: integer
+        in_app:
+          type: boolean
+        mapped:
+          type: boolean
+        pre_context:
+          type: array
+          items:
+            type: string
+        context_line:
+          type: string
+        post_context:
+          type: array
+          items:
+            type: string
+        raw_function:
+          type: string
+        raw_url:
+          type: string
+        raw_line:
+          type: integer
+        raw_column:
+          type: integer
+    Release:
+      type: object
+      required: [id, version, created_at, artifact_count]
+      properties:
+        id:
+          type: integer
+          format: int64
+        version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        artifact_count:
+          type: integer
+    ReleaseDetail:
+      type: object
+      required: [release, artifacts]
+      properties:
+        release:
+          $ref: '#/components/schemas/Release'
+        artifacts:
+          type: array
+          items:
+            $ref: '#/components/schemas/Artifact'
+    Artifact:
+      type: object
+      required: [id, name, size, sha256, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        debug_id:
+          type: string
+        size:
+          type: integer
+          format: int64
+        sha256:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+    UploadToken:
+      type: object
+      required: [id, name, hint, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        hint:
+          description: Last characters of the secret.
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: string
+          format: date-time
+        revoked_at:
+          type: string
+          format: date-time
+    UploadTokenCreate:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 100
+    UploadTokenCreated:
+      type: object
+      required: [token, secret]
+      properties:
+        token:
+          $ref: '#/components/schemas/UploadToken'
+        secret:
           type: string
     ProductEvent:
       type: object

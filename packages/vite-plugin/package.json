@@ -1,0 +1,44 @@
+{
+  "name": "@pulse/vite-plugin",
+  "version": "0.1.0",
+  "description": "Vite plugin that injects debug ids and uploads source maps to Pulse",
+  "type": "module",
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsup",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "license": "MIT",
+  "peerDependencies": {
+    "vite": ">=4"
+  },
+  "peerDependenciesMeta": {
+    "vite": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^20",
+    "tsup": "^8.5.1",
+    "typescript": "^5.7.2",
+    "vitest": "^3.2.7"
+  }
+}

@@ -4,8 +4,9 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/main.ts --bundle --format=esm --splitting --outdir=public/dist --sourcemap",
-    "start": "pnpm build && node server.mjs"
+    "build": "esbuild src/main.ts --bundle --format=esm --splitting --minify --outdir=public/dist --sourcemap",
+    "start": "pnpm build && node server.mjs",
+    "sourcemaps": "cd ../../go && go run ./cmd/pulse-cli sourcemaps inject ../examples/browser-demo/public/dist && go run ./cmd/pulse-cli sourcemaps upload --release ${PULSE_RELEASE:-browser-demo@dev} --url-prefix dist ../examples/browser-demo/public/dist"
   },
   "dependencies": {
     "@pulse/browser": "workspace:*"

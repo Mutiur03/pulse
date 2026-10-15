@@ -6,10 +6,12 @@ import { api } from '@/lib/api';
 import { ago, time } from '@/lib/format';
 import { useAsync } from '@/lib/hooks';
 import { Badge, Button, Card, CardHeader, ErrorNote, PageHeader, Spinner, Td, Th } from '@/components/ui';
+import { StackTrace } from '@/components/stack-trace';
 
 export default function IssuePage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = use(params);
-  const detail = useAsync(() => api.getIssue(Number(id), 50), [id]);
+  const [again, setAgain] = useState(0);
+  const detail = useAsync(() => api.getIssue(Number(id), 50, again > 0), [id, again]);
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string>();
   const [sel, setSel] = useState(0);
@@ -96,9 +98,12 @@ export default function IssuePage({ params }: { params: Promise<{ id: string }> 
                   </div>
                 }
               />
-              <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-zinc-300" data-testid="stack">
-                {ev?.stack || 'No stack trace captured.'}
-              </pre>
+              <StackTrace
+                key={`${sel}-${again}`}
+                ev={ev}
+                onReprocess={() => setAgain((n) => n + 1)}
+                reprocessing={detail.loading && again > 0}
+              />
             </Card>
             <Card className="h-fit overflow-hidden">
               <CardHeader title="Occurrences" description={`Latest ${events.length}`} />

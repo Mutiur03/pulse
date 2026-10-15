@@ -10,11 +10,14 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/kafka"
 	"github.com/Mutiur03/pulse/internal/processor"
+	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
+	"github.com/Mutiur03/pulse/internal/symbolicate"
 	"github.com/Mutiur03/pulse/internal/telemetry"
 )
 
@@ -44,6 +47,12 @@ func main() {
 		log.Fatalf("Failed to connect to Postgres: %v", err)
 	}
 	defer issueStore.Close()
+
+	// Source maps live in object storage; without it stacks stay minified.
+	var sym *symbolicate.Symbolicator
+	if obj := replay.ConnectArtifacts(); obj != nil {
+		sym = &symbolicate.Symbolicator{Artifacts: &artifacts.Store{DB: issueStore.Pool()}, Objects: obj}
+	}
 
 	producer, err := kafka.NewProducer(cfg.KafkaBootstrapServers)
 	if err != nil {
@@ -150,7 +159,7 @@ func main() {
 				var rows []ch.ErrorRow
 				if err := retry(ctx, func() error {
 					var gerr error
-					rows, gerr = processor.GroupErrors(ctx, errs, issueStore, producer)
+					rows, gerr = processor.GroupErrorsWith(ctx, errs, issueStore, producer, sym)
 					return gerr
 				}); err != nil {
 					log.Printf("Failed to group errors: %v", err)

@@ -266,6 +266,7 @@ func (h *handler) errors(r *http.Request, body []byte, project string) (int, *ap
 			return 0, &apiError{http.StatusBadRequest, "message or exception_type is required"}
 		}
 		e.ProjectID = project
+		e.trimDebugIDs()
 		if e.Timestamp.IsZero() {
 			e.Timestamp = time.Now().UTC()
 		}

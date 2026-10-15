@@ -9,7 +9,9 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/grouping"
 	"github.com/Mutiur03/pulse/internal/issues"
+	"github.com/Mutiur03/pulse/internal/sourcemap"
 	"github.com/Mutiur03/pulse/internal/store/ch"
+	"github.com/Mutiur03/pulse/internal/symbolicate"
 )
 
 // TopicIssueEvents receives new_issue and regression notifications.
@@ -27,6 +29,27 @@ type Publisher interface {
 // Postgres, publishes new-issue and regression events, and returns the rows
 // to write to ClickHouse.
 func GroupErrors(ctx context.Context, raw []map[string]interface{}, rec IssueRecorder, pub Publisher) ([]ch.ErrorRow, error) {
+	return GroupErrorsWith(ctx, raw, rec, pub, nil)
+}
+
+// MaxDebugIDs caps how many file to debug id pairs an error may carry.
+const MaxDebugIDs = 100
+
+// debugIDs reads the SDK's {generated file URL: debug id} map.
+func debugIDs(e map[string]interface{}) map[string]string {
+	m, _ := e["debug_ids"].(map[string]interface{})
+	out := map[string]string{}
+	for k, v := range m {
+		if id := sourcemap.NormalizeDebugID(fmt.Sprint(v)); id != "" && len(out) < MaxDebugIDs {
+			out[k] = id
+		}
+	}
+	return out
+}
+
+// GroupErrorsWith also symbolicates JavaScript stacks with uploaded source
+// maps first, so issues group by original code. sym may be nil.
+func GroupErrorsWith(ctx context.Context, raw []map[string]interface{}, rec IssueRecorder, pub Publisher, sym *symbolicate.Symbolicator) ([]ch.ErrorRow, error) {
 	rows := make([]ch.ErrorRow, 0, len(raw))
 	for _, e := range raw {
 		r := ch.ErrorRow{
@@ -46,6 +69,18 @@ func GroupErrors(ctx context.Context, raw []map[string]interface{}, rec IssueRec
 			URL:           ch.Str(e, "url"),
 		}
 		g := grouping.Group(r.ExceptionType, r.Message, r.Stack)
+		ids := debugIDs(e)
+		if len(ids) > 0 {
+			b, _ := json.Marshal(ids)
+			r.DebugIDs = string(b)
+		}
+		if res := sym.Resolve(ctx, int64(r.ProjectID), r.Release, ids, r.Stack); len(res.Frames) > 0 {
+			b, _ := json.Marshal(res.Frames)
+			r.Frames, r.MappedFrames = string(b), uint16(res.Mapped)
+			if res.Mapped > 0 {
+				g = grouping.GroupFrames(r.ExceptionType, r.Message, symbolicate.GroupingFrames(res.Frames))
+			}
+		}
 		r.Fingerprint, r.Title, r.Culprit = g.Fingerprint, g.Title, g.Culprit
 		if fp := ch.Str(e, "fingerprint"); fp != "" {
 			r.Fingerprint = fp // client-supplied override

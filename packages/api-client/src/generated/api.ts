@@ -715,6 +715,98 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/releases": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the project's releases, newest first */
+        get: operations["listReleases"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/releases/{release}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a release and its uploaded artifacts */
+        get: operations["getRelease"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/releases/{release}/sourcemaps": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Upload source maps for a release
+         * @description Authenticated with a project upload token (Authorization: Bearer pul_...), not a session. Each file part is one source map; its form field name is the URL or path of the generated file plus ".map" (for example "~/dist/main.js.map"). The release is created on first upload. Maps with a debugId are matched by it; the rest by URL.
+         */
+        post: operations["uploadSourcemaps"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/upload-tokens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List the project's source map upload tokens */
+        get: operations["listUploadTokens"];
+        put?: never;
+        /**
+         * Create an upload token
+         * @description The secret is returned only in this response.
+         */
+        post: operations["createUploadToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/upload-tokens/{token_id}/revoke": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Revoke an upload token */
+        post: operations["revokeUploadToken"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -1029,6 +1121,68 @@ export interface components {
             session_id?: string;
             distinct_id?: string;
             url?: string;
+            release?: string;
+            /** @description Parsed stack, innermost first, resolved through source maps where possible. */
+            frames?: components["schemas"]["StackFrame"][];
+            mapped_frames?: number;
+        };
+        StackFrame: {
+            function: string;
+            file: string;
+            line: number;
+            column: number;
+            in_app: boolean;
+            mapped: boolean;
+            pre_context?: string[];
+            context_line?: string;
+            post_context?: string[];
+            raw_function?: string;
+            raw_url: string;
+            raw_line: number;
+            raw_column: number;
+        };
+        Release: {
+            /** Format: int64 */
+            id: number;
+            version: string;
+            /** Format: date-time */
+            created_at: string;
+            artifact_count: number;
+        };
+        ReleaseDetail: {
+            release: components["schemas"]["Release"];
+            artifacts: components["schemas"]["Artifact"][];
+        };
+        Artifact: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            debug_id?: string;
+            /** Format: int64 */
+            size: number;
+            sha256: string;
+            /** Format: date-time */
+            created_at: string;
+        };
+        UploadToken: {
+            /** Format: int64 */
+            id: number;
+            name: string;
+            /** @description Last characters of the secret. */
+            hint: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            last_used_at?: string;
+            /** Format: date-time */
+            revoked_at?: string;
+        };
+        UploadTokenCreate: {
+            name: string;
+        };
+        UploadTokenCreated: {
+            token: components["schemas"]["UploadToken"];
+            secret: string;
         };
         ProductEvent: {
             event: string;
@@ -1264,6 +1418,7 @@ export interface components {
         ChannelPath: number;
         SessionPath: string;
         OrgPath: number;
+        ReleasePath: string;
         ProjectPath: number;
         /** @description Start of the time range. Default 24 hours ago. */
         From: string;
@@ -2160,6 +2315,8 @@ export interface operations {
         parameters: {
             query?: {
                 events_limit?: number;
+                /** @description Resolve every event's stack again with the source maps uploaded so far. Events not fully mapped are always retried on view. */
+                symbolicate?: boolean;
             };
             header?: never;
             path: {
@@ -2486,6 +2643,164 @@ export interface operations {
                     "application/json": components["schemas"]["AlertChannelTest"];
                 };
             };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listReleases: {
+        parameters: {
+            query?: {
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Releases with artifact counts */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Release"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getRelease: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                release: components["parameters"]["ReleasePath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Release detail */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ReleaseDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    uploadSourcemaps: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                release: components["parameters"]["ReleasePath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "multipart/form-data": {
+                    [key: string]: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Stored artifacts */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Artifact"][];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+            413: components["responses"]["BadRequest"];
+        };
+    };
+    listUploadTokens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Tokens, active first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadToken"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createUploadToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UploadTokenCreate"];
+            };
+        };
+        responses: {
+            /** @description The token and its secret */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadTokenCreated"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    revokeUploadToken: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                token_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The revoked token */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["UploadToken"];
+                };
+            };
+            403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
         };
     };

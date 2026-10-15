@@ -25,6 +25,7 @@ See [docs/architecture.md](docs/architecture.md) for the complete technical desi
 │   │   ├── stream-processor/# Kafka consumer pipeline
 │   │   ├── query-api/       # Read API (chi + OpenAPI)
 │   │   ├── alerting-worker/ # Alert evaluation and notification
+│   │   ├── pulse-cli/       # Source map inject and upload CLI
 │   │   └── platform/        # Combined binary for self-host
 │   └── internal/            # Shared Go packages
 │       ├── config/          # Configuration
@@ -35,6 +36,7 @@ See [docs/architecture.md](docs/architecture.md) for the complete technical desi
 ├── apps/web/                # Next.js web application
 ├── packages/
 │   ├── sdk-browser/         # TypeScript browser SDK
+│   ├── vite-plugin/         # Debug ids and source map upload for Vite builds
 │   └── api-client/          # Generated TypeScript client
 ├── workers/ai-worker/       # Python AI worker (optional)
 ├── schemas/
@@ -143,6 +145,24 @@ Alert rules live in Postgres per project (`schemas/postgres/006_alerts.sql`) and
 Rules can filter by service, route and environment. The `alerting-worker` checks each rule on its own interval (10s to 1h), using a Redis lease so only one replica evaluates it. A rule moves between OK, ALERTING and NO_DATA, and every change is kept as history with an example issue and trace. Notifications go out when a rule fires and when it resolves, and optionally repeat while it keeps firing; that same interval stops a flapping rule from paging again. Muting a rule pauses notifications but not evaluation.
 
 Channels are email (through `SMTP_ADDR`; Mailpit locally), Slack incoming webhooks, and generic webhooks. Webhook requests carry `X-Pulse-Signature: t=<unix>,v1=<hex>`, where `v1` is HMAC-SHA256 of `<unix>.<body>` with the channel's secret, which is shown once when the channel is created.
+
+### Source Maps
+
+Minified browser stacks are resolved to original files, lines, functions and code with source maps uploaded per release:
+
+1. Set `release` in the browser SDK (for example `web@1.4.2`).
+2. Create an upload token under **Settings > Source map upload tokens**. Upload tokens are secret and project-scoped, unlike public ingest keys, and can be revoked there.
+3. After each build, inject debug ids and upload the maps, with `pulse-cli` (any bundler) or `@pulse/vite-plugin`:
+
+```bash
+cd go && go run ./cmd/pulse-cli sourcemaps inject ../dist
+go run ./cmd/pulse-cli sourcemaps upload --release web@1.4.2 --url-prefix ~/assets \
+  --url http://localhost:8081 --project 1 --token pul_... ../dist
+```
+
+`inject` appends a small snippet and a `//# debugId=` comment to each script (after all code, so no mapping moves) and writes the same `debugId` into its map; the SDK sends the ids of the scripts in each stack. Uploads go to `POST /v1/projects/{id}/releases/{release}/sourcemaps` (multipart, `Authorization: Bearer pul_...`, 50 MB per request, 20 MB per map) and are stored in object storage (`S3_ARTIFACT_BUCKET`, default `pulse-artifacts`), with releases and artifacts in Postgres (`schemas/postgres/007_releases.sql`).
+
+The stream processor symbolicates JavaScript errors before grouping them: frames are matched to a map by debug id, falling back to the file URL within the error's release, and parsed maps are kept in an in-memory LRU. Issues are fingerprinted on original files and functions, so a new build with new bundle names and minified identifiers keeps the same issue. Both the raw stack and the resolved frames are stored. Maps uploaded after an error are applied when the issue is opened, or with **Reprocess**; that does not regroup existing events. The **Releases** page lists each release's artifacts.
 
 ### Manual Testing
 

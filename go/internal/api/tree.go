@@ -34,7 +34,7 @@ func errorOccurrence(e ch.ErrorRecord) gen.ErrorOccurrence {
 		Timestamp: e.Timestamp, IssueId: int64(e.IssueID), ExceptionType: e.ExceptionType, Message: e.Message,
 		Stack: strPtr(e.Stack), Culprit: strPtr(e.Culprit), TraceId: e.TraceID, SpanId: e.SpanID,
 		ServiceName: e.ServiceName, Platform: e.Platform, SessionId: strPtr(e.SessionID),
-		DistinctId: strPtr(e.DistinctID), Url: strPtr(e.URL),
+		DistinctId: strPtr(e.DistinctID), Url: strPtr(e.URL), Release: strPtr(e.Release),
 	}
 }
 

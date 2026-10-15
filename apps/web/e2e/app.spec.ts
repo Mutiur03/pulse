@@ -1,4 +1,7 @@
+import { execFileSync } from 'node:child_process';
 import { createHmac } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { createServer } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { expect, test, type APIRequestContext, type Page } from '@playwright/test';
@@ -532,4 +535,75 @@ test('an error count rule fires by email and signed webhook, then resolves', asy
   } finally {
     receiver.close();
   }
+});
+
+test('minified demo errors show original source after uploading source maps', async ({ page, browser }) => {
+  test.setTimeout(180_000);
+  await login(page);
+
+  // An owner creates an upload token in settings; the secret shows once.
+  await page.goto('/settings');
+  await page.getByLabel('Token name').fill(`e2e ${Date.now()}`);
+  await page.getByTestId('create-upload-token').click();
+  const secret = (await page.getByTestId('upload-token-secret').innerText()).trim();
+  expect(secret).toMatch(/^pul_[0-9a-f]+$/);
+  await shot(page, '31-upload-tokens');
+
+  // Inject debug ids into the minified demo build and upload its maps.
+  const root = resolve(process.cwd(), '../..');
+  const dist = resolve(root, 'examples/browser-demo/public/dist');
+  const release = `browser-demo@e2e-${Date.now()}`;
+  const cli = (...args: string[]) =>
+    execFileSync('go', ['run', './cmd/pulse-cli', 'sourcemaps', ...args], { cwd: resolve(root, 'go'), encoding: 'utf8' });
+  cli('inject', dist);
+  expect(readFileSync(resolve(dist, 'main.js'), 'utf8')).toMatch(/\/\/# debugId=[0-9a-f-]{36}/);
+  const out = cli('upload', '--release', release, '--url-prefix', 'dist', '--url', process.env.API_URL ?? 'http://localhost:8081',
+    '--project', '1', '--token', secret, dist);
+  expect(out).toContain('~/dist/main.js.map');
+
+  // The release lists its artifacts.
+  await page.goto(`/releases?release=${encodeURIComponent(release)}`);
+  await expect(page.getByTestId('artifact-row').filter({ hasText: '~/dist/main.js.map' })).toBeVisible();
+  await shot(page, '32-releases');
+
+  // Throw from the demo, built minified, reporting that release.
+  const ctx = await browser.newContext();
+  const app = await ctx.newPage();
+  await app.goto(`${demo}/?replay=0&release=${encodeURIComponent(release)}`);
+  await app.waitForFunction(() => Object.keys((globalThis as { __pulseDebugIds?: object }).__pulseDebugIds ?? {}).length > 0);
+  await app.locator('#boom').click();
+  await app.waitForResponse((r) => r.url().includes('/v1/errors') && r.status() < 300, { timeout: 20_000 });
+  await ctx.close();
+
+  // The issue groups on the original function and shows the original line.
+  const src = readFileSync(resolve(root, 'examples/browser-demo/src/main.ts'), 'utf8').split('\n');
+  const line = src.findIndex((l) => l.includes("throw new TypeError('demo: cannot read")) + 1;
+  expect(line).toBeGreaterThan(0);
+  let issueId = 0;
+  await expect
+    .poll(
+      async () => {
+        const res = await page.request.get('/api/v1/issues?query=readCart');
+        const { issues } = (await res.json()) as { issues: { id: number; culprit: string }[] };
+        issueId = issues.find((i) => i.culprit.includes('src/main.ts'))?.id ?? 0;
+        return issueId;
+      },
+      { timeout: 60_000 },
+    )
+    .toBeGreaterThan(0);
+  await page.goto(`/issues/${issueId}`);
+  const top = page.getByTestId('frame').first();
+  await expect(top.getByTestId('frame-location')).toContainText(`src/main.ts:${line}`);
+  await expect(top).toHaveAttribute('data-mapped', 'true');
+  await expect(page.getByTestId('context-line')).toContainText("throw new TypeError('demo: cannot read properties of undefined')");
+  await expect(page.getByTestId('mapped-count')).toContainText(release);
+  await shot(page, '33-issue-original-source');
+
+  // The minified view keeps what the browser reported.
+  await page.getByTestId('stack-raw').click();
+  await expect(page.getByTestId('stack-minified')).toContainText('/dist/main.js:');
+  await shot(page, '34-issue-minified-stack');
+  await page.getByTestId('stack-original').click();
+  await page.getByTestId('reprocess').click();
+  await expect(page.getByTestId('frame').first().getByTestId('frame-location')).toContainText(`src/main.ts:${line}`);
 });

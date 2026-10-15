@@ -6,6 +6,7 @@ import { DEFAULT_SESSION_TIMEOUT, Session } from './session';
 import { activeSpanIds, startTracing, type Tracing } from './tracing';
 import { Transport } from './transport';
 import { sampled, type ReplayHandle } from './replay';
+import { debugIdsFor } from './debugids';
 
 const TRACER = '@pulse/browser';
 
@@ -152,6 +153,7 @@ export class PulseClient {
       exception_type: e.name || 'Error',
       message: e.message,
       stack: e.stack ?? '',
+      debug_ids: debugIdsFor(e.stack ?? ''),
       release: this.config.release,
       environment: this.config.environment,
       ...ids,

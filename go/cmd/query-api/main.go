@@ -14,6 +14,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api"
 	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/issues"
@@ -23,6 +24,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/projects"
 	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
+	"github.com/Mutiur03/pulse/internal/symbolicate"
 	"github.com/Mutiur03/pulse/internal/telemetry"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
@@ -89,6 +91,14 @@ func main() {
 	// A typed nil would look non-nil through the interface.
 	if objects := replay.Connect(); objects != nil {
 		srv.ReplayObjects = objects
+	}
+	// Releases and upload tokens work without object storage; uploads and
+	// symbolication need it.
+	rel := &artifacts.Store{DB: db}
+	srv.Releases = rel
+	if objects := replay.ConnectArtifacts(); objects != nil {
+		srv.ArtifactObjects = objects
+		srv.Symbolicator = &symbolicate.Symbolicator{Artifacts: rel, Objects: objects}
 	}
 	if d, err := strconv.Atoi(os.Getenv("REPLAY_RETENTION_DAYS")); err == nil {
 		srv.ReplayRetentionDays = d

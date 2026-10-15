@@ -8,6 +8,8 @@ init({
   apiKey: params.get('key') ?? 'pk_dev_local_0123456789abcdef',
   serviceName: 'browser-demo',
   environment: 'local',
+  // Source maps are uploaded for this release (see README).
+  release: params.get('release') ?? 'browser-demo@dev',
   flushIntervalMs: 2000,
   // Session replay: record every session unless ?replay=0. Text under .private
   // is masked and .secret is not recorded at all.
@@ -88,10 +90,14 @@ on('logout', () => {
   reset();
   log(`reset, new anonymous id ${getClient()?.identity.distinctId}`);
 });
-on('boom', () => {
-  setTimeout(() => {
+function readCart(cart?: { items: string[] }): string[] {
+  if (!cart) {
     throw new TypeError('demo: cannot read properties of undefined');
-  });
+  }
+  return cart.items;
+}
+on('boom', () => {
+  setTimeout(() => readCart());
   log('threw an error');
 });
 on('reject', () => {

@@ -63,6 +63,8 @@ export interface ErrorPayload {
   exception_type: string;
   message: string;
   stack: string;
+  /** Script URL to build debug id, for scripts in the stack. */
+  debug_ids?: Record<string, string>;
   release?: string;
   environment?: string;
   trace_id?: string;

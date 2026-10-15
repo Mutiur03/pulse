@@ -2,6 +2,7 @@
 import { useState } from 'react';
 import { api, currentContext, handleAuthError } from '@/lib/api';
 import { Members } from '@/components/members';
+import { UploadTokens } from '@/components/upload-tokens';
 import { backendSnippet, browserSnippet } from '@/lib/snippet';
 import { time } from '@/lib/format';
 import { useAsync } from '@/lib/hooks';
@@ -133,6 +134,7 @@ export default function SettingsPage() {
           <pre className="overflow-auto px-4 pb-4 font-mono text-xs leading-relaxed text-zinc-300">{backend}</pre>
         </Card>
       </div>
+      {project && <UploadTokens project={project.id} owner={owner} />}
       {ctx?.org && me.data && <Members org={ctx.org} me={me.data.user.id} />}
     </>
   );

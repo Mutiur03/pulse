@@ -42,6 +42,10 @@ type ErrorRecord struct {
 	SessionID     string    `ch:"session_id"`
 	DistinctID    string    `ch:"distinct_id"`
 	URL           string    `ch:"url"`
+	Release       string    `ch:"release"`
+	Frames        string    `ch:"frames"`
+	DebugIDs      string    `ch:"debug_ids"`
+	MappedFrames  uint16    `ch:"mapped_frames"`
 }
 
 // EventRecord is a product event as stored in ClickHouse.
@@ -61,7 +65,7 @@ const spanCols = `timestamp, trace_id, span_id, parent_span_id, span_name, span_
 	duration_ns, status_code, status_message, http_route, http_status, db_system, db_statement, session_id, attributes, span_events`
 
 const errorCols = `timestamp, issue_id, exception_type, message, stack, culprit, trace_id, span_id,
-	service_name, platform, session_id, distinct_id, url`
+	service_name, platform, session_id, distinct_id, url, release, frames, debug_ids, mapped_frames`
 
 func (c *Client) SpansByTrace(ctx context.Context, project uint64, traceID string) ([]SpanRecord, error) {
 	var out []SpanRecord

@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -238,12 +239,27 @@ var Public = map[string]bool{
 	"/v1/auth/verify-email": true, "/v1/invites/lookup": true,
 }
 
+// tokenUpload matches POST /v1/projects/{id}/releases/{release}/sourcemaps.
+var tokenUpload = regexp.MustCompile(`^/v1/projects/[0-9]+/releases/[^/]+/sourcemaps$`)
+
+// bearerUpload reports a source map upload carrying an upload token. Those
+// skip the session (the handler checks the token), and since browsers never
+// attach bearer tokens on their own they need no CSRF content type check.
+func bearerUpload(r *http.Request) bool {
+	return r.Method == http.MethodPost && tokenUpload.MatchString(r.URL.Path) &&
+		strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
+}
+
 // Middleware requires a valid session for everything but Public paths and
 // rejects state-changing requests that are not JSON, which (with SameSite
 // cookies) blocks cross-site form posts.
 func Middleware(store SessionStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			if bearerUpload(r) {
+				next.ServeHTTP(w, r)
+				return
+			}
 			if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions &&
 				!strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 				writeErr(w, http.StatusUnsupportedMediaType, "content type must be application/json")

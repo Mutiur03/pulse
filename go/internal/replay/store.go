@@ -114,15 +114,30 @@ func S3ConfigFromEnv() (S3Config, bool) {
 // it cannot be reached (replay is then disabled, everything else works).
 func Connect() *S3 {
 	cfg, ok := S3ConfigFromEnv()
+	return connect(cfg, ok, "session replay")
+}
+
+// ConnectArtifacts opens the bucket for source maps: S3_ARTIFACT_BUCKET,
+// default pulse-artifacts, on the same server as replays.
+func ConnectArtifacts() *S3 {
+	cfg, ok := S3ConfigFromEnv()
+	cfg.Bucket = os.Getenv("S3_ARTIFACT_BUCKET")
+	if cfg.Bucket == "" {
+		cfg.Bucket = "pulse-artifacts"
+	}
+	return connect(cfg, ok, "source map")
+}
+
+func connect(cfg S3Config, ok bool, what string) *S3 {
 	if !ok {
-		log.Printf("S3_ENDPOINT not set: session replay storage disabled")
+		log.Printf("S3_ENDPOINT not set: %s storage disabled", what)
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	s, err := NewS3(ctx, cfg)
 	if err != nil {
-		log.Printf("replay storage unavailable, replay disabled: %v", err)
+		log.Printf("%s storage unavailable, disabled: %v", what, err)
 		return nil
 	}
 	return s

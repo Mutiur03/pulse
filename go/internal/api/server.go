@@ -18,6 +18,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/mail"
 	"github.com/Mutiur03/pulse/internal/orgs"
 	"github.com/Mutiur03/pulse/internal/store/ch"
+	"github.com/Mutiur03/pulse/internal/symbolicate"
 )
 
 // TraceReader and IssueStore are the storage dependencies, as interfaces so
@@ -107,8 +108,13 @@ type Server struct {
 	AlertSender interface {
 		Send(ctx context.Context, c alerts.Channel, p alerts.Payload) error
 	}
-	SecureCookie bool
-	Now          func() time.Time
+	// Releases, ArtifactObjects and Symbolicator serve source maps; nil
+	// Releases disables them.
+	Releases        ReleaseStore
+	ArtifactObjects ObjectPutter
+	Symbolicator    *symbolicate.Symbolicator
+	SecureCookie    bool
+	Now             func() time.Time
 }
 
 func (s *Server) now() time.Time {
@@ -308,8 +314,12 @@ func (s *Server) GetIssue(w http.ResponseWriter, r *http.Request, id gen.IssueID
 		return
 	}
 	out := gen.IssueDetail{Issue: toAPI(iss), RecentEvents: make([]gen.ErrorOccurrence, 0, len(recs))}
+	again := params.Symbolicate != nil && *params.Symbolicate
 	for _, e := range recs {
-		out.RecentEvents = append(out.RecentEvents, errorOccurrence(e))
+		o := errorOccurrence(e)
+		frames, mapped := s.stackFrames(r.Context(), iss.ProjectID, e, again)
+		o.Frames, o.MappedFrames = toFrames(frames), &mapped
+		out.RecentEvents = append(out.RecentEvents, o)
 	}
 	writeJSON(w, http.StatusOK, out)
 }

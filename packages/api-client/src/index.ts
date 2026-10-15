@@ -10,6 +10,12 @@ export type IssueStatus = Schemas['IssueStatus'];
 export type IssueList = Schemas['IssueList'];
 export type IssueDetail = Schemas['IssueDetail'];
 export type ErrorOccurrence = Schemas['ErrorOccurrence'];
+export type StackFrame = Schemas['StackFrame'];
+export type Release = Schemas['Release'];
+export type ReleaseDetail = Schemas['ReleaseDetail'];
+export type Artifact = Schemas['Artifact'];
+export type UploadToken = Schemas['UploadToken'];
+export type UploadTokenCreated = Schemas['UploadTokenCreated'];
 export type ProductEvent = Schemas['ProductEvent'];
 export type SpanEvent = Schemas['SpanEvent'];
 export type TraceSummary = Schemas['TraceSummary'];
@@ -269,8 +275,30 @@ export class APIClient {
     return this.request('GET', '/v1/issues', query as Query);
   }
 
-  getIssue(id: number, eventsLimit?: number): Promise<IssueDetail> {
-    return this.request('GET', `/v1/issues/${id}`, { events_limit: eventsLimit });
+  /** symbolicate re-resolves every event with the source maps uploaded so far. */
+  getIssue(id: number, eventsLimit?: number, symbolicate?: boolean): Promise<IssueDetail> {
+    return this.request('GET', `/v1/issues/${id}`, { events_limit: eventsLimit, symbolicate: symbolicate ? 'true' : undefined });
+  }
+
+  listReleases(projectId: number, limit?: number): Promise<Release[]> {
+    return this.request('GET', `/v1/projects/${projectId}/releases`, { limit });
+  }
+
+  getRelease(projectId: number, version: string): Promise<ReleaseDetail> {
+    return this.request('GET', `/v1/projects/${projectId}/releases/${encodeURIComponent(version)}`);
+  }
+
+  listUploadTokens(projectId: number): Promise<UploadToken[]> {
+    return this.request('GET', `/v1/projects/${projectId}/upload-tokens`);
+  }
+
+  /** The secret is only returned here. */
+  createUploadToken(projectId: number, name: string): Promise<UploadTokenCreated> {
+    return this.request('POST', `/v1/projects/${projectId}/upload-tokens`, undefined, { name });
+  }
+
+  revokeUploadToken(projectId: number, tokenId: number): Promise<UploadToken> {
+    return this.request('POST', `/v1/projects/${projectId}/upload-tokens/${tokenId}/revoke`);
   }
 
   updateIssue(id: number, status: IssueStatus): Promise<Issue> {

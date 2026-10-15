@@ -204,7 +204,14 @@ services:
       REDIS_ADDR: redis:6379
       CLICKHOUSE_ADDR: clickhouse:9000
       POSTGRES_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable
+      # Source maps for symbolicating browser errors.
+      S3_ENDPOINT: objectstore:7070
+      S3_ACCESS_KEY: pulse
+      S3_SECRET_KEY: pulse-local-secret
+      S3_ARTIFACT_BUCKET: pulse-artifacts
     depends_on:
+      objectstore:
+        condition: service_started
       postgres-migrate:
         condition: service_completed_successfully
       clickhouse-migrate:
@@ -260,6 +267,7 @@ services:
       S3_ACCESS_KEY: pulse
       S3_SECRET_KEY: pulse-local-secret
       S3_BUCKET: pulse-replays
+      S3_ARTIFACT_BUCKET: pulse-artifacts
       REPLAY_RETENTION_DAYS: 30
     depends_on:
       objectstore:

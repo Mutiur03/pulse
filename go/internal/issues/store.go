@@ -169,3 +169,6 @@ func (s *Store) SetStatus(ctx context.Context, id int64, st Status) (Issue, erro
 	}
 	return i, err
 }
+
+// Pool exposes the connection pool for stores that share it.
+func (s *Store) Pool() *pgxpool.Pool { return s.db }

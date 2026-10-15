@@ -64,6 +64,29 @@ type ErrorEvent struct {
 	SessionID     string    `json:"session_id,omitempty"`
 	DistinctID    string    `json:"distinct_id,omitempty"`
 	URL           string    `json:"url,omitempty"`
+	// DebugIDs maps generated script URLs to the debug ids injected at
+	// build time, so frames find their source maps.
+	DebugIDs map[string]string `json:"debug_ids,omitempty"`
+}
+
+// MaxDebugIDs caps the debug ids kept per error.
+const MaxDebugIDs = 100
+
+// trimDebugIDs drops oversized entries and anything past MaxDebugIDs.
+func (e *ErrorEvent) trimDebugIDs() {
+	if len(e.DebugIDs) == 0 {
+		return
+	}
+	kept := make(map[string]string, len(e.DebugIDs))
+	for k, v := range e.DebugIDs {
+		if len(kept) >= MaxDebugIDs {
+			break
+		}
+		if len(k) <= 2048 && len(v) <= 64 {
+			kept[k] = v
+		}
+	}
+	e.DebugIDs = kept
 }
 
 // LogRecord is one log line written to the raw.logs topic.
