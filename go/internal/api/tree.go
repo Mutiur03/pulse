@@ -57,143 +57,190 @@ func BuildTrace(traceID string, spans []ch.SpanRecord, errs []ch.ErrorRecord, ev
 		TraceId: traceID, Roots: []gen.SpanNode{}, Events: []gen.ProductEvent{}, Services: []string{},
 		ErrorCount: len(errs),
 	}
+	b := newTraceBuilder(spans)
+	t.SpanCount = len(b.byID)
+	looseErrs := b.attachErrors(errs)
+	t.Events = append(t.Events, b.attachEvents(events)...)
+	t.Roots = append(t.Roots, b.roots()...)
+	if len(looseErrs) > 0 && len(t.Roots) > 0 {
+		t.Roots[0].Errors = append(t.Roots[0].Errors, looseErrs...)
+	}
+	t.Services = b.serviceList()
+	t.StartTime = b.start
+	if b.end.After(b.start) {
+		t.DurationNs = int64(b.end.Sub(b.start))
+	}
+	return t
+}
 
-	byID := make(map[string]ch.SpanRecord, len(spans))
+// traceBuilder holds the indexes BuildTrace needs while it walks the tree.
+type traceBuilder struct {
+	byID       map[string]ch.SpanRecord
+	children   map[string][]string
+	rootIDs    []string
+	services   map[string]bool
+	start, end time.Time
+	errsBySpan map[string][]gen.ErrorOccurrence
+	evBySpan   map[string][]gen.ProductEvent
+	visited    map[string]bool
+}
+
+// hasParent reports whether the span names a parent other than itself.
+func hasParent(s ch.SpanRecord) bool {
+	return s.ParentSpanID != "" && s.ParentSpanID != s.SpanID
+}
+
+// newTraceBuilder indexes spans by id (first occurrence wins), links
+// children to parents and records the services and time bounds.
+func newTraceBuilder(spans []ch.SpanRecord) *traceBuilder {
+	b := &traceBuilder{
+		byID: make(map[string]ch.SpanRecord, len(spans)), children: map[string][]string{},
+		services: map[string]bool{}, errsBySpan: map[string][]gen.ErrorOccurrence{},
+		evBySpan: map[string][]gen.ProductEvent{}, visited: map[string]bool{},
+	}
 	for _, s := range spans {
-		if _, dup := byID[s.SpanID]; !dup {
-			byID[s.SpanID] = s
+		if _, dup := b.byID[s.SpanID]; !dup {
+			b.byID[s.SpanID] = s
 		}
 	}
-	t.SpanCount = len(byID)
-	children := map[string][]string{}
-	var roots []string
-	services := map[string]bool{}
-	var start, end time.Time
-	for id, s := range byID {
-		if s.ParentSpanID != "" && s.ParentSpanID != s.SpanID {
-			if _, ok := byID[s.ParentSpanID]; ok {
-				children[s.ParentSpanID] = append(children[s.ParentSpanID], id)
-			} else {
-				roots = append(roots, id)
-			}
+	for id, s := range b.byID {
+		if _, ok := b.byID[s.ParentSpanID]; ok && hasParent(s) {
+			b.children[s.ParentSpanID] = append(b.children[s.ParentSpanID], id)
 		} else {
-			roots = append(roots, id)
+			b.rootIDs = append(b.rootIDs, id)
 		}
 		if s.ServiceName != "" {
-			services[s.ServiceName] = true
+			b.services[s.ServiceName] = true
 		}
-		if start.IsZero() || s.Timestamp.Before(start) {
-			start = s.Timestamp
-		}
-		if e := s.Timestamp.Add(time.Duration(s.DurationNs)); e.After(end) {
-			end = e
+		b.extendStart(s.Timestamp)
+		if e := s.Timestamp.Add(time.Duration(s.DurationNs)); e.After(b.end) {
+			b.end = e
 		}
 	}
+	return b
+}
 
-	errsBySpan := map[string][]gen.ErrorOccurrence{}
-	var looseErrs []gen.ErrorOccurrence
+func (b *traceBuilder) extendStart(ts time.Time) {
+	if b.start.IsZero() || ts.Before(b.start) {
+		b.start = ts
+	}
+}
+
+// attachErrors files errors under their span and returns those whose span
+// was not received.
+func (b *traceBuilder) attachErrors(errs []ch.ErrorRecord) []gen.ErrorOccurrence {
+	var loose []gen.ErrorOccurrence
 	for _, e := range errs {
-		if _, ok := byID[e.SpanID]; ok {
-			errsBySpan[e.SpanID] = append(errsBySpan[e.SpanID], errorOccurrence(e))
+		if _, ok := b.byID[e.SpanID]; ok {
+			b.errsBySpan[e.SpanID] = append(b.errsBySpan[e.SpanID], errorOccurrence(e))
 		} else {
-			looseErrs = append(looseErrs, errorOccurrence(e))
+			loose = append(loose, errorOccurrence(e))
 		}
-		if start.IsZero() || e.Timestamp.Before(start) {
-			start = e.Timestamp
-		}
+		b.extendStart(e.Timestamp)
 	}
-	evBySpan := map[string][]gen.ProductEvent{}
+	return loose
+}
+
+// attachEvents files events under their span and returns the trace-level
+// ones (no span, or a span that was not received).
+func (b *traceBuilder) attachEvents(events []ch.EventRecord) []gen.ProductEvent {
+	var traceLevel []gen.ProductEvent
 	for _, e := range events {
-		if _, ok := byID[e.SpanID]; ok && e.SpanID != "" {
-			evBySpan[e.SpanID] = append(evBySpan[e.SpanID], productEvent(e))
+		if _, ok := b.byID[e.SpanID]; ok && e.SpanID != "" {
+			b.evBySpan[e.SpanID] = append(b.evBySpan[e.SpanID], productEvent(e))
 		} else {
-			t.Events = append(t.Events, productEvent(e))
+			traceLevel = append(traceLevel, productEvent(e))
 		}
 	}
+	return traceLevel
+}
 
-	byStart := func(ids []string) {
-		sort.SliceStable(ids, func(i, j int) bool {
-			a, b := byID[ids[i]], byID[ids[j]]
-			if !a.Timestamp.Equal(b.Timestamp) {
-				return a.Timestamp.Before(b.Timestamp)
-			}
-			return ids[i] < ids[j]
-		})
-	}
+// sortByStart orders span ids by start time, then id.
+func (b *traceBuilder) sortByStart(ids []string) {
+	sort.SliceStable(ids, func(i, j int) bool {
+		x, y := b.byID[ids[i]], b.byID[ids[j]]
+		if !x.Timestamp.Equal(y.Timestamp) {
+			return x.Timestamp.Before(y.Timestamp)
+		}
+		return ids[i] < ids[j]
+	})
+}
 
-	visited := map[string]bool{}
-	var build func(id string, depth int, orphan bool) gen.SpanNode
-	build = func(id string, depth int, orphan bool) gen.SpanNode {
-		visited[id] = true
-		s := byID[id]
-		n := gen.SpanNode{
-			SpanId: s.SpanID, ParentSpanId: s.ParentSpanID, Name: s.Name, Kind: s.Kind, ServiceName: s.ServiceName,
-			Source: Source(s), StartTime: s.Timestamp, DurationNs: int64(s.DurationNs), StatusCode: s.StatusCode,
-			StatusMessage: strPtr(s.StatusMessage), HttpRoute: strPtr(s.HTTPRoute), DbSystem: strPtr(s.DBSystem),
-			DbStatement: strPtr(s.DBStatement), SessionId: strPtr(s.SessionID), Depth: depth, Orphan: orphan,
-			Children: []gen.SpanNode{}, Errors: errsBySpan[id], Events: evBySpan[id],
-		}
-		if s.HTTPStatus != 0 {
-			st := int(s.HTTPStatus)
-			n.HttpStatus = &st
-		}
-		if len(s.Attributes) > 0 {
-			attrs := s.Attributes
-			n.Attributes = &attrs
-		}
-		if s.SpanEvents != "" && s.SpanEvents != "[]" {
-			var evs []gen.SpanEvent
-			if json.Unmarshal([]byte(s.SpanEvents), &evs) == nil && len(evs) > 0 {
-				n.SpanEvents = &evs
-			}
-		}
-		if n.Errors == nil {
-			n.Errors = []gen.ErrorOccurrence{}
-		}
-		if n.Events == nil {
-			n.Events = []gen.ProductEvent{}
-		}
-		kids := children[id]
-		byStart(kids)
-		for _, k := range kids {
-			if !visited[k] {
-				n.Children = append(n.Children, build(k, depth+1, false))
-			}
-		}
-		return n
+// roots builds every root subtree, then surfaces spans that parent cycles
+// left unreachable as extra orphan roots.
+func (b *traceBuilder) roots() []gen.SpanNode {
+	var out []gen.SpanNode
+	b.sortByStart(b.rootIDs)
+	for _, r := range b.rootIDs {
+		out = append(out, b.build(r, 0, hasParent(b.byID[r])))
 	}
-
-	byStart(roots)
-	for _, r := range roots {
-		s := byID[r]
-		t.Roots = append(t.Roots, build(r, 0, s.ParentSpanID != "" && s.ParentSpanID != s.SpanID))
-	}
-	// Parent cycles leave spans unreachable from any root; surface them too.
 	var rest []string
-	for id := range byID {
-		if !visited[id] {
+	for id := range b.byID {
+		if !b.visited[id] {
 			rest = append(rest, id)
 		}
 	}
-	byStart(rest)
+	b.sortByStart(rest)
 	for _, id := range rest {
-		if !visited[id] {
-			t.Roots = append(t.Roots, build(id, 0, true))
+		if !b.visited[id] {
+			out = append(out, b.build(id, 0, true))
 		}
 	}
-	if len(looseErrs) > 0 {
-		if len(t.Roots) > 0 {
-			t.Roots[0].Errors = append(t.Roots[0].Errors, looseErrs...)
-		}
-	}
+	return out
+}
 
-	for s := range services {
-		t.Services = append(t.Services, s)
+// build turns a span and its unvisited descendants into a node.
+func (b *traceBuilder) build(id string, depth int, orphan bool) gen.SpanNode {
+	b.visited[id] = true
+	n := spanNode(b.byID[id], depth, orphan)
+	if errs := b.errsBySpan[id]; errs != nil {
+		n.Errors = errs
 	}
-	sort.Strings(t.Services)
-	t.StartTime = start
-	if end.After(start) {
-		t.DurationNs = int64(end.Sub(start))
+	if evs := b.evBySpan[id]; evs != nil {
+		n.Events = evs
 	}
-	return t
+	kids := b.children[id]
+	b.sortByStart(kids)
+	for _, k := range kids {
+		if !b.visited[k] {
+			n.Children = append(n.Children, b.build(k, depth+1, false))
+		}
+	}
+	return n
+}
+
+func (b *traceBuilder) serviceList() []string {
+	out := []string{}
+	for s := range b.services {
+		out = append(out, s)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// spanNode maps one span to its API node, without children, errors or
+// events.
+func spanNode(s ch.SpanRecord, depth int, orphan bool) gen.SpanNode {
+	n := gen.SpanNode{
+		SpanId: s.SpanID, ParentSpanId: s.ParentSpanID, Name: s.Name, Kind: s.Kind, ServiceName: s.ServiceName,
+		Source: Source(s), StartTime: s.Timestamp, DurationNs: int64(s.DurationNs), StatusCode: s.StatusCode,
+		StatusMessage: strPtr(s.StatusMessage), HttpRoute: strPtr(s.HTTPRoute), DbSystem: strPtr(s.DBSystem),
+		DbStatement: strPtr(s.DBStatement), SessionId: strPtr(s.SessionID), Depth: depth, Orphan: orphan,
+		Children: []gen.SpanNode{}, Errors: []gen.ErrorOccurrence{}, Events: []gen.ProductEvent{},
+	}
+	if s.HTTPStatus != 0 {
+		st := int(s.HTTPStatus)
+		n.HttpStatus = &st
+	}
+	if len(s.Attributes) > 0 {
+		attrs := s.Attributes
+		n.Attributes = &attrs
+	}
+	if s.SpanEvents != "" && s.SpanEvents != "[]" {
+		var evs []gen.SpanEvent
+		if json.Unmarshal([]byte(s.SpanEvents), &evs) == nil && len(evs) > 0 {
+			n.SpanEvents = &evs
+		}
+	}
+	return n
 }

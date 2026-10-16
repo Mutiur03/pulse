@@ -1,0 +1,228 @@
+{
+  "duration_ns": 950000000,
+  "error_count": 2,
+  "events": [
+    {
+      "distinct_id": "",
+      "event": "pageview",
+      "properties": {},
+      "session_id": "",
+      "span_id": "",
+      "timestamp": "2026-10-15T12:00:00Z"
+    },
+    {
+      "distinct_id": "",
+      "event": "stray",
+      "properties": {},
+      "session_id": "",
+      "span_id": "nope",
+      "timestamp": "2026-10-15T12:00:00Z"
+    }
+  ],
+  "roots": [
+    {
+      "children": [],
+      "depth": 0,
+      "duration_ns": 30000000,
+      "errors": [
+        {
+          "exception_type": "TypeError",
+          "issue_id": 8,
+          "message": "loose",
+          "platform": "",
+          "service_name": "",
+          "span_id": "zz",
+          "stack": "at x",
+          "timestamp": "2026-10-15T11:59:59.95Z",
+          "trace_id": "t1"
+        }
+      ],
+      "events": [],
+      "kind": "",
+      "name": "late",
+      "orphan": true,
+      "parent_span_id": "missing",
+      "service_name": "worker",
+      "source": "backend",
+      "span_id": "f",
+      "start_time": "2026-10-15T11:59:59.98Z",
+      "status_code": ""
+    },
+    {
+      "attributes": {
+        "http.method": "GET"
+      },
+      "children": [
+        {
+          "children": [
+            {
+              "children": [],
+              "db_statement": "INSERT INTO orders",
+              "db_system": "postgresql",
+              "depth": 2,
+              "duration_ns": 20000000,
+              "errors": [],
+              "events": [],
+              "kind": "",
+              "name": "INSERT",
+              "orphan": false,
+              "parent_span_id": "b",
+              "service_name": "api",
+              "source": "database",
+              "span_id": "c",
+              "start_time": "2026-10-15T12:00:00.1Z",
+              "status_code": ""
+            },
+            {
+              "children": [],
+              "db_system": "postgresql",
+              "depth": 2,
+              "duration_ns": 10000000,
+              "errors": [],
+              "events": [],
+              "kind": "",
+              "name": "SELECT",
+              "orphan": false,
+              "parent_span_id": "b",
+              "service_name": "api",
+              "source": "database",
+              "span_id": "d",
+              "start_time": "2026-10-15T12:00:00.1Z",
+              "status_code": ""
+            },
+            {
+              "children": [],
+              "depth": 2,
+              "duration_ns": 5000000,
+              "errors": [],
+              "events": [],
+              "kind": "",
+              "name": "cache",
+              "orphan": false,
+              "parent_span_id": "b",
+              "service_name": "api",
+              "source": "backend",
+              "span_id": "e",
+              "start_time": "2026-10-15T12:00:00.3Z",
+              "status_code": ""
+            }
+          ],
+          "depth": 1,
+          "duration_ns": 600000000,
+          "errors": [
+            {
+              "exception_type": "Error",
+              "issue_id": 7,
+              "message": "boom",
+              "platform": "",
+              "service_name": "",
+              "span_id": "b",
+              "timestamp": "2026-10-15T12:00:00.06Z",
+              "trace_id": "t1"
+            }
+          ],
+          "events": [],
+          "http_route": "/orders",
+          "http_status": 500,
+          "kind": "",
+          "name": "POST /orders",
+          "orphan": false,
+          "parent_span_id": "a",
+          "service_name": "api",
+          "source": "backend",
+          "span_id": "b",
+          "start_time": "2026-10-15T12:00:00.05Z",
+          "status_code": "error",
+          "status_message": "boom"
+        }
+      ],
+      "depth": 0,
+      "duration_ns": 900000000,
+      "errors": [],
+      "events": [
+        {
+          "distinct_id": "",
+          "event": "checkout",
+          "properties": {
+            "cart": 3
+          },
+          "session_id": "",
+          "span_id": "a",
+          "timestamp": "2026-10-15T12:00:00Z"
+        }
+      ],
+      "kind": "",
+      "name": "GET /checkout",
+      "orphan": false,
+      "parent_span_id": "",
+      "service_name": "web",
+      "source": "browser",
+      "span_events": [
+        {
+          "name": "click",
+          "time": "0001-01-01T00:00:00Z"
+        }
+      ],
+      "span_id": "a",
+      "start_time": "2026-10-15T12:00:00Z",
+      "status_code": ""
+    },
+    {
+      "children": [],
+      "depth": 0,
+      "duration_ns": 1000000,
+      "errors": [],
+      "events": [],
+      "kind": "",
+      "name": "self",
+      "orphan": false,
+      "parent_span_id": "i",
+      "service_name": "api",
+      "source": "backend",
+      "span_id": "i",
+      "start_time": "2026-10-15T12:00:00.5Z",
+      "status_code": ""
+    },
+    {
+      "children": [
+        {
+          "children": [],
+          "depth": 1,
+          "duration_ns": 1000000,
+          "errors": [],
+          "events": [],
+          "kind": "",
+          "name": "loop2",
+          "orphan": false,
+          "parent_span_id": "g",
+          "service_name": "",
+          "source": "backend",
+          "span_id": "h",
+          "start_time": "2026-10-15T12:00:00.401Z",
+          "status_code": ""
+        }
+      ],
+      "depth": 0,
+      "duration_ns": 1000000,
+      "errors": [],
+      "events": [],
+      "kind": "",
+      "name": "loop1",
+      "orphan": true,
+      "parent_span_id": "h",
+      "service_name": "",
+      "source": "backend",
+      "span_id": "g",
+      "start_time": "2026-10-15T12:00:00.4Z",
+      "status_code": ""
+    }
+  ],
+  "services": [
+    "api",
+    "web",
+    "worker"
+  ],
+  "span_count": 9,
+  "start_time": "2026-10-15T11:59:59.95Z",
+  "trace_id": "t1"
+}

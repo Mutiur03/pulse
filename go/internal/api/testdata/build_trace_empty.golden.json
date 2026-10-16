@@ -1,0 +1,10 @@
+{
+  "duration_ns": 0,
+  "error_count": 0,
+  "events": [],
+  "roots": [],
+  "services": [],
+  "span_count": 0,
+  "start_time": "0001-01-01T00:00:00Z",
+  "trace_id": "t2"
+}
