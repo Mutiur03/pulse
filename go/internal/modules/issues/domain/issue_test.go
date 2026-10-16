@@ -1,4 +1,4 @@
-package issues
+package domain
 
 import (
 	"testing"

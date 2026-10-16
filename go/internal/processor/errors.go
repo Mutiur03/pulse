@@ -8,7 +8,7 @@ import (
 	"log/slog"
 
 	"github.com/Mutiur03/pulse/internal/grouping"
-	"github.com/Mutiur03/pulse/internal/issues"
+	"github.com/Mutiur03/pulse/internal/modules/issues"
 	"github.com/Mutiur03/pulse/internal/sourcemap"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/symbolicate"

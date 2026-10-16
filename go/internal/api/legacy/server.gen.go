@@ -51,15 +51,6 @@ type ServerInterface interface {
 	// Describe an invite from its token
 	// (POST /v1/invites/lookup)
 	LookupInvite(w http.ResponseWriter, r *http.Request)
-	// List issues
-	// (GET /v1/issues)
-	ListIssues(w http.ResponseWriter, r *http.Request, params ListIssuesParams)
-	// Get an issue with its most recent events
-	// (GET /v1/issues/{id})
-	GetIssue(w http.ResponseWriter, r *http.Request, id IssueID, params GetIssueParams)
-	// Change an issue's status
-	// (PATCH /v1/issues/{id})
-	UpdateIssue(w http.ResponseWriter, r *http.Request, id IssueID)
 	// Security audit log of the organization
 	// (GET /v1/orgs/{org_id}/audit-log)
 	ListAuditLog(w http.ResponseWriter, r *http.Request, orgId OrgPath, params ListAuditLogParams)
@@ -234,24 +225,6 @@ func (_ Unimplemented) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 // Describe an invite from its token
 // (POST /v1/invites/lookup)
 func (_ Unimplemented) LookupInvite(w http.ResponseWriter, r *http.Request) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// List issues
-// (GET /v1/issues)
-func (_ Unimplemented) ListIssues(w http.ResponseWriter, r *http.Request, params ListIssuesParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Get an issue with its most recent events
-// (GET /v1/issues/{id})
-func (_ Unimplemented) GetIssue(w http.ResponseWriter, r *http.Request, id IssueID, params GetIssueParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Change an issue's status
-// (PATCH /v1/issues/{id})
-func (_ Unimplemented) UpdateIssue(w http.ResponseWriter, r *http.Request, id IssueID) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -651,168 +624,6 @@ func (siw *ServerInterfaceWrapper) LookupInvite(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LookupInvite(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListIssues operation middleware
-func (siw *ServerInterfaceWrapper) ListIssues(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListIssuesParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "status" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "status", r.URL.Query(), &params.Status)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "status", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "service" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "service", r.URL.Query(), &params.Service)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "service", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "query" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "query", r.URL.Query(), &params.Query)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "query", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "sort" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "sort", r.URL.Query(), &params.Sort)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "sort", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "offset" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "offset", r.URL.Query(), &params.Offset)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "offset", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListIssues(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetIssue operation middleware
-func (siw *ServerInterfaceWrapper) GetIssue(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id IssueID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetIssueParams
-
-	// ------------- Optional query parameter "events_limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "events_limit", r.URL.Query(), &params.EventsLimit)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "events_limit", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "symbolicate" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "symbolicate", r.URL.Query(), &params.Symbolicate)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "symbolicate", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetIssue(w, r, id, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// UpdateIssue operation middleware
-func (siw *ServerInterfaceWrapper) UpdateIssue(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "id" -------------
-	var id IssueID
-
-	err = runtime.BindStyledParameterWithOptions("simple", "id", chi.URLParam(r, "id"), &id, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateIssue(w, r, id)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2089,15 +1900,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/invites/lookup", wrapper.LookupInvite)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/issues", wrapper.ListIssues)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/issues/{id}", wrapper.GetIssue)
-	})
-	r.Group(func(r chi.Router) {
-		r.Patch(options.BaseURL+"/v1/issues/{id}", wrapper.UpdateIssue)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/orgs/{org_id}/audit-log", wrapper.ListAuditLog)

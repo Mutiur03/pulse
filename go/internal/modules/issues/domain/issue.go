@@ -1,7 +1,10 @@
-// Package issues groups errors into issues and tracks their lifecycle.
-package issues
+// Package domain groups errors into issues and tracks their lifecycle.
+package domain
 
-import "time"
+import (
+	"errors"
+	"time"
+)
 
 type Status string
 
@@ -88,3 +91,17 @@ type Event struct {
 	TraceID     string    `json:"trace_id,omitempty"`
 	Timestamp   time.Time `json:"timestamp"`
 }
+
+// ListFilter selects issues for the list endpoint.
+type ListFilter struct {
+	ProjectID int64
+	Status    Status
+	Service   string
+	Query     string
+	Sort      string // last_seen (default), first_seen, count
+	Limit     int
+	Offset    int
+}
+
+// ErrNotFound means the issue does not exist.
+var ErrNotFound = errors.New("issue not found")

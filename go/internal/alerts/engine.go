@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Mutiur03/pulse/internal/issues"
+	"github.com/Mutiur03/pulse/internal/modules/issues"
 	"github.com/Mutiur03/pulse/internal/monitor"
 )
 

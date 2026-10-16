@@ -6,7 +6,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Mutiur03/pulse/internal/issues"
+	"github.com/Mutiur03/pulse/internal/modules/issues"
 )
 
 // memIssues is an in-memory IssueRecorder using the real Transition logic.

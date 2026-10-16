@@ -5,41 +5,13 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
-	"time"
 
 	"github.com/Mutiur03/pulse/internal/api/legacy"
 
 	"github.com/Mutiur03/pulse/internal/auth"
-	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/go-chi/chi/v5"
 )
-
-type fakeTraces struct {
-	TraceReader
-}
-
-func (f *fakeTraces) IssueTrends(_ context.Context, _ uint64, ids []uint64, _ time.Time) (map[uint64][]int64, error) {
-	out := map[uint64][]int64{}
-	for _, id := range ids {
-		out[id] = make([]int64, 24)
-	}
-	return out, nil
-}
-
-type fakeIssues struct{ IssueStore }
-
-func (fakeIssues) Get(_ context.Context, id int64) (issues.Issue, error) {
-	return issues.Issue{ID: id, ProjectID: 2, Status: issues.Unresolved}, nil
-}
-
-func (fakeIssues) SetStatus(_ context.Context, id int64, st issues.Status) (issues.Issue, error) {
-	return issues.Issue{ID: id, ProjectID: 2, Status: st}, nil
-}
-
-func (fakeIssues) List(context.Context, issues.ListFilter) ([]issues.Issue, int64, error) {
-	return []issues.Issue{{ID: 5, ProjectID: 1}}, 1, nil
-}
 
 type fakeKeys struct{ purged []string }
 
@@ -76,16 +48,12 @@ func call(t *testing.T, s *Server, p *auth.Principal, method, path, body string)
 }
 
 func TestProjectAccess(t *testing.T) {
-	tr := &fakeTraces{}
-	s := &Server{Traces: tr, Issues: fakeIssues{}, Keys: &fakeKeys{}}
+	s := &Server{Keys: &fakeKeys{}}
 	member := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "member"}}}
 	cases := []struct {
 		method, path, body string
 		want               int
 	}{
-		{"GET", "/v1/issues?project_id=2", "", 404},
-		{"GET", "/v1/issues/3", "", 404}, // issue belongs to project 2
-		{"PATCH", "/v1/issues/3", `{"status":"resolved"}`, 404},
 		{"GET", "/v1/projects/2/keys", "", 404},
 		{"POST", "/v1/projects/1/keys/rotate", "", 403}, // members cannot rotate
 	}
@@ -93,9 +61,6 @@ func TestProjectAccess(t *testing.T) {
 		if rec := call(t, s, member, c.method, c.path, c.body); rec.Code != c.want {
 			t.Errorf("%s %s: got %d want %d (%s)", c.method, c.path, rec.Code, c.want, rec.Body)
 		}
-	}
-	if rec := call(t, s, nil, "GET", "/v1/issues", ""); rec.Code != 401 {
-		t.Errorf("no principal: %d", rec.Code)
 	}
 }
 

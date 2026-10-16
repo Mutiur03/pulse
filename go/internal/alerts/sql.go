@@ -5,17 +5,13 @@ import (
 	"strings"
 	"time"
 
+
 	"github.com/Mutiur03/pulse/internal/logquery"
+	"github.com/Mutiur03/pulse/internal/store/ch"
 )
 
-// Query is a ClickHouse query for a threshold metric. It selects the value v,
-// the number of rows behind it n, and an example trace t and issue i.
-type Query struct {
-	SQL  string
-	Args []interface{}
-	// Empty is true when zero rows means "no data" rather than a zero value.
-	Empty bool
-}
+// Query is a ClickHouse query for a threshold metric.
+type Query = ch.AlertQuery
 
 // MetricQuery builds the query for one evaluation over [to-window, to).
 func MetricQuery(r *Rule, to time.Time) (Query, error) {

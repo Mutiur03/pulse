@@ -1,4 +1,4 @@
-package ch
+package ch_test
 
 import (
 	"context"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/alerts"
+	"github.com/Mutiur03/pulse/internal/store/ch"
 )
 
 // TestAlertQueriesClickHouse runs every metric's evaluation and chart query,
@@ -17,7 +18,7 @@ func TestAlertQueriesClickHouse(t *testing.T) {
 	if addr == "" {
 		t.Skip("PULSE_TEST_CLICKHOUSE not set")
 	}
-	c, err := NewClient(addr)
+	c, err := ch.NewClient(addr)
 	if err != nil {
 		t.Fatal(err)
 	}

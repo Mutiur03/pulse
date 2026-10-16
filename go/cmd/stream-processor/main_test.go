@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/config"
-	"github.com/Mutiur03/pulse/internal/issues"
+	"github.com/Mutiur03/pulse/internal/modules/issues"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/twmb/franz-go/pkg/kgo"
 )

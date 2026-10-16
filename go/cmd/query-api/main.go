@@ -18,10 +18,10 @@ import (
 	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/governance"
-	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/modules/issues"
 	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/orgs"
@@ -125,7 +125,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 
 // newServer builds the API handlers and stores on top of d.
 func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
-	db, rdb, chClient, issueStore, proxies, outbound := d.db, d.redis, d.ch, d.issues, d.proxies, d.outbound
+	db, rdb, chClient, proxies, outbound := d.db, d.redis, d.ch, d.proxies, d.outbound
 	idle := auth.DefaultIdle
 	if h := config.NonNegInt("SESSION_IDLE_HOURS", 0); h > 0 {
 		idle = time.Duration(h) * time.Hour
@@ -138,7 +138,7 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		return &auth.Throttle{Redis: rdb, Max: config.NonNegInt(env, def), Window: window, Prefix: prefix}
 	}
 	srv := &api.Server{
-		Traces: chClient, Issues: issueStore, Accounts: accounts,
+		Accounts: accounts,
 		Keys:     keyStore,
 		Projects: &projects.Store{DB: db},
 		Limits: api.AuthLimits{
@@ -173,7 +173,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 	srv.Alerts, srv.AlertMetrics = &alerts.Store{DB: db}, chClient
 	srv.AlertSender = &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL, Policy: outbound}
 
-	srv.Symbolicator = d.sym
 
 	return srv, accounts
 }

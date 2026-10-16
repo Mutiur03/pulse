@@ -3,12 +3,19 @@ package ch
 import (
 	"context"
 	"time"
-
-	"github.com/Mutiur03/pulse/internal/alerts"
 )
 
+// AlertQuery is a ClickHouse query for a threshold metric. It selects the value v,
+// the number of rows behind it n, and an example trace t and issue i.
+type AlertQuery struct {
+	SQL  string
+	Args []interface{}
+	// Empty is true when zero rows means "no data" rather than a zero value.
+	Empty bool
+}
+
 // AlertSample runs a metric query that returns one row.
-func (c *Client) AlertSample(ctx context.Context, q alerts.Query) (float64, uint64, string, uint64, error) {
+func (c *Client) AlertSample(ctx context.Context, q AlertQuery) (float64, uint64, string, uint64, error) {
 	var v float64
 	var n, issue uint64
 	var trace string
@@ -26,7 +33,7 @@ type AlertPoint struct {
 }
 
 // AlertSeries runs a bucketed metric query.
-func (c *Client) AlertSeries(ctx context.Context, q alerts.Query) ([]AlertPoint, error) {
+func (c *Client) AlertSeries(ctx context.Context, q AlertQuery) ([]AlertPoint, error) {
 	var out []AlertPoint
 	err := c.conn.Select(ctx, &out, q.SQL, q.Args...)
 	return out, err

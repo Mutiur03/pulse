@@ -3,34 +3,22 @@ package api
 
 import (
 	"context"
-	"encoding/json"
-	"errors"
 	"net/http"
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/api/legacy"
 	"github.com/Mutiur03/pulse/internal/apikit"
+	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/keys"
+	"github.com/Mutiur03/pulse/internal/orgs"
 
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/audit"
-	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/httpx"
-	"github.com/Mutiur03/pulse/internal/issues"
-	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/mail"
-	"github.com/Mutiur03/pulse/internal/orgs"
-	"github.com/Mutiur03/pulse/internal/store/ch"
-	"github.com/Mutiur03/pulse/internal/symbolicate"
 )
-
-// TraceReader and IssueStore are the storage dependencies, as interfaces so
-// handlers can be tested without databases.
-type TraceReader interface {
-	ErrorsByIssue(ctx context.Context, project, issueID uint64, limit int) ([]ch.ErrorRecord, error)
-	IssueTrends(ctx context.Context, project uint64, ids []uint64, now time.Time) (map[uint64][]int64, error)
-}
 
 // Accounts logs users in and out.
 type Accounts interface {
@@ -71,15 +59,7 @@ type OrgStore interface {
 	Accept(ctx context.Context, token string, userID int64, email string) (int64, error)
 }
 
-type IssueStore interface {
-	List(ctx context.Context, f issues.ListFilter) ([]issues.Issue, int64, error)
-	Get(ctx context.Context, id int64) (issues.Issue, error)
-	SetStatus(ctx context.Context, id int64, st issues.Status) (issues.Issue, error)
-}
-
 type Server struct {
-	Traces   TraceReader
-	Issues   IssueStore
 	Accounts Accounts
 	Keys     KeyStore
 	Projects ProjectStore
@@ -110,8 +90,6 @@ type Server struct {
 	AlertSender interface {
 		Send(ctx context.Context, c alerts.Channel, p alerts.Payload) error
 	}
-	// Symbolicator resolves minified stack frames; nil skips it.
-	Symbolicator *symbolicate.Symbolicator
 	// Governance keeps data settings and deletion requests; nil disables
 	// them. Persons links a deletion to every id of the person.
 	Governance   GovernanceStore
@@ -135,157 +113,10 @@ func writeErr(w http.ResponseWriter, code int, msg string) { httpx.WriteError(w,
 
 func internal(w http.ResponseWriter, err error) { apikit.WriteError(w, err) }
 
-// project resolves the requested project for the logged-in user; see
-// apikit.Project. It writes the error and returns false on failure.
-func project(w http.ResponseWriter, r *http.Request, p *gen.ProjectID) (uint64, bool) {
-	id, err := apikit.Project(r.Context(), p)
-	if err != nil {
-		apikit.WriteError(w, err)
-		return 0, false
-	}
-	return id, true
-}
-
 func limit(l *int, def, max int) int { return apikit.Limit(l, def, max) }
 
 func (s *Server) GetHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, gen.Health{Status: "healthy", Service: "query-api"})
 }
 
-func toAPI(i issues.Issue) gen.Issue {
-	out := gen.Issue{
-		Id: i.ID, ProjectId: i.ProjectID, Fingerprint: i.Fingerprint, Title: i.Title, ExceptionType: i.ExceptionType,
-		Culprit: i.Culprit, Platform: i.Platform, ServiceName: i.ServiceName, Status: gen.IssueStatus(i.Status),
-		FirstSeen: i.FirstSeen, LastSeen: i.LastSeen, Count: i.Count, SampleTraceId: i.SampleTraceID,
-		SampleSpanId: strPtr(i.SampleSpanID), ResolvedAt: i.ResolvedAt, TimesRegressed: i.TimesRegressed,
-	}
-	return out
-}
-
-func (s *Server) ListIssues(w http.ResponseWriter, r *http.Request, params gen.ListIssuesParams) {
-	p, ok := project(w, r, params.ProjectId)
-	if !ok {
-		return
-	}
-	f := issues.ListFilter{ProjectID: int64(p), Limit: 25}
-	if params.Status != nil {
-		if !issues.Status(*params.Status).Valid() {
-			writeErr(w, http.StatusBadRequest, "invalid status")
-			return
-		}
-		f.Status = issues.Status(*params.Status)
-	}
-	if params.Service != nil {
-		f.Service = *params.Service
-	}
-	if params.Query != nil {
-		f.Query = *params.Query
-	}
-	if params.Sort != nil {
-		f.Sort = string(*params.Sort)
-	}
-	if params.Limit != nil {
-		if *params.Limit < 1 || *params.Limit > 100 {
-			writeErr(w, http.StatusBadRequest, "limit must be 1-100")
-			return
-		}
-		f.Limit = *params.Limit
-	}
-	if params.Offset != nil {
-		if *params.Offset < 0 {
-			writeErr(w, http.StatusBadRequest, "offset must be >= 0")
-			return
-		}
-		f.Offset = *params.Offset
-	}
-	list, total, err := s.Issues.List(r.Context(), f)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	ids := make([]uint64, len(list))
-	for i, iss := range list {
-		ids[i] = uint64(iss.ID)
-	}
-	trends, err := s.Traces.IssueTrends(r.Context(), p, ids, s.now())
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	out := gen.IssueList{Issues: make([]gen.Issue, 0, len(list)), Total: total, Limit: f.Limit, Offset: f.Offset}
-	for _, i := range list {
-		a := toAPI(i)
-		if t, ok := trends[uint64(i.ID)]; ok {
-			a.Trend = &t
-		}
-		out.Issues = append(out.Issues, a)
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) GetIssue(w http.ResponseWriter, r *http.Request, id gen.IssueID, params gen.GetIssueParams) {
-	iss, err := s.Issues.Get(r.Context(), id)
-	if err == nil && !canRead(r, iss.ProjectID) {
-		err = issues.ErrNotFound
-	}
-	if errors.Is(err, issues.ErrNotFound) {
-		writeErr(w, http.StatusNotFound, "issue not found")
-		return
-	} else if err != nil {
-		internal(w, err)
-		return
-	}
-	limit := 20
-	if params.EventsLimit != nil && *params.EventsLimit >= 1 && *params.EventsLimit <= 100 {
-		limit = *params.EventsLimit
-	}
-	recs, err := s.Traces.ErrorsByIssue(r.Context(), uint64(iss.ProjectID), uint64(iss.ID), limit)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	out := gen.IssueDetail{Issue: toAPI(iss), RecentEvents: make([]gen.ErrorOccurrence, 0, len(recs))}
-	again := params.Symbolicate != nil && *params.Symbolicate
-	for _, e := range recs {
-		o := errorOccurrence(e)
-		frames, mapped := s.stackFrames(r.Context(), iss.ProjectID, e, again)
-		o.Frames, o.MappedFrames = toFrames(frames), &mapped
-		out.RecentEvents = append(out.RecentEvents, o)
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) UpdateIssue(w http.ResponseWriter, r *http.Request, id gen.IssueID) {
-	var body gen.IssueUpdate
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<16)).Decode(&body); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON")
-		return
-	}
-	st := issues.Status(body.Status)
-	if !st.Valid() {
-		writeErr(w, http.StatusBadRequest, "status must be unresolved, resolved or ignored")
-		return
-	}
-	cur, err := s.Issues.Get(r.Context(), id)
-	if errors.Is(err, issues.ErrNotFound) || (err == nil && !canRead(r, cur.ProjectID)) {
-		writeErr(w, http.StatusNotFound, "issue not found")
-		return
-	} else if err != nil {
-		internal(w, err)
-		return
-	}
-	iss, err := s.Issues.SetStatus(r.Context(), id, st)
-	if errors.Is(err, issues.ErrNotFound) {
-		writeErr(w, http.StatusNotFound, "issue not found")
-		return
-	} else if err != nil {
-		internal(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, toAPI(iss))
-}
-
-func canRead(r *http.Request, project int64) bool {
-	p := auth.FromContext(r.Context())
-	return p != nil && p.Can(project)
-}
+func canRead(r *http.Request, project int64) bool { return apikit.CanRead(r.Context(), project) }

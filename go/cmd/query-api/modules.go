@@ -4,6 +4,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/api"
 	"github.com/Mutiur03/pulse/internal/modules/analytics"
 	"github.com/Mutiur03/pulse/internal/modules/dashboards"
+	"github.com/Mutiur03/pulse/internal/modules/issues"
 	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/Mutiur03/pulse/internal/modules/telemetry"
 	"github.com/go-chi/chi/v5"
@@ -35,6 +36,7 @@ func mountModules(r chi.Router, cfg *config.Config, d deps, srv *api.Server) {
 	}
 	sourcemaps.New(sd).Register(r)
 
+	issues.New(issues.Deps{Repository: d.issues, Occurrences: d.ch, Symbolicator: d.sym}).Register(r)
 	analytics.New(analytics.Deps{Events: d.ch, Trends: d.ch, People: d.ch}).Register(r)
 	telemetry.New(telemetry.Deps{Traces: d.ch, Stats: d.ch, Logs: d.ch, Metrics: d.ch}).Register(r)
 
