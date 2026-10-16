@@ -4,6 +4,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/api"
 	"github.com/Mutiur03/pulse/internal/modules/dashboards"
 	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
+	"github.com/Mutiur03/pulse/internal/modules/telemetry"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/Mutiur03/pulse/internal/config"
@@ -32,6 +33,8 @@ func mountModules(r chi.Router, cfg *config.Config, d deps, srv *api.Server) {
 		sd.Uploaded = d.sym.Forget
 	}
 	sourcemaps.New(sd).Register(r)
+
+	telemetry.New(telemetry.Deps{Traces: d.ch, Stats: d.ch, Logs: d.ch, Metrics: d.ch}).Register(r)
 
 	dashboards.New(dashboards.Deps{DB: d.db, CheckWidget: srv.CheckWidget}).Register(r)
 }

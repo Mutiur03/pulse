@@ -2,7 +2,6 @@ package api
 
 import (
 	"context"
-	"encoding/json"
 	"net/http/httptest"
 	"strings"
 	"testing"
@@ -10,7 +9,6 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/api/legacy"
 
-	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
@@ -98,9 +96,6 @@ func TestProjectAccess(t *testing.T) {
 		method, path, body string
 		want               int
 	}{
-		{"GET", "/v1/traces", "", 200},
-		{"GET", "/v1/traces?project_id=1", "", 200},
-		{"GET", "/v1/traces?project_id=2", "", 404},
 		{"GET", "/v1/issues?project_id=2", "", 404},
 		{"GET", "/v1/issues/3", "", 404}, // issue belongs to project 2
 		{"PATCH", "/v1/issues/3", `{"status":"resolved"}`, 404},
@@ -112,7 +107,7 @@ func TestProjectAccess(t *testing.T) {
 			t.Errorf("%s %s: got %d want %d (%s)", c.method, c.path, rec.Code, c.want, rec.Body)
 		}
 	}
-	if rec := call(t, s, nil, "GET", "/v1/traces", ""); rec.Code != 401 {
+	if rec := call(t, s, nil, "GET", "/v1/issues", ""); rec.Code != 401 {
 		t.Errorf("no principal: %d", rec.Code)
 	}
 }
@@ -127,30 +122,6 @@ func TestRotatePurgesOldKeys(t *testing.T) {
 	}
 	if len(k.purged) != 1 || k.purged[0] != "pk_old" {
 		t.Errorf("old key must be purged from the gateway cache: %v", k.purged)
-	}
-}
-
-func TestTraceSearchParams(t *testing.T) {
-	tr := &fakeTraces{}
-	now := time.Date(2026, 10, 15, 12, 0, 0, 0, time.UTC)
-	s := &Server{Traces: tr, Now: func() time.Time { return now }}
-	me := &auth.Principal{Projects: []auth.Project{{ID: 1}}}
-	rec := call(t, s, me, "GET", "/v1/traces?service=api&status=error&min_duration_ms=250&query=pay", "")
-	if rec.Code != 200 {
-		t.Fatalf("%d %s", rec.Code, rec.Body)
-	}
-	f := tr.lastFilter
-	if f.Service != "api" || f.Status != "error" || f.MinDurationNs != 250e6 || f.NameQuery != "pay" ||
-		!f.To.Equal(now) || !f.From.Equal(now.Add(-24*time.Hour)) || f.Limit != 50 {
-		t.Errorf("filter %+v", f)
-	}
-	var out gen.TraceList
-	_ = json.Unmarshal(rec.Body.Bytes(), &out)
-	if len(out.Traces) != 1 || !out.Traces[0].HasBrowser || *out.Traces[0].HttpStatus != 402 {
-		t.Errorf("summary %+v", out)
-	}
-	if rec := call(t, s, me, "GET", "/v1/traces?status=bogus", ""); rec.Code != 400 {
-		t.Errorf("bad status: %d", rec.Code)
 	}
 }
 

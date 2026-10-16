@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
-	"strings"
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/api/legacy"
@@ -127,12 +126,8 @@ type Server struct {
 	Analytics AnalyticsReader
 	// Governance keeps data settings and deletion requests; nil disables
 	// them. Persons links a deletion to every id of the person.
-	Governance GovernanceStore
-	Persons    PersonLinker
-	// Logs serves the logs explorer; nil disables it.
-	Logs LogsReader
-	// Metrics reads OTLP metrics; nil returns empty results.
-	Metrics      MetricReader
+	Governance   GovernanceStore
+	Persons      PersonLinker
 	SecureCookie bool
 	Now          func() time.Time
 }
@@ -172,35 +167,6 @@ func limit(l *int, def, max int) int { return apikit.Limit(l, def, max) }
 
 func (s *Server) GetHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, gen.Health{Status: "healthy", Service: "query-api"})
-}
-
-func (s *Server) GetTrace(w http.ResponseWriter, r *http.Request, traceID string, params gen.GetTraceParams) {
-	traceID = strings.ToLower(traceID)
-	p, ok := project(w, r, params.ProjectId)
-	if !ok {
-		return
-	}
-	ctx := r.Context()
-	spans, err := s.Traces.SpansByTrace(ctx, p, traceID)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	errs, err := s.Traces.ErrorsByTrace(ctx, p, traceID)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	events, err := s.Traces.EventsByTrace(ctx, p, traceID)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	if len(spans) == 0 && len(errs) == 0 && len(events) == 0 {
-		writeErr(w, http.StatusNotFound, "trace not found")
-		return
-	}
-	writeJSON(w, http.StatusOK, BuildTrace(traceID, spans, errs, events))
 }
 
 func toAPI(i issues.Issue) gen.Issue {

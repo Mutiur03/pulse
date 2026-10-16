@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"net/http"
 	"testing"
-	"time"
 
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/auth"
@@ -21,10 +20,6 @@ func (f *fakeInsights) RunTrend(_ context.Context, q ch.TrendQuery) ([]ch.TrendS
 		out[i] = ch.TrendSeriesData{Buckets: []ch.TrendRow{{Bucket: q.From, Value: float64(i + 2)}}, Totals: []ch.TrendRow{{Value: float64(i + 2)}}}
 	}
 	return out, nil
-}
-
-func (f *fakeInsights) TraceStats(_ context.Context, q ch.TraceStatsQuery) ([]ch.TraceStatsRow, error) {
-	return []ch.TraceStatsRow{{Bucket: q.From.Truncate(time.Hour), Requests: 10, Errors: 2, P50Ns: 5e6, P95Ns: 2e7}}, nil
 }
 
 func TestQueryTrend(t *testing.T) {
@@ -62,12 +57,6 @@ func TestQueryTrend(t *testing.T) {
 		t.Errorf("other project: %d", rec.Code)
 	}
 
-	rec = call(t, s, member, "GET", "/v1/traces/stats?project_id=1&interval=hour&from=2026-01-01T00:00:00Z&to=2026-01-01T03:00:00Z", "")
-	var st gen.TraceStats
-	_ = json.Unmarshal(rec.Body.Bytes(), &st)
-	if rec.Code != 200 || len(st.Points) != 3 || st.Requests != 10 || st.Points[0].ErrorRate != 0.2 || st.Points[0].P95Ms != 20 || st.Points[1].Requests != 0 {
-		t.Errorf("trace stats %d %+v", rec.Code, st)
-	}
 }
 
 func TestCheckWidget(t *testing.T) {

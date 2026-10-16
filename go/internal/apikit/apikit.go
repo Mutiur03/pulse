@@ -5,6 +5,7 @@ package apikit
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log/slog"
 	"net/http"
@@ -146,5 +147,15 @@ func ErrorOccurrence(e ch.ErrorRecord) gen.ErrorOccurrence {
 		Stack: StrPtr(e.Stack), Culprit: StrPtr(e.Culprit), TraceId: e.TraceID, SpanId: e.SpanID,
 		ServiceName: e.ServiceName, Platform: e.Platform, SessionId: StrPtr(e.SessionID),
 		DistinctId: StrPtr(e.DistinctID), Url: StrPtr(e.URL), Release: StrPtr(e.Release),
+	}
+}
+
+// ProductEvent maps a stored product event to its API shape.
+func ProductEvent(e ch.EventRecord) gen.ProductEvent {
+	props := map[string]interface{}{}
+	_ = json.Unmarshal([]byte(e.Properties), &props)
+	return gen.ProductEvent{
+		Event: e.Event, Timestamp: e.Timestamp, DistinctId: e.DistinctID, SessionId: e.SessionID,
+		SpanId: e.SpanID, Properties: props,
 	}
 }

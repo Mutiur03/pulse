@@ -16,7 +16,6 @@ import (
 // InsightReader runs trend and trace stats queries.
 type InsightReader interface {
 	RunTrend(ctx context.Context, q ch.TrendQuery) ([]ch.TrendSeriesData, error)
-	TraceStats(ctx context.Context, q ch.TraceStatsQuery) ([]ch.TraceStatsRow, error)
 }
 
 func filters(in *[]gen.PropertyFilter) []ch.PropertyFilter {
@@ -111,64 +110,6 @@ func (s *Server) QueryTrend(w http.ResponseWriter, r *http.Request, params gen.Q
 		out.Series = append(out.Series, gen.TrendSeriesResult{Label: s.Label, Index: s.Index, Breakdown: s.Breakdown, Data: s.Data, Total: s.Total})
 	}
 	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) TraceStats(w http.ResponseWriter, r *http.Request, params gen.TraceStatsParams) {
-	p, ok := project(w, r, params.ProjectId)
-	if !ok {
-		return
-	}
-	q := ch.TraceStatsQuery{Project: p, Interval: "hour"}
-	q.From, q.To = s.timeRange(params.From, params.To)
-	if params.Interval != nil {
-		q.Interval = string(*params.Interval)
-	}
-	if params.Service != nil {
-		q.Service = strings.TrimSpace(*params.Service)
-	}
-	// Reuse the trend validation for the interval and range.
-	tq := ch.TrendQuery{Project: p, Series: []ch.TrendSeries{{}}, Interval: q.Interval, From: q.From, To: q.To}
-	if err := tq.Validate(); err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if s.Insights == nil {
-		writeErr(w, http.StatusServiceUnavailable, "insights are not configured")
-		return
-	}
-	rows, err := s.Insights.TraceStats(r.Context(), q)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, BuildTraceStats(q, rows))
-}
-
-// BuildTraceStats fills empty buckets with zeros.
-func BuildTraceStats(q ch.TraceStatsQuery, rows []ch.TraceStatsRow) gen.TraceStats {
-	buckets := insights.Buckets(q.From, q.To, q.Interval)
-	by := make(map[int64]ch.TraceStatsRow, len(rows))
-	for _, r := range rows {
-		by[insights.BucketStart(r.Bucket, q.Interval).Unix()] = r
-	}
-	out := gen.TraceStats{Interval: gen.TrendInterval(q.Interval), Points: make([]gen.TraceStatsPoint, 0, len(buckets))}
-	if q.Service != "" {
-		out.Service = &q.Service
-	}
-	for _, b := range buckets {
-		pt := gen.TraceStatsPoint{T: b}
-		if r, ok := by[b.Unix()]; ok {
-			pt.Requests, pt.Errors = int64(r.Requests), int64(r.Errors)
-			pt.P50Ms, pt.P95Ms = r.P50Ns/1e6, r.P95Ns/1e6
-			if r.Requests > 0 {
-				pt.ErrorRate = float64(r.Errors) / float64(r.Requests)
-			}
-		}
-		out.Requests += pt.Requests
-		out.Errors += pt.Errors
-		out.Points = append(out.Points, pt)
-	}
-	return out
 }
 
 // CheckWidget validates a saved dashboard widget query by kind.
