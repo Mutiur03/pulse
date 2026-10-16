@@ -30,8 +30,9 @@ func TestEveryOperationRoutedOnce(t *testing.T) {
 	}
 
 	r := chi.NewRouter()
-	mountModules(r, config.Load(), deps{})
-	legacy.HandlerFromMux(&api.Server{}, r)
+	srv := &api.Server{}
+	mountModules(r, config.Load(), deps{}, srv)
+	legacy.HandlerFromMux(srv, r)
 	got := map[string]int{}
 	err = chi.Walk(r, func(method, route string, _ http.Handler, _ ...func(http.Handler) http.Handler) error {
 		got[method+" "+strings.TrimSuffix(route, "/")]++

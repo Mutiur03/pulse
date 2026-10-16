@@ -165,21 +165,6 @@ type ServerInterface interface {
 	// Replace the allowed browser origins
 	// (POST /v1/projects/{project_id}/allowed-origins)
 	SetAllowedOrigins(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
-	// List the dashboards you can see
-	// (GET /v1/projects/{project_id}/dashboards)
-	ListDashboards(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
-	// Create a dashboard
-	// (POST /v1/projects/{project_id}/dashboards)
-	CreateDashboard(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
-	// Delete a dashboard
-	// (DELETE /v1/projects/{project_id}/dashboards/{dashboard_id})
-	DeleteDashboard(w http.ResponseWriter, r *http.Request, projectId ProjectPath, dashboardId DashboardPath)
-	// Get a dashboard
-	// (GET /v1/projects/{project_id}/dashboards/{dashboard_id})
-	GetDashboard(w http.ResponseWriter, r *http.Request, projectId ProjectPath, dashboardId DashboardPath)
-	// Update a dashboard
-	// (PUT /v1/projects/{project_id}/dashboards/{dashboard_id})
-	UpdateDashboard(w http.ResponseWriter, r *http.Request, projectId ProjectPath, dashboardId DashboardPath)
 	// The project's PII scrubbing rules and retention periods
 	// (GET /v1/projects/{project_id}/data-settings)
 	GetDataSettings(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
@@ -543,36 +528,6 @@ func (_ Unimplemented) GetAllowedOrigins(w http.ResponseWriter, r *http.Request,
 // Replace the allowed browser origins
 // (POST /v1/projects/{project_id}/allowed-origins)
 func (_ Unimplemented) SetAllowedOrigins(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// List the dashboards you can see
-// (GET /v1/projects/{project_id}/dashboards)
-func (_ Unimplemented) ListDashboards(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Create a dashboard
-// (POST /v1/projects/{project_id}/dashboards)
-func (_ Unimplemented) CreateDashboard(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Delete a dashboard
-// (DELETE /v1/projects/{project_id}/dashboards/{dashboard_id})
-func (_ Unimplemented) DeleteDashboard(w http.ResponseWriter, r *http.Request, projectId ProjectPath, dashboardId DashboardPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Get a dashboard
-// (GET /v1/projects/{project_id}/dashboards/{dashboard_id})
-func (_ Unimplemented) GetDashboard(w http.ResponseWriter, r *http.Request, projectId ProjectPath, dashboardId DashboardPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Update a dashboard
-// (PUT /v1/projects/{project_id}/dashboards/{dashboard_id})
-func (_ Unimplemented) UpdateDashboard(w http.ResponseWriter, r *http.Request, projectId ProjectPath, dashboardId DashboardPath) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -2530,188 +2485,6 @@ func (siw *ServerInterfaceWrapper) SetAllowedOrigins(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
-// ListDashboards operation middleware
-func (siw *ServerInterfaceWrapper) ListDashboards(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListDashboards(w, r, projectId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateDashboard operation middleware
-func (siw *ServerInterfaceWrapper) CreateDashboard(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateDashboard(w, r, projectId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// DeleteDashboard operation middleware
-func (siw *ServerInterfaceWrapper) DeleteDashboard(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "dashboard_id" -------------
-	var dashboardId DashboardPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "dashboard_id", chi.URLParam(r, "dashboard_id"), &dashboardId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dashboard_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.DeleteDashboard(w, r, projectId, dashboardId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetDashboard operation middleware
-func (siw *ServerInterfaceWrapper) GetDashboard(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "dashboard_id" -------------
-	var dashboardId DashboardPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "dashboard_id", chi.URLParam(r, "dashboard_id"), &dashboardId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dashboard_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetDashboard(w, r, projectId, dashboardId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// UpdateDashboard operation middleware
-func (siw *ServerInterfaceWrapper) UpdateDashboard(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "dashboard_id" -------------
-	var dashboardId DashboardPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "dashboard_id", chi.URLParam(r, "dashboard_id"), &dashboardId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "dashboard_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateDashboard(w, r, projectId, dashboardId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // GetDataSettings operation middleware
 func (siw *ServerInterfaceWrapper) GetDataSettings(w http.ResponseWriter, r *http.Request) {
 
@@ -3779,21 +3552,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/projects/{project_id}/allowed-origins", wrapper.SetAllowedOrigins)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/projects/{project_id}/dashboards", wrapper.ListDashboards)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v1/projects/{project_id}/dashboards", wrapper.CreateDashboard)
-	})
-	r.Group(func(r chi.Router) {
-		r.Delete(options.BaseURL+"/v1/projects/{project_id}/dashboards/{dashboard_id}", wrapper.DeleteDashboard)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/projects/{project_id}/dashboards/{dashboard_id}", wrapper.GetDashboard)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/v1/projects/{project_id}/dashboards/{dashboard_id}", wrapper.UpdateDashboard)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/data-settings", wrapper.GetDataSettings)

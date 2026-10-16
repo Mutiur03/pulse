@@ -171,8 +171,8 @@ func BuildTraceStats(q ch.TraceStatsQuery, rows []ch.TraceStatsRow) gen.TraceSta
 	return out
 }
 
-// widgetCheck validates a saved widget query by kind.
-func (s *Server) widgetCheck(kind string, raw json.RawMessage) error {
+// CheckWidget validates a saved dashboard widget query by kind.
+func (s *Server) CheckWidget(kind string, raw json.RawMessage) error {
 	switch kind {
 	case "trend":
 		var q gen.TrendQuery

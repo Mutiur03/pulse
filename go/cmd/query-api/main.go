@@ -18,7 +18,6 @@ import (
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/config"
-	"github.com/Mutiur03/pulse/internal/dashboards"
 	"github.com/Mutiur03/pulse/internal/governance"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
@@ -105,7 +104,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 
 	srv, accounts := newServer(cfg, d)
 	r := newRouter(cfg, accounts)
-	mountModules(r, cfg, d)
+	mountModules(r, cfg, d, srv)
 	handler := legacy.HandlerFromMux(srv, r)
 
 	// Metrics are served on their own port, not the public one.
@@ -161,7 +160,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		Logs:       chClient,
 		Governance: &governance.Store{DB: db},
 		Persons:    chClient,
-		Dashboards: &dashboards.Store{DB: db},
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: config.String("COOKIE_SECURE", "") != "false",
 	}

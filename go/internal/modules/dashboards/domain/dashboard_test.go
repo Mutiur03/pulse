@@ -1,4 +1,4 @@
-package dashboards
+package domain
 
 import (
 	"encoding/json"

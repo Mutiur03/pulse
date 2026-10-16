@@ -124,10 +124,8 @@ type Server struct {
 	Releases        ReleaseStore
 	ArtifactObjects ObjectPutter
 	Symbolicator    *symbolicate.Symbolicator
-	// Insights runs trend and trace stats queries; Dashboards keeps
-	// custom dashboards. nil disables each.
-	Insights   InsightReader
-	Dashboards DashboardStore
+	// Insights runs trend and trace stats queries; nil disables it.
+	Insights InsightReader
 	// Analytics serves persons, retention and paths; nil disables them.
 	Analytics AnalyticsReader
 	// Governance keeps data settings and deletion requests; nil disables
