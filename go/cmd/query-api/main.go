@@ -12,7 +12,7 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api"
-	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/api/legacy"
 	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
@@ -104,7 +104,9 @@ func run(ctx context.Context, cfg *config.Config) error {
 	defer func() { _ = d.redis.Close() }()
 
 	srv, accounts := newServer(cfg, d)
-	handler := gen.HandlerFromMux(srv, newRouter(cfg, accounts))
+	r := newRouter(cfg, accounts)
+	mountModules(r, cfg, d)
+	handler := legacy.HandlerFromMux(srv, r)
 
 	// Metrics are served on their own port, not the public one.
 	monitor.Service("query-api")
@@ -153,7 +155,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		// Without SMTP_ADDR emails are written to the log.
 		Mail:       mail.New(cfg.SMTP),
 		AppURL:     cfg.AppURL,
-		Replays:    chClient,
 		Metrics:    chClient,
 		Insights:   chClient,
 		Analytics:  chClient,
@@ -168,10 +169,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 	srv.Alerts, srv.AlertMetrics = &alerts.Store{DB: db}, chClient
 	srv.AlertSender = &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL, Policy: outbound}
 
-	// A typed nil would look non-nil through the interface.
-	if objects := replay.Connect(cfg.S3); objects != nil {
-		srv.ReplayObjects = objects
-	}
 	// Releases and upload tokens work without object storage; uploads and
 	// symbolication need it.
 	rel := &artifacts.Store{DB: db}
@@ -180,7 +177,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		srv.ArtifactObjects = objects
 		srv.Symbolicator = &symbolicate.Symbolicator{Artifacts: rel, Objects: objects}
 	}
-	srv.ReplayRetentionDays = config.Int("REPLAY_RETENTION_DAYS", 0)
 
 	return srv, accounts
 }

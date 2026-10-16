@@ -1,4 +1,4 @@
-package api
+package replay_test
 
 import (
 	"bytes"
@@ -6,12 +6,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/modules/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
+	"github.com/go-chi/chi/v5"
 )
 
 type fakeReplays struct{ last ch.ReplayFilter }
@@ -52,40 +55,60 @@ func (m memChunks) Get(_ context.Context, k string) ([]byte, error) {
 
 func TestReplays(t *testing.T) {
 	fr := &fakeReplays{}
-	s := &Server{Replays: fr, ReplayObjects: memChunks{"a": `[{"type":4,"timestamp":1},{"type":2,"timestamp":2}]`, "b": `[{"type":3,"timestamp":3}]`}}
+	m := replay.New(replay.Deps{Reader: fr, Objects: memChunks{"a": `[{"type":4,"timestamp":1},{"type":2,"timestamp":2}]`, "b": `[{"type":3,"timestamp":3}]`}})
 	me := &auth.Principal{Projects: []auth.Project{{ID: 1}}}
 
-	rec := call(t, s, me, "GET", "/v1/replays?has_errors=true&user=u&url=cart&min_duration_ms=5000", "")
+	rec := call(t, m, me, "GET", "/v1/replays?has_errors=true&user=u&url=cart&min_duration_ms=5000", "")
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"session_id":"s-1"`) || !strings.Contains(rec.Body.String(), `"retention_days":30`) {
 		t.Fatalf("list: %d %s", rec.Code, rec.Body)
 	}
 	if !fr.last.HasErrors || fr.last.DistinctID != "u" || fr.last.URL != "cart" || fr.last.MinDurationMs != 5000 {
 		t.Errorf("filters: %+v", fr.last)
 	}
-	rec = call(t, s, me, "GET", "/v1/replays/s-1", "")
+	rec = call(t, m, me, "GET", "/v1/replays/s-1", "")
 	if rec.Code != 200 || !strings.Contains(rec.Body.String(), `"message":"boom"`) || !strings.Contains(rec.Body.String(), `"span_count":4`) {
 		t.Errorf("detail: %d %s", rec.Code, rec.Body)
 	}
-	rec = call(t, s, me, "GET", "/v1/replays/s-1/events", "")
+	rec = call(t, m, me, "GET", "/v1/replays/s-1/events", "")
 	var events []map[string]any
 	if rec.Code != 200 || json.Unmarshal(rec.Body.Bytes(), &events) != nil || len(events) != 3 {
 		t.Errorf("events (a missing chunk is skipped): %d %s", rec.Code, rec.Body)
 	}
 	for _, path := range []string{"/v1/replays/other", "/v1/replays/s-1?project_id=2", "/v1/replays/bad%20id/events", "/v1/replays?project_id=2"} {
-		if rec := call(t, s, me, "GET", path, ""); rec.Code != 404 {
+		if rec := call(t, m, me, "GET", path, ""); rec.Code != 404 {
 			t.Errorf("%s: %d", path, rec.Code)
 		}
 	}
 }
 
-func TestReplaysSQL(t *testing.T) {
-	q, args := ch.ReplaysSQL(ch.ReplayFilter{Project: 1, HasErrors: true, DistinctID: "u", URL: "x", MinDurationMs: 10, Limit: 5})
-	for _, want := range []string{"HAVING error_total > 0 AND has(users, ?) AND arrayExists", "duration_ms >= ?", "GROUP BY session_id", "LIMIT ?"} {
-		if !strings.Contains(q, want) {
-			t.Errorf("missing %q in %s", want, q)
-		}
+func TestReplaysDisabled(t *testing.T) {
+	me := &auth.Principal{Projects: []auth.Project{{ID: 1}}}
+	m := replay.New(replay.Deps{RetentionDays: 7})
+	rec := call(t, m, me, "GET", "/v1/replays", "")
+	if rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != `{"replays":[],"retention_days":7}` {
+		t.Errorf("list: %d %s", rec.Code, rec.Body)
 	}
-	if strings.Count(q, "?") != len(args) {
-		t.Errorf("placeholders %d args %d", strings.Count(q, "?"), len(args))
+	if rec := call(t, m, me, "GET", "/v1/replays/s-1", ""); rec.Code != 404 || strings.TrimSpace(rec.Body.String()) != `{"error":"replay not found"}` {
+		t.Errorf("detail: %d %s", rec.Code, rec.Body)
 	}
+	if rec := call(t, m, nil, "GET", "/v1/replays", ""); rec.Code != 401 {
+		t.Errorf("anonymous: %d", rec.Code)
+	}
+	m = replay.New(replay.Deps{Reader: &fakeReplays{}})
+	if rec := call(t, m, me, "GET", "/v1/replays/s-1/events", ""); rec.Code != 503 || !strings.Contains(rec.Body.String(), "storage is not configured") {
+		t.Errorf("events without storage: %d %s", rec.Code, rec.Body)
+	}
+}
+
+func call(t *testing.T, m *replay.Module, p *auth.Principal, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := chi.NewRouter()
+	m.Register(r)
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	if p != nil {
+		req = req.WithContext(auth.WithPrincipal(req.Context(), p))
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
 }

@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/Mutiur03/pulse/internal/api/legacy"
+
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/auth"
@@ -84,7 +86,7 @@ func upload(t *testing.T, s *Server, token, path string, files map[string][]byte
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	r := chi.NewRouter()
-	h := auth.Middleware(nil, auth.CSRF{})(gen.HandlerFromMux(s, r))
+	h := auth.Middleware(nil, auth.CSRF{})(legacy.HandlerFromMux(s, r))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec

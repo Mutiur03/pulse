@@ -5,16 +5,13 @@ import (
 	"sort"
 	"time"
 
+	"github.com/Mutiur03/pulse/internal/apikit"
+
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 )
 
-func strPtr(s string) *string {
-	if s == "" {
-		return nil
-	}
-	return &s
-}
+func strPtr(s string) *string { return apikit.StrPtr(s) }
 
 // Source classifies a span for display: database calls, browser spans
 // (from the web SDK), and everything else as backend.
@@ -29,14 +26,7 @@ func Source(s ch.SpanRecord) gen.SpanSource {
 	}
 }
 
-func errorOccurrence(e ch.ErrorRecord) gen.ErrorOccurrence {
-	return gen.ErrorOccurrence{
-		Timestamp: e.Timestamp, IssueId: int64(e.IssueID), ExceptionType: e.ExceptionType, Message: e.Message,
-		Stack: strPtr(e.Stack), Culprit: strPtr(e.Culprit), TraceId: e.TraceID, SpanId: e.SpanID,
-		ServiceName: e.ServiceName, Platform: e.Platform, SessionId: strPtr(e.SessionID),
-		DistinctId: strPtr(e.DistinctID), Url: strPtr(e.URL), Release: strPtr(e.Release),
-	}
-}
+func errorOccurrence(e ch.ErrorRecord) gen.ErrorOccurrence { return apikit.ErrorOccurrence(e) }
 
 func productEvent(e ch.EventRecord) gen.ProductEvent {
 	props := map[string]interface{}{}

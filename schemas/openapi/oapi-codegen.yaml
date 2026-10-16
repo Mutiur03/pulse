@@ -1,10 +1,7 @@
-# Shared models plus the chi server for operations whose module has not
-# moved to its own generated interface yet (see docs/adr/0001).
+# Shared request/response models used by every module's generated server
+# (see docs/adr/0001-query-api-modular-monolith.md).
 package: gen
 output: ../../go/internal/api/gen/server.go
 generate:
-  chi-server: true
   models: true
   embedded-spec: true
-output-options:
-  exclude-tags: []

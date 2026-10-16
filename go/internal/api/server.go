@@ -5,10 +5,12 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log/slog"
 	"net/http"
 	"strings"
 	"time"
+
+	"github.com/Mutiur03/pulse/internal/api/legacy"
+	"github.com/Mutiur03/pulse/internal/apikit"
 
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api/gen"
@@ -110,11 +112,6 @@ type Server struct {
 	Mail mail.Sender
 	// AppURL is the web app's public base URL used in email links.
 	AppURL string
-	// Replays and ReplayObjects serve session replay; nil disables it.
-	Replays       ReplayReader
-	ReplayObjects ObjectGetter
-	// ReplayRetentionDays is shown to users; 0 means the default.
-	ReplayRetentionDays int
 	// Alerts manages alert rules and channels; nil disables alerting.
 	Alerts       AlertStore
 	AlertMetrics AlertMetrics
@@ -152,79 +149,31 @@ func (s *Server) now() time.Time {
 	return time.Now()
 }
 
-var _ gen.ServerInterface = (*Server)(nil)
+var _ legacy.ServerInterface = (*Server)(nil)
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) { httpx.WriteJSON(w, code, v) }
 
 func writeErr(w http.ResponseWriter, code int, msg string) { httpx.WriteError(w, code, msg) }
 
-// Messages for queries stopped by a cost limit; the web app shows them.
-const (
-	msgQueryTimeout  = "This query took too long and was stopped. Try a shorter time range or more filters."
-	msgQueryTooLarge = "This query would read too much data. Try a shorter time range or more filters."
-)
+func internal(w http.ResponseWriter, err error) { apikit.WriteError(w, err) }
 
-func internal(w http.ResponseWriter, err error) {
-	switch ch.LimitError(err) {
-	case ch.ErrQueryTimeout:
-		slog.Error("query api: query stopped by time limit", "err", err)
-		writeErr(w, http.StatusGatewayTimeout, msgQueryTimeout)
-		return
-	case ch.ErrQueryTooLarge:
-		slog.Error("query api: query stopped by size limit", "err", err)
-		writeErr(w, http.StatusUnprocessableEntity, msgQueryTooLarge)
-		return
-	}
-	slog.Error("query api error", "err", err)
-	writeErr(w, http.StatusInternalServerError, "internal error")
-}
-
-// project resolves the requested project for the logged-in user: the given
-// id if they are a member, else their first project when none was given.
-// It writes a 404 and returns false when the user cannot read it, so other
-// projects' existence is not revealed.
+// project resolves the requested project for the logged-in user; see
+// apikit.Project. It writes the error and returns false on failure.
 func project(w http.ResponseWriter, r *http.Request, p *gen.ProjectID) (uint64, bool) {
-	pr := auth.FromContext(r.Context())
-	if pr == nil {
-		writeErr(w, http.StatusUnauthorized, "not logged in")
+	id, err := apikit.Project(r.Context(), p)
+	if err != nil {
+		apikit.WriteError(w, err)
 		return 0, false
 	}
-	if p == nil {
-		if len(pr.Projects) == 0 {
-			writeErr(w, http.StatusNotFound, "no projects")
-			return 0, false
-		}
-		return uint64(pr.Projects[0].ID), true
-	}
-	if !pr.Can(*p) {
-		writeErr(w, http.StatusNotFound, "project not found")
-		return 0, false
-	}
-	return uint64(*p), true
+	return id, true
 }
 
 // timeRange applies the default of the last 24 hours.
 func (s *Server) timeRange(from, to *time.Time) (time.Time, time.Time) {
-	end := s.now().UTC()
-	if to != nil {
-		end = *to
-	}
-	start := end.Add(-24 * time.Hour)
-	if from != nil {
-		start = *from
-	}
-	return start, end
+	return apikit.Clock(s.Now).TimeRange(from, to)
 }
 
-func limit(l *int, def, max int) int {
-	if l == nil || *l < 1 {
-		return def
-	}
-	if *l > max {
-		return max
-	}
-	return *l
-}
+func limit(l *int, def, max int) int { return apikit.Limit(l, def, max) }
 
 func (s *Server) GetHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, gen.Health{Status: "healthy", Service: "query-api"})

@@ -7,7 +7,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/api/legacy"
+
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/projects"
@@ -77,7 +78,7 @@ func (f *fakeAccounts) VerifyEmail(_ context.Context, token string) error {
 }
 
 func post(s *Server, path, body, ip string) *httptest.ResponseRecorder {
-	h := gen.HandlerFromMux(s, chi.NewRouter())
+	h := legacy.HandlerFromMux(s, chi.NewRouter())
 	req := httptest.NewRequest("POST", path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = ip + ":5555"

@@ -42,8 +42,8 @@ modules/<name>/
   domain/            entities and rules; no I/O
   ports/             interfaces the module needs (repositories, readers, senders)
   service/           use cases; depend on domain and ports only
-  adapters/http/     strict-server handlers for the module's OpenAPI tag
-  adapters/http/oapi generated per-tag interface (do not edit)
+  adapters/httpapi/  strict-server handlers for the module's OpenAPI tag
+  adapters/httpapi/oapi  generated per-tag interface (do not edit)
   adapters/postgres/ repositories
   adapters/clickhouse/ readers, where the module owns the queries
 ```
@@ -74,12 +74,19 @@ Every operation in `schemas/openapi/api.yaml` carries a tag naming its
 module. oapi-codegen v2 generates the shared models plus, per module, a
 strict-server interface limited to that tag (`include-tags`) into
 `adapters/http/oapi`. Handlers return typed responses; error statuses the
-spec does not list (401, 429, 503, …) are returned as `httpx.Error` and
+spec does not list (401, 429, 503, …) are returned as `apikit.Error` and
 written by the shared error handler in the existing JSON format, so
 responses stay byte-compatible. Multipart and streaming operations may use
-the per-tag chi-server interface instead. Operations whose module has not
-moved yet are served by the legacy `gen.ServerInterface`, generated with
-`exclude-tags` for the migrated modules, until it is empty and removed.
+the per-tag chi-server interface instead. Shared models stay in `internal/api/gen`.
+Operations whose module has not moved yet are served by
+`internal/api/legacy`, a chi server generated with `exclude-tags` for the
+migrated modules, until it is empty and removed. Per-module generator
+configs live in `schemas/openapi/modules/`.
+
+`internal/apikit` holds the HTTP helpers every module adapter shares:
+`apikit.Error`, project access, time ranges and the strict handler options.
+A route test in `cmd/query-api` checks that every spec operation is served
+exactly once.
 
 URL paths and payloads do not change.
 
