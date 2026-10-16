@@ -8,8 +8,8 @@ import { BarList, LineChart, TrendChart, compact } from './charts';
 import { TrendBuilder, trendRequest, type SavedTrend } from './query-builder';
 import { Button, Card, CardHeader, ErrorNote, Input, Select, Spinner } from './ui';
 
-export type WidgetKind = DashboardWidget['kind'];
-export const kindLabels: Record<WidgetKind, string> = { trend: 'Trend', funnel: 'Funnel', metric: 'Metric', traces: 'Trace stats' };
+type WidgetKind = DashboardWidget['kind'];
+const kindLabels: Record<WidgetKind, string> = { trend: 'Trend', funnel: 'Funnel', metric: 'Metric', traces: 'Trace stats' };
 
 export const dashboardRanges: Record<string, { ms: number; interval: TrendInterval }> = {
   '24h': { ms: 86400e3, interval: 'hour' },
@@ -17,16 +17,16 @@ export const dashboardRanges: Record<string, { ms: number; interval: TrendInterv
   '30d': { ms: 30 * 86400e3, interval: 'day' },
 };
 
-export interface FunnelSaved {
+interface FunnelSaved {
   steps: string[];
   window_seconds?: number;
 }
-export interface MetricSaved {
+interface MetricSaved {
   name: string;
   agg?: string;
   group_by?: string;
 }
-export interface TracesSaved {
+interface TracesSaved {
   service?: string;
 }
 

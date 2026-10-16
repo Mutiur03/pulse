@@ -34,9 +34,9 @@ const displays: [TrendDisplay, string][] = [
   ['table', 'Table'],
 ];
 /** Suggested properties: event columns and what the browser SDK sends. */
-export const knownProperties = ['$pathname', '$current_url', '$referrer', '$title', '$metric', '$value', '$rating', '$event_type', '$tag', 'distinct_id', 'session_id', 'event'];
+const knownProperties = ['$pathname', '$current_url', '$referrer', '$title', '$metric', '$value', '$rating', '$event_type', '$tag', 'distinct_id', 'session_id', 'event'];
 
-export const letter = (i: number) => String.fromCharCode(65 + i);
+const letter = (i: number) => String.fromCharCode(65 + i);
 
 function Filters({ value, onChange, label }: { value: PropertyFilter[]; onChange: (f: PropertyFilter[]) => void; label: string }) {
   const set = (i: number, patch: Partial<PropertyFilter>) => onChange(value.map((f, j) => (j === i ? { ...f, ...patch } : f)));

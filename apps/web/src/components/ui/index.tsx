@@ -149,7 +149,7 @@ const limitTitles: [string, string][] = [
 ];
 
 /** The title for an error from a query stopped by a cost limit, if it is one. */
-export function limitTitle(error: string): string | undefined {
+function limitTitle(error: string): string | undefined {
   return limitTitles.find(([prefix]) => error.startsWith(prefix))?.[1];
 }
 

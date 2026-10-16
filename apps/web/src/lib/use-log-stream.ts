@@ -4,11 +4,11 @@ import type { LogRecord } from '@pulse/api-client';
 import { api } from './api';
 import { fromRange } from './format';
 
-export const pageSize = 100;
+const pageSize = 100;
 const tailEvery = 2000;
 const tailMax = 1000;
 
-export interface LogStream {
+interface LogStream {
   logs: LogRecord[];
   /** Pagination token for older logs; undefined when there are none. */
   next?: string;

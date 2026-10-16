@@ -13,7 +13,7 @@ export function compact(v: number): string {
   return String(Math.round(v * 100) / 100);
 }
 
-export interface Line {
+interface Line {
   label: string;
   data: number[];
 }
@@ -94,7 +94,7 @@ export function LineChart({
   );
 }
 
-export function Legend({ labels }: { labels: string[] }) {
+function Legend({ labels }: { labels: string[] }) {
   return (
     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-2" data-testid="chart-legend">
       {labels.map((l, i) => (
@@ -129,7 +129,7 @@ export function BarList({ items, testId = 'bar-list' }: { items: { label: string
 }
 
 /** Legend label of a trend series, with its breakdown term. */
-export function seriesLabel(s: TrendResult['series'][number]): string {
+function seriesLabel(s: TrendResult['series'][number]): string {
   if (!s.breakdown) return s.label;
   const term = s.breakdown === '$other' ? 'Other' : s.breakdown;
   return `${s.label} · ${term}`;
@@ -175,7 +175,7 @@ export function TrendChart({ result, display = 'line', height }: { result: Trend
 }
 
 /** The rendered width of an element, so SVG text stays at its real size. */
-export function useWidth(ref: React.RefObject<HTMLDivElement | null>, initial = 640): number {
+function useWidth(ref: React.RefObject<HTMLDivElement | null>, initial = 640): number {
   const [w, setW] = useState(initial);
   useEffect(() => {
     const el = ref.current;

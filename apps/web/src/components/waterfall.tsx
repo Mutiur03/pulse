@@ -1,9 +1,9 @@
 'use client';
-import type { ErrorOccurrence, ProductEvent, SpanNode, Trace } from '@pulse/api-client';
+import type { SpanNode, Trace } from '@pulse/api-client';
 import { cn } from '@/lib/cn';
 import { ms } from '@/lib/format';
 
-export interface Row {
+interface Row {
   span: SpanNode;
   depth: number;
 }
@@ -102,4 +102,3 @@ function Marker({ at, title, kind }: { at: number; title: string; kind: 'error' 
   );
 }
 
-export type { ErrorOccurrence, ProductEvent };

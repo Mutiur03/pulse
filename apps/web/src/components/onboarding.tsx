@@ -26,7 +26,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 /** Step 2 of onboarding: install instructions per platform, with the key filled in. */
-export function InstallGuide({ apiKey }: { apiKey: string }) {
+function InstallGuide({ apiKey }: { apiKey: string }) {
   const [platform, setPlatform] = useState<Platform>('browser');
   const install = installCommand(platform);
   const snippet = platformSnippet(platform, apiKey);
@@ -74,7 +74,7 @@ interface FirstData {
  * Step 3 of onboarding: polls the project for its first event or trace and
  * says so when one arrives.
  */
-export function FirstEventCheck({ project }: { project: number }) {
+function FirstEventCheck({ project }: { project: number }) {
   const [first, setFirst] = useState<FirstData>();
   const [checks, setChecks] = useState(0);
   useEffect(() => {
@@ -133,7 +133,7 @@ export function FirstEventCheck({ project }: { project: number }) {
 }
 
 /** Step 1 of onboarding: the project's ingest key. */
-export function KeyCard({ apiKey }: { apiKey: string }) {
+function KeyCard({ apiKey }: { apiKey: string }) {
   return (
     <Card>
       <CardHeader title="1. Your ingest key" description="Public: safe to ship in browser code. Add, rotate or revoke keys in Settings." />

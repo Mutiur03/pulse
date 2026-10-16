@@ -1,5 +1,5 @@
 /** Ingest endpoint as seen from the browser (the gateway on port 8080). */
-export function ingestURL() {
+function ingestURL() {
   return typeof window !== 'undefined' ? `${location.protocol}//${location.hostname}:8080` : 'http://localhost:8080';
 }
 
@@ -28,7 +28,7 @@ OTEL_SERVICE_NAME=checkout-api`;
 }
 
 /** Query API base URL for pulse-cli (port 8081 locally). */
-export function apiURL() {
+function apiURL() {
   return typeof window !== 'undefined' ? `${location.protocol}//${location.hostname}:8081` : 'http://localhost:8081';
 }
 

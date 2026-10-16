@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { handleAuthError } from './api';
 
-export interface Async<T> {
+interface Async<T> {
   data?: T;
   error?: string;
   loading: boolean;
@@ -46,7 +46,7 @@ export function useAsync<T>(fn: () => Promise<T>, deps: unknown[]): Async<T> {
   return { ...state, reload: load };
 }
 
-export interface Runner<A extends unknown[], T> {
+interface Runner<A extends unknown[], T> {
   data?: T;
   error?: string;
   busy: boolean;

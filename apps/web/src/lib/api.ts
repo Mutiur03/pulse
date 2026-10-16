@@ -32,7 +32,7 @@ export function selectOrg(id: number | undefined) {
   else window.localStorage.setItem(ORG_KEY, String(id));
 }
 
-export interface Context {
+interface Context {
   org?: Org;
   /** Projects of the current organization. */
   projects: Project[];
