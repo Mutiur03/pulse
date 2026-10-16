@@ -1,7 +1,6 @@
 package ingest
 
 import (
-	"encoding/hex"
 	"encoding/json"
 	"strconv"
 	"strings"
@@ -9,8 +8,6 @@ import (
 
 	collogs "go.opentelemetry.io/proto/otlp/collector/logs/v1"
 	coltrace "go.opentelemetry.io/proto/otlp/collector/trace/v1"
-	common "go.opentelemetry.io/proto/otlp/common/v1"
-	"google.golang.org/protobuf/proto"
 )
 
 // OTLP/HTTP decoding for traces and logs, in both encodings the spec allows:
@@ -51,283 +48,6 @@ type rawResource struct {
 	logs  []rawLog
 }
 
-// ---- JSON ----
-
-type jsonValue struct {
-	StringValue *string         `json:"stringValue"`
-	IntValue    json.RawMessage `json:"intValue"`
-	DoubleValue *float64        `json:"doubleValue"`
-	BoolValue   *bool           `json:"boolValue"`
-	ArrayValue  *struct {
-		Values []jsonValue `json:"values"`
-	} `json:"arrayValue"`
-	KvlistValue *struct {
-		Values []jsonKV `json:"values"`
-	} `json:"kvlistValue"`
-}
-
-type jsonKV struct {
-	Key   string    `json:"key"`
-	Value jsonValue `json:"value"`
-}
-
-func (v jsonValue) String() string {
-	switch {
-	case v.StringValue != nil:
-		return *v.StringValue
-	case len(v.IntValue) > 0:
-		return unquote(v.IntValue)
-	case v.DoubleValue != nil:
-		return strconv.FormatFloat(*v.DoubleValue, 'f', -1, 64)
-	case v.BoolValue != nil:
-		return strconv.FormatBool(*v.BoolValue)
-	case v.ArrayValue != nil:
-		parts := make([]string, len(v.ArrayValue.Values))
-		for i, x := range v.ArrayValue.Values {
-			parts[i] = x.String()
-		}
-		b, _ := json.Marshal(parts)
-		return string(b)
-	case v.KvlistValue != nil:
-		b, _ := json.Marshal(jsonAttrs(v.KvlistValue.Values))
-		return string(b)
-	}
-	return ""
-}
-
-func jsonAttrs(kvs []jsonKV) kv {
-	m := make(kv, len(kvs))
-	for _, x := range kvs {
-		m[x.Key] = x.Value.String()
-	}
-	return m
-}
-
-// unquote handles proto3 JSON numbers, which may be encoded as strings.
-func unquote(raw json.RawMessage) string {
-	var s string
-	if json.Unmarshal(raw, &s) == nil {
-		return s
-	}
-	return string(raw)
-}
-
-func rawUint(raw json.RawMessage) uint64 {
-	n, _ := strconv.ParseUint(unquote(raw), 10, 64)
-	return n
-}
-
-var enumNames = map[string]int{
-	"SPAN_KIND_UNSPECIFIED": 0, "SPAN_KIND_INTERNAL": 1, "SPAN_KIND_SERVER": 2, "SPAN_KIND_CLIENT": 3,
-	"SPAN_KIND_PRODUCER": 4, "SPAN_KIND_CONSUMER": 5,
-	"STATUS_CODE_UNSET": 0, "STATUS_CODE_OK": 1, "STATUS_CODE_ERROR": 2,
-}
-
-func rawEnum(raw json.RawMessage) int {
-	s := unquote(raw)
-	if n, ok := enumNames[s]; ok {
-		return n
-	}
-	n, _ := strconv.Atoi(s)
-	return n
-}
-
-type jsonResource struct {
-	Attributes []jsonKV `json:"attributes"`
-}
-
-type jsonTraces struct {
-	ResourceSpans []struct {
-		Resource   jsonResource `json:"resource"`
-		ScopeSpans []struct {
-			Spans []struct {
-				TraceID           string          `json:"traceId"`
-				SpanID            string          `json:"spanId"`
-				ParentSpanID      string          `json:"parentSpanId"`
-				Name              string          `json:"name"`
-				Kind              json.RawMessage `json:"kind"`
-				StartTimeUnixNano json.RawMessage `json:"startTimeUnixNano"`
-				EndTimeUnixNano   json.RawMessage `json:"endTimeUnixNano"`
-				Attributes        []jsonKV        `json:"attributes"`
-				Events            []struct {
-					Name         string          `json:"name"`
-					TimeUnixNano json.RawMessage `json:"timeUnixNano"`
-					Attributes   []jsonKV        `json:"attributes"`
-				} `json:"events"`
-				Status struct {
-					Code    json.RawMessage `json:"code"`
-					Message string          `json:"message"`
-				} `json:"status"`
-			} `json:"spans"`
-		} `json:"scopeSpans"`
-	} `json:"resourceSpans"`
-}
-
-type jsonLogs struct {
-	ResourceLogs []struct {
-		Resource  jsonResource `json:"resource"`
-		ScopeLogs []struct {
-			LogRecords []struct {
-				TimeUnixNano         json.RawMessage `json:"timeUnixNano"`
-				ObservedTimeUnixNano json.RawMessage `json:"observedTimeUnixNano"`
-				SeverityNumber       json.RawMessage `json:"severityNumber"`
-				SeverityText         string          `json:"severityText"`
-				Body                 jsonValue       `json:"body"`
-				Attributes           []jsonKV        `json:"attributes"`
-				TraceID              string          `json:"traceId"`
-				SpanID               string          `json:"spanId"`
-			} `json:"logRecords"`
-		} `json:"scopeLogs"`
-	} `json:"resourceLogs"`
-}
-
-func parseJSONTraces(body []byte) ([]rawResource, error) {
-	var req jsonTraces
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, err
-	}
-	var out []rawResource
-	for _, rs := range req.ResourceSpans {
-		r := rawResource{attrs: jsonAttrs(rs.Resource.Attributes)}
-		for _, ss := range rs.ScopeSpans {
-			for _, s := range ss.Spans {
-				sp := rawSpan{
-					traceID: strings.ToLower(s.TraceID), spanID: strings.ToLower(s.SpanID), parentID: strings.ToLower(s.ParentSpanID),
-					name: s.Name, kind: rawEnum(s.Kind), start: rawUint(s.StartTimeUnixNano), end: rawUint(s.EndTimeUnixNano),
-					attrs: jsonAttrs(s.Attributes), statusCode: rawEnum(s.Status.Code), statusMsg: s.Status.Message,
-				}
-				for _, e := range s.Events {
-					sp.events = append(sp.events, rawEvent{name: e.Name, time: rawUint(e.TimeUnixNano), attrs: jsonAttrs(e.Attributes)})
-				}
-				r.spans = append(r.spans, sp)
-			}
-		}
-		out = append(out, r)
-	}
-	return out, nil
-}
-
-func parseJSONLogs(body []byte) ([]rawResource, error) {
-	var req jsonLogs
-	if err := json.Unmarshal(body, &req); err != nil {
-		return nil, err
-	}
-	var out []rawResource
-	for _, rl := range req.ResourceLogs {
-		r := rawResource{attrs: jsonAttrs(rl.Resource.Attributes)}
-		for _, sl := range rl.ScopeLogs {
-			for _, l := range sl.LogRecords {
-				r.logs = append(r.logs, rawLog{
-					time: rawUint(l.TimeUnixNano), observed: rawUint(l.ObservedTimeUnixNano),
-					severityText: l.SeverityText, severityNumber: rawEnum(l.SeverityNumber), body: l.Body.String(),
-					traceID: strings.ToLower(l.TraceID), spanID: strings.ToLower(l.SpanID), attrs: jsonAttrs(l.Attributes),
-				})
-			}
-		}
-		out = append(out, r)
-	}
-	return out, nil
-}
-
-// ---- protobuf ----
-
-func pbValue(v *common.AnyValue) string {
-	switch x := v.GetValue().(type) {
-	case *common.AnyValue_StringValue:
-		return x.StringValue
-	case *common.AnyValue_IntValue:
-		return strconv.FormatInt(x.IntValue, 10)
-	case *common.AnyValue_DoubleValue:
-		return strconv.FormatFloat(x.DoubleValue, 'f', -1, 64)
-	case *common.AnyValue_BoolValue:
-		return strconv.FormatBool(x.BoolValue)
-	case *common.AnyValue_BytesValue:
-		return hex.EncodeToString(x.BytesValue)
-	case *common.AnyValue_ArrayValue:
-		parts := make([]string, len(x.ArrayValue.GetValues()))
-		for i, e := range x.ArrayValue.GetValues() {
-			parts[i] = pbValue(e)
-		}
-		b, _ := json.Marshal(parts)
-		return string(b)
-	case *common.AnyValue_KvlistValue:
-		b, _ := json.Marshal(pbAttrs(x.KvlistValue.GetValues()))
-		return string(b)
-	}
-	return ""
-}
-
-func pbAttrs(kvs []*common.KeyValue) kv {
-	m := make(kv, len(kvs))
-	for _, x := range kvs {
-		m[x.GetKey()] = pbValue(x.GetValue())
-	}
-	return m
-}
-
-func hexID(b []byte) string {
-	if len(b) == 0 {
-		return ""
-	}
-	return hex.EncodeToString(b)
-}
-
-func parseProtoTraces(body []byte) ([]rawResource, error) {
-	var req coltrace.ExportTraceServiceRequest
-	if err := proto.Unmarshal(body, &req); err != nil {
-		return nil, err
-	}
-	return protoTraces(&req), nil
-}
-
-func protoTraces(req *coltrace.ExportTraceServiceRequest) []rawResource {
-	var out []rawResource
-	for _, rs := range req.GetResourceSpans() {
-		r := rawResource{attrs: pbAttrs(rs.GetResource().GetAttributes())}
-		for _, ss := range rs.GetScopeSpans() {
-			for _, s := range ss.GetSpans() {
-				sp := rawSpan{
-					traceID: hexID(s.GetTraceId()), spanID: hexID(s.GetSpanId()), parentID: hexID(s.GetParentSpanId()),
-					name: s.GetName(), kind: int(s.GetKind()), start: s.GetStartTimeUnixNano(), end: s.GetEndTimeUnixNano(),
-					attrs: pbAttrs(s.GetAttributes()), statusCode: int(s.GetStatus().GetCode()), statusMsg: s.GetStatus().GetMessage(),
-				}
-				for _, e := range s.GetEvents() {
-					sp.events = append(sp.events, rawEvent{name: e.GetName(), time: e.GetTimeUnixNano(), attrs: pbAttrs(e.GetAttributes())})
-				}
-				r.spans = append(r.spans, sp)
-			}
-		}
-		out = append(out, r)
-	}
-	return out
-}
-
-func parseProtoLogs(body []byte) ([]rawResource, error) {
-	var req collogs.ExportLogsServiceRequest
-	if err := proto.Unmarshal(body, &req); err != nil {
-		return nil, err
-	}
-	return protoLogs(&req), nil
-}
-
-func protoLogs(req *collogs.ExportLogsServiceRequest) []rawResource {
-	var out []rawResource
-	for _, rl := range req.GetResourceLogs() {
-		r := rawResource{attrs: pbAttrs(rl.GetResource().GetAttributes())}
-		for _, sl := range rl.GetScopeLogs() {
-			for _, l := range sl.GetLogRecords() {
-				r.logs = append(r.logs, rawLog{
-					time: l.GetTimeUnixNano(), observed: l.GetObservedTimeUnixNano(),
-					severityText: l.GetSeverityText(), severityNumber: int(l.GetSeverityNumber()), body: pbValue(l.GetBody()),
-					traceID: hexID(l.GetTraceId()), spanID: hexID(l.GetSpanId()), attrs: pbAttrs(l.GetAttributes()),
-				})
-			}
-		}
-		out = append(out, r)
-	}
-	return out
-}
-
 // ---- mapping ----
 
 var kindNames = []string{"unspecified", "internal", "server", "client", "producer", "consumer"}
@@ -355,10 +75,6 @@ func nanos(n uint64) time.Time {
 	}
 	return time.Unix(0, int64(n)).UTC()
 }
-
-// projectFor ignores any project claimed in the payload: the project always
-// comes from the authenticated ingest key.
-func projectFor(_ kv, def string) string { return def }
 
 // platform from the resource: "go", "python", "nodejs", "webjs", ...
 func platform(res kv) string {
@@ -447,7 +163,9 @@ func mapTraces(resources []rawResource, defaultProject string) TraceBatch {
 		}
 	}
 	for _, r := range resources {
-		project := projectFor(r.attrs, defaultProject)
+		// Any project claimed in the payload is ignored: the project always
+		// comes from the authenticated ingest key.
+		project := defaultProject
 		service := r.attrs["service.name"]
 		plat := platform(r.attrs)
 		release := first(r.attrs, "service.version")
@@ -533,7 +251,9 @@ func mapTraces(resources []rawResource, defaultProject string) TraceBatch {
 func mapLogs(resources []rawResource, defaultProject string) []LogRecord {
 	var out []LogRecord
 	for _, r := range resources {
-		project := projectFor(r.attrs, defaultProject)
+		// Any project claimed in the payload is ignored: the project always
+		// comes from the authenticated ingest key.
+		project := defaultProject
 		for _, l := range r.logs {
 			ts := l.time
 			if ts == 0 {
