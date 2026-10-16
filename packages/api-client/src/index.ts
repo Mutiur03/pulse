@@ -57,6 +57,16 @@ export type FunnelResult = Schemas['FunnelResult'];
 export type FunnelStep = Schemas['FunnelStep'];
 export type CohortHealth = Schemas['CohortHealth'];
 export type FunnelError = Schemas['FunnelError'];
+export type TrendQuery = Schemas['TrendQuery'];
+export type TrendSeriesInput = Schemas['TrendSeriesInput'];
+export type TrendResult = Schemas['TrendResult'];
+export type TrendInterval = Schemas['TrendInterval'];
+export type PropertyFilter = Schemas['PropertyFilter'];
+export type TraceStats = Schemas['TraceStats'];
+export type Dashboard = Schemas['Dashboard'];
+export type DashboardInput = Schemas['DashboardInput'];
+export type DashboardWidget = Schemas['DashboardWidget'];
+export type TraceStatsQuery = NonNullable<operations['traceStats']['parameters']['query']>;
 export type ListIssuesQuery = NonNullable<operations['listIssues']['parameters']['query']>;
 export type ListTracesQuery = NonNullable<operations['listTraces']['parameters']['query']>;
 export type ListEventsQuery = NonNullable<operations['listEvents']['parameters']['query']>;
@@ -242,6 +252,34 @@ export class APIClient {
 
   queryFunnel(body: FunnelQuery, projectId?: number): Promise<FunnelResult> {
     return this.request('POST', '/v1/funnels/query', { project_id: projectId }, body);
+  }
+
+  queryTrend(body: TrendQuery, projectId?: number): Promise<TrendResult> {
+    return this.request('POST', '/v1/insights/trends', { project_id: projectId }, body);
+  }
+
+  traceStats(query: TraceStatsQuery = {}): Promise<TraceStats> {
+    return this.request('GET', '/v1/traces/stats', query as Query);
+  }
+
+  listDashboards(projectId: number): Promise<Dashboard[]> {
+    return this.request('GET', `/v1/projects/${projectId}/dashboards`);
+  }
+
+  getDashboard(projectId: number, id: number): Promise<Dashboard> {
+    return this.request('GET', `/v1/projects/${projectId}/dashboards/${id}`);
+  }
+
+  createDashboard(projectId: number, body: DashboardInput): Promise<Dashboard> {
+    return this.request('POST', `/v1/projects/${projectId}/dashboards`, undefined, body);
+  }
+
+  updateDashboard(projectId: number, id: number, body: DashboardInput): Promise<Dashboard> {
+    return this.request('PUT', `/v1/projects/${projectId}/dashboards/${id}`, undefined, body);
+  }
+
+  deleteDashboard(projectId: number, id: number): Promise<void> {
+    return this.request('DELETE', `/v1/projects/${projectId}/dashboards/${id}`);
   }
 
   getTrace(traceId: string, projectId?: number): Promise<Trace> {

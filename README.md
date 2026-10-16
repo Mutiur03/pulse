@@ -14,6 +14,7 @@ See [docs/architecture.md](docs/architecture.md) for the complete technical desi
 - **Observability (APM)**: Distributed traces, service maps, RED metrics, logs with full-text search
 - **Error Tracking**: Exception capture, stack traces, symbolication, issue grouping
 - **Unified Correlation**: Every signal (event, span, log, error, replay) shares `trace_id`, `session_id`, and `person_id`
+- **Dashboards and Insights**: Trend query builder (series, filters, breakdowns, formulas) and shareable dashboards of trends, funnels, metrics and trace stats; see [docs/dashboards.md](docs/dashboards.md)
 
 ## Repository Structure
 

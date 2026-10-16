@@ -126,6 +126,10 @@ type Server struct {
 	Releases        ReleaseStore
 	ArtifactObjects ObjectPutter
 	Symbolicator    *symbolicate.Symbolicator
+	// Insights runs trend and trace stats queries; Dashboards keeps
+	// custom dashboards. nil disables each.
+	Insights   InsightReader
+	Dashboards DashboardStore
 	// Metrics reads OTLP metrics; nil returns empty results.
 	Metrics      MetricReader
 	SecureCookie bool

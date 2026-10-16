@@ -756,3 +756,117 @@ test('security: headers, CSRF, allowed origins, SSRF, audit log and sign out eve
   await other.close();
   await ctx.close();
 });
+
+test('insights query builder saves trends to a dashboard with funnel and trace widgets', async ({ page }) => {
+  await login(page);
+  await page.goto('/insights');
+  await expect(page.getByTestId('trend-chart')).toBeVisible();
+  // Two series and a formula: page views per user.
+  await page.getByRole('button', { name: '+ Series' }).click();
+  await page.getByLabel('Series B event').selectOption('$pageview');
+  await page.getByLabel('Series B math').selectOption('unique_users');
+  await page.getByLabel('Formula').fill('A / B');
+  await page.getByTestId('run-trend').click();
+  await expect(page.getByTestId('run-trend')).toHaveAttribute('data-busy', 'false');
+  await expect(page.getByTestId('chart-line')).toHaveCount(1);
+  await expect(page.getByTestId('trend-result')).toContainText('Formula: A / B');
+
+  // Breakdown by path with a filter, as a bar chart of totals.
+  await page.getByLabel('Formula').fill('');
+  await page.getByLabel('Remove series B').click();
+  await page.getByRole('button', { name: '+ Filter' }).first().click();
+  await page.getByLabel('Series A filter 1 property').fill('$pathname');
+  await page.getByLabel('Series A filter 1 operator').selectOption('is_set');
+  await page.getByLabel('Breakdown').fill('$pathname');
+  await page.getByTestId('run-trend').click();
+  await expect(page.getByTestId('run-trend')).toHaveAttribute('data-busy', 'false');
+  await expect(page.getByTestId('chart-legend')).toContainText('A. $pageview · /');
+  await shot(page, '40-insights');
+  await page.getByLabel('Display').selectOption('bar');
+  await expect(page.getByTestId('trend-bars')).toBeVisible();
+
+  await page.getByTestId('save-insight').click();
+  await page.getByLabel('Widget title').fill('Page views by path');
+  await page.getByTestId('confirm-save-insight').click();
+  await page.getByTestId('saved-link').click();
+  await expect(page).toHaveURL(/\/dashboards\/\d+/);
+  await expect(page.getByTestId('widget')).toHaveCount(1);
+  await expect(page.getByTestId('trend-bars')).toBeVisible();
+
+  // Add a funnel and trace stats, rename and share.
+  await page.getByTestId('toggle-edit').click();
+  await page.getByTestId('add-widget').click();
+  await page.getByLabel('Widget type').selectOption('funnel');
+  await page.getByLabel('Widget title').fill('Checkout');
+  await page.getByLabel('Funnel step 1').selectOption('$pageview');
+  await page.getByLabel('Funnel step 2').selectOption('checkout_started');
+  await page.getByTestId('save-widget').click();
+  await expect(page.getByTestId('widget-funnel')).toContainText('checkout_started');
+  await page.getByTestId('add-widget').click();
+  await page.getByLabel('Widget type').selectOption('traces');
+  await page.getByLabel('Widget width').selectOption('2');
+  await page.getByTestId('save-widget').click();
+  await expect(page.getByTestId('widget-traces')).toContainText('Requests');
+  await page.getByLabel('Rename dashboard').fill('Growth overview');
+  await page.getByTestId('rename-dashboard').click();
+  await page.getByTestId('share-dashboard').click();
+  await expect(page.getByTestId('share-dashboard')).toBeChecked();
+  await expect(page.getByRole('heading', { name: 'Growth overview' })).toBeVisible();
+  await page.getByTestId('toggle-edit').click();
+  await expect(page.getByTestId('widget')).toHaveCount(3);
+  await shot(page, '41-dashboard');
+  const stats = page.waitForResponse((r) => r.url().includes('/v1/traces/stats') && r.url().includes('interval=day'));
+  await page.getByTestId('dashboard-range').selectOption('30d');
+  expect((await stats).status()).toBe(200);
+
+  // It survives a reload and is listed as shared.
+  await page.goto('/dashboards');
+  await expect(page.getByTestId('dashboard-row').filter({ hasText: 'Growth overview' }).first()).toContainText('Shared');
+});
+
+test('dashboards are private until shared with the organization', async ({ page, browser }) => {
+  const stamp = Date.now();
+  const owner = `dash-owner-${stamp}@example.com`;
+  const member = `dash-member-${stamp}@example.com`;
+  await apiSignup(page, owner);
+  const created = await page.request.post('/api/v1/projects', { data: { name: 'Dash App' } });
+  expect(created.status()).toBe(201);
+  const { project } = (await created.json()) as { project: { id: number } };
+  const me = (await (await page.request.get('/api/v1/auth/me')).json()) as { orgs: { id: number }[] };
+  const widgets = [{ id: 'w1', title: 'Signups', kind: 'trend', width: 2, query: { series: [{ event: 'signup', math: 'unique_users' }], interval: 'day' } }];
+  for (const [name, shared] of [
+    ['Team KPIs', true],
+    ['My scratchpad', false],
+  ] as const) {
+    const res = await page.request.post(`/api/v1/projects/${project.id}/dashboards`, { data: { name, shared, widgets } });
+    expect(res.status()).toBe(201);
+  }
+  const bad = await page.request.post(`/api/v1/projects/${project.id}/dashboards`, {
+    data: { name: 'Bad', widgets: [{ id: 'x', kind: 'trend', query: { series: [{ event: 'a' }], formula: 'A / B' } }] },
+  });
+  expect(bad.status()).toBe(400);
+  expect(await bad.text()).toContain('series B');
+
+  const invite = await page.request.post(`/api/v1/orgs/${me.orgs[0].id}/invites`, { data: { email: member, role: 'member' } });
+  expect(invite.status()).toBe(201);
+  const token = new URL(await mailLink(page.request, member, '/invite'), 'http://x').searchParams.get('token');
+
+  const ctx = await browser.newContext();
+  const memberPage = await ctx.newPage();
+  const signup = await memberPage.request.post('/api/v1/auth/signup', {
+    data: { email: member, password: 'member-password-1', name: 'Member', invite_token: token },
+  });
+  expect(signup.status()).toBe(201);
+  await memberPage.goto('/dashboards');
+  await expect(memberPage.getByTestId('dashboard-row')).toHaveCount(1);
+  await expect(memberPage.getByTestId('dashboard-row')).toContainText('Team KPIs');
+  await memberPage.getByTestId('dashboard-row').click();
+  await expect(memberPage.getByText('View only')).toBeVisible();
+  await expect(memberPage.getByTestId('toggle-edit')).toHaveCount(0);
+  await expect(memberPage.getByTestId('widget')).toHaveCount(1);
+  await shot(memberPage, '42-dashboard-shared-view');
+  const id = memberPage.url().split('/').pop();
+  const edit = await memberPage.request.put(`/api/v1/projects/${project.id}/dashboards/${id}`, { data: { name: 'Hijacked' } });
+  expect(edit.status()).toBe(403);
+  await ctx.close();
+});

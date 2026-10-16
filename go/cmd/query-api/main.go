@@ -20,6 +20,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/config"
+	"github.com/Mutiur03/pulse/internal/dashboards"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/mail"
@@ -116,9 +117,11 @@ func main() {
 			Addr: os.Getenv("SMTP_ADDR"), From: os.Getenv("SMTP_FROM"),
 			User: os.Getenv("SMTP_USER"), Password: os.Getenv("SMTP_PASSWORD"),
 		}),
-		AppURL:  os.Getenv("APP_URL"),
-		Replays: chClient,
-		Metrics: chClient,
+		AppURL:     os.Getenv("APP_URL"),
+		Replays:    chClient,
+		Metrics:    chClient,
+		Insights:   chClient,
+		Dashboards: &dashboards.Store{DB: db},
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: os.Getenv("COOKIE_SECURE") != "false",
 	}

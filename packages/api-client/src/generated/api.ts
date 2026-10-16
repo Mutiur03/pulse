@@ -922,10 +922,208 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/insights/trends": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Chart events over time
+         * @description Runs each series (an event, or every event, counted as total, unique users, unique sessions or an aggregate of a numeric property) over time buckets, with property filters, an optional breakdown by a property (top 10 terms, the rest as $other) and an optional formula over the series letters (A, B, ...).
+         */
+        post: operations["queryTrend"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/traces/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Request volume, errors and latency of root spans over time */
+        get: operations["traceStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/dashboards": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List the dashboards you can see
+         * @description Shared dashboards and your own private ones, most recently updated first.
+         */
+        get: operations["listDashboards"];
+        put?: never;
+        /** Create a dashboard */
+        post: operations["createDashboard"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/dashboards/{dashboard_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a dashboard */
+        get: operations["getDashboard"];
+        /**
+         * Update a dashboard
+         * @description Allowed for its creator, and for project owners when it is shared.
+         */
+        put: operations["updateDashboard"];
+        post?: never;
+        /** Delete a dashboard */
+        delete: operations["deleteDashboard"];
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /**
+         * @description Bucket size of a time series.
+         * @enum {string}
+         */
+        TrendInterval: "hour" | "day" | "week" | "month";
+        PropertyFilter: {
+            /** @description distinct_id, session_id, event, or a key of the event properties (e.g. $pathname). */
+            property: string;
+            /** @enum {string} */
+            op: "eq" | "neq" | "contains" | "not_contains" | "is_set" | "is_not_set" | "gt" | "lt";
+            value?: string;
+        };
+        TrendSeriesInput: {
+            /** @description Event name; empty counts every event. */
+            event?: string;
+            /** @enum {string} */
+            math?: "total" | "unique_users" | "unique_sessions" | "sum" | "avg" | "min" | "max" | "p95";
+            /** @description Numeric property for sum, avg, min, max and p95. */
+            property?: string;
+            filters?: components["schemas"]["PropertyFilter"][];
+        };
+        TrendQuery: {
+            series: components["schemas"]["TrendSeriesInput"][];
+            /** @description Filters applied to every series. */
+            filters?: components["schemas"]["PropertyFilter"][];
+            breakdown?: string;
+            interval?: components["schemas"]["TrendInterval"];
+            /** @description Arithmetic over series letters, e.g. "A / B * 100". Replaces the series in the result. */
+            formula?: string;
+            /**
+             * Format: date-time
+             * @description Default 7 days ago.
+             */
+            from?: string;
+            /** Format: date-time */
+            to?: string;
+        };
+        TrendSeriesResult: {
+            label: string;
+            /** @description Series index, -1 for the formula. */
+            index: number;
+            breakdown: string;
+            data: number[];
+            /**
+             * Format: double
+             * @description Over the whole range (true unique counts for unique math).
+             */
+            total: number;
+        };
+        TrendResult: {
+            interval: components["schemas"]["TrendInterval"];
+            /** Format: date-time */
+            from: string;
+            /** Format: date-time */
+            to: string;
+            buckets: string[];
+            series: components["schemas"]["TrendSeriesResult"][];
+        };
+        TraceStatsPoint: {
+            /** Format: date-time */
+            t: string;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            errors: number;
+            /** Format: double */
+            error_rate: number;
+            /** Format: double */
+            p50_ms: number;
+            /** Format: double */
+            p95_ms: number;
+        };
+        TraceStats: {
+            interval: components["schemas"]["TrendInterval"];
+            service?: string;
+            /** Format: int64 */
+            requests: number;
+            /** Format: int64 */
+            errors: number;
+            points: components["schemas"]["TraceStatsPoint"][];
+        };
+        DashboardWidget: {
+            id: string;
+            title?: string;
+            /** @enum {string} */
+            kind: "trend" | "funnel" | "metric" | "traces";
+            /** @description 1 (half row) or 2 (full row). */
+            width?: number;
+            /** @description The saved query: a TrendQuery plus display for trend, a FunnelQuery for funnel, {name, agg, group_by} for metric and {service} for traces. */
+            query?: {
+                [key: string]: unknown;
+            };
+        };
+        DashboardInput: {
+            name: string;
+            description?: string;
+            /** @description Visible to everyone who can read the project. */
+            shared?: boolean;
+            widgets?: components["schemas"]["DashboardWidget"][];
+        };
+        Dashboard: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            project_id: number;
+            name: string;
+            description: string;
+            shared: boolean;
+            /** Format: int64 */
+            created_by: number;
+            creator_name: string;
+            can_edit: boolean;
+            widgets: components["schemas"]["DashboardWidget"][];
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+        };
         SignupRequest: {
             email: string;
             /** @description At least 10 characters. */
@@ -1591,6 +1789,7 @@ export interface components {
         SessionPath: string;
         OrgPath: number;
         ReleasePath: string;
+        DashboardPath: number;
         ProjectPath: number;
         /** @description Start of the time range. Default 24 hours ago. */
         From: string;
@@ -3174,6 +3373,192 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
+        };
+    };
+    queryTrend: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["TrendQuery"];
+            };
+        };
+        responses: {
+            /** @description Trend result */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TrendResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    traceStats: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+                service?: string;
+                interval?: components["schemas"]["TrendInterval"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Stats per bucket */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["TraceStats"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    listDashboards: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Dashboards */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardInput"];
+            };
+        };
+        responses: {
+            /** @description The new dashboard */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                dashboard_id: components["parameters"]["DashboardPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The dashboard */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                dashboard_id: components["parameters"]["DashboardPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DashboardInput"];
+            };
+        };
+        responses: {
+            /** @description The updated dashboard */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Dashboard"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    deleteDashboard: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                dashboard_id: components["parameters"]["DashboardPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Deleted */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
         };
     };
 }

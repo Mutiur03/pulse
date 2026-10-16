@@ -7,6 +7,8 @@ import { api, currentContext, handleAuthError, selectOrg, selectProject, storedO
 import { cn } from '@/lib/cn';
 
 const links = [
+  { href: '/dashboards', label: 'Dashboards', icon: 'M3 3h8v8H3zM13 3h8v5h-8zM13 10h8v11h-8zM3 13h8v8H3z' },
+  { href: '/insights', label: 'Insights', icon: 'M4 19V9m6 10V5m6 14v-7m4 7H2' },
   { href: '/traces', label: 'Traces', icon: 'M3 12h4l3-8 4 16 3-8h4' },
   { href: '/issues', label: 'Issues', icon: 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z' },
   { href: '/metrics', label: 'Metrics', icon: 'M3 3v18h18M7 15l4-4 3 3 5-6' },

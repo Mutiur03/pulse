@@ -1324,6 +1324,153 @@ paths:
                 $ref: '#/components/schemas/MetricResult'
         '400':
           $ref: '#/components/responses/BadRequest'
+  /v1/insights/trends:
+    post:
+      summary: Chart events over time
+      description: >
+        Runs each series (an event, or every event, counted as total, unique
+        users, unique sessions or an aggregate of a numeric property) over
+        time buckets, with property filters, an optional breakdown by a
+        property (top 10 terms, the rest as $other) and an optional formula
+        over the series letters (A, B, ...).
+      operationId: queryTrend
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TrendQuery'
+      responses:
+        '200':
+          description: Trend result
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TrendResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/traces/stats:
+    get:
+      summary: Request volume, errors and latency of root spans over time
+      operationId: traceStats
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - name: service
+          in: query
+          schema:
+            type: string
+        - name: interval
+          in: query
+          schema:
+            $ref: '#/components/schemas/TrendInterval'
+      responses:
+        '200':
+          description: Stats per bucket
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TraceStats'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/projects/{project_id}/dashboards:
+    get:
+      summary: List the dashboards you can see
+      description: Shared dashboards and your own private ones, most recently updated first.
+      operationId: listDashboards
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: Dashboards
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Dashboard'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Create a dashboard
+      operationId: createDashboard
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardInput'
+      responses:
+        '201':
+          description: The new dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/dashboards/{dashboard_id}:
+    get:
+      summary: Get a dashboard
+      operationId: getDashboard
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/DashboardPath'
+      responses:
+        '200':
+          description: The dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Update a dashboard
+      description: Allowed for its creator, and for project owners when it is shared.
+      operationId: updateDashboard
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/DashboardPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DashboardInput'
+      responses:
+        '200':
+          description: The updated dashboard
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Dashboard'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      summary: Delete a dashboard
+      operationId: deleteDashboard
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - $ref: '#/components/parameters/DashboardPath'
+      responses:
+        '204':
+          description: Deleted
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
 components:
   securitySchemes:
     session:
@@ -1368,6 +1515,13 @@ components:
       schema:
         type: string
         maxLength: 200
+    DashboardPath:
+      name: dashboard_id
+      in: path
+      required: true
+      schema:
+        type: integer
+        format: int64
     ProjectPath:
       name: project_id
       in: path
@@ -1437,6 +1591,215 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
   schemas:
+    TrendInterval:
+      description: Bucket size of a time series.
+      type: string
+      enum: [hour, day, week, month]
+    PropertyFilter:
+      type: object
+      required: [property, op]
+      properties:
+        property:
+          type: string
+          description: distinct_id, session_id, event, or a key of the event properties (e.g. $pathname).
+        op:
+          type: string
+          enum: [eq, neq, contains, not_contains, is_set, is_not_set, gt, lt]
+        value:
+          type: string
+    TrendSeriesInput:
+      type: object
+      properties:
+        event:
+          type: string
+          description: Event name; empty counts every event.
+        math:
+          type: string
+          enum: [total, unique_users, unique_sessions, sum, avg, min, max, p95]
+        property:
+          type: string
+          description: Numeric property for sum, avg, min, max and p95.
+        filters:
+          type: array
+          items:
+            $ref: '#/components/schemas/PropertyFilter'
+    TrendQuery:
+      type: object
+      required: [series]
+      properties:
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendSeriesInput'
+        filters:
+          type: array
+          description: Filters applied to every series.
+          items:
+            $ref: '#/components/schemas/PropertyFilter'
+        breakdown:
+          type: string
+        interval:
+          $ref: '#/components/schemas/TrendInterval'
+        formula:
+          type: string
+          description: Arithmetic over series letters, e.g. "A / B * 100". Replaces the series in the result.
+        from:
+          type: string
+          format: date-time
+          description: Default 7 days ago.
+        to:
+          type: string
+          format: date-time
+    TrendSeriesResult:
+      type: object
+      required: [label, index, breakdown, data, total]
+      properties:
+        label:
+          type: string
+        index:
+          type: integer
+          description: Series index, -1 for the formula.
+        breakdown:
+          type: string
+        data:
+          type: array
+          items:
+            type: number
+            format: double
+        total:
+          type: number
+          format: double
+          description: Over the whole range (true unique counts for unique math).
+    TrendResult:
+      type: object
+      required: [interval, from, to, buckets, series]
+      properties:
+        interval:
+          $ref: '#/components/schemas/TrendInterval'
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        buckets:
+          type: array
+          items:
+            type: string
+            format: date-time
+        series:
+          type: array
+          items:
+            $ref: '#/components/schemas/TrendSeriesResult'
+    TraceStatsPoint:
+      type: object
+      required: [t, requests, errors, error_rate, p50_ms, p95_ms]
+      properties:
+        t:
+          type: string
+          format: date-time
+        requests:
+          type: integer
+          format: int64
+        errors:
+          type: integer
+          format: int64
+        error_rate:
+          type: number
+          format: double
+        p50_ms:
+          type: number
+          format: double
+        p95_ms:
+          type: number
+          format: double
+    TraceStats:
+      type: object
+      required: [interval, points, requests, errors]
+      properties:
+        interval:
+          $ref: '#/components/schemas/TrendInterval'
+        service:
+          type: string
+        requests:
+          type: integer
+          format: int64
+        errors:
+          type: integer
+          format: int64
+        points:
+          type: array
+          items:
+            $ref: '#/components/schemas/TraceStatsPoint'
+    DashboardWidget:
+      type: object
+      required: [id, kind]
+      properties:
+        id:
+          type: string
+        title:
+          type: string
+        kind:
+          type: string
+          enum: [trend, funnel, metric, traces]
+        width:
+          type: integer
+          description: 1 (half row) or 2 (full row).
+        query:
+          type: object
+          additionalProperties: true
+          description: >
+            The saved query: a TrendQuery plus display for trend, a
+            FunnelQuery for funnel, {name, agg, group_by} for metric and
+            {service} for traces.
+    DashboardInput:
+      type: object
+      required: [name]
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        shared:
+          type: boolean
+          description: Visible to everyone who can read the project.
+        widgets:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardWidget'
+    Dashboard:
+      type: object
+      required: [id, project_id, name, description, shared, created_by, creator_name, can_edit, widgets, created_at, updated_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_id:
+          type: integer
+          format: int64
+        name:
+          type: string
+        description:
+          type: string
+        shared:
+          type: boolean
+        created_by:
+          type: integer
+          format: int64
+        creator_name:
+          type: string
+        can_edit:
+          type: boolean
+        widgets:
+          type: array
+          items:
+            $ref: '#/components/schemas/DashboardWidget'
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
     SignupRequest:
       type: object
       required: [email, password, name]

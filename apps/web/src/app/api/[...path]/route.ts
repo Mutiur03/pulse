@@ -56,5 +56,7 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
 
 export const GET = proxy;
 export const POST = proxy;
+export const PUT = proxy;
 export const PATCH = proxy;
+export const DELETE = proxy;
 export const dynamic = 'force-dynamic';
