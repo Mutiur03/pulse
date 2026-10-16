@@ -85,85 +85,110 @@ func label(q ch.TrendQuery, i int) string {
 // formula, replaces the series by the formula evaluated per term.
 func Build(q ch.TrendQuery, data []ch.TrendSeriesData, f *Formula) Result {
 	buckets := Buckets(q.From, q.To, q.Interval)
-	pos := make(map[int64]int, len(buckets))
-	for i, b := range buckets {
-		pos[b.Unix()] = i
-	}
-	type key struct {
-		series int
-		term   string
-	}
-	values := map[key][]float64{}
-	totals := map[key]float64{}
-	termSet := map[string]float64{}
-	for i, d := range data {
-		for _, r := range d.Buckets {
-			k := key{i, r.Term}
-			if values[k] == nil {
-				values[k] = make([]float64, len(buckets))
-			}
-			if j, ok := pos[BucketStart(r.Bucket, q.Interval).Unix()]; ok {
-				values[k][j] += r.Value
-			}
-		}
-		for _, r := range d.Totals {
-			k := key{i, r.Term}
-			totals[k] = r.Value
-			termSet[r.Term] += r.Value
-			if values[k] == nil {
-				values[k] = make([]float64, len(buckets))
-			}
-		}
-	}
-	terms := make([]string, 0, len(termSet))
-	for t := range termSet {
-		terms = append(terms, t)
-	}
-	sort.Slice(terms, func(a, b int) bool {
-		if (terms[a] == ch.OtherBreakdown) != (terms[b] == ch.OtherBreakdown) {
-			return terms[b] == ch.OtherBreakdown
-		}
-		if termSet[terms[a]] != termSet[terms[b]] {
-			return termSet[terms[a]] > termSet[terms[b]]
-		}
-		return terms[a] < terms[b]
-	})
+	g := collect(q, data, buckets)
+	terms := g.sortedTerms()
 	if q.Breakdown == "" {
 		terms = []string{""}
 	}
 	out := Result{Buckets: buckets, Series: []Series{}}
 	if f != nil {
 		for _, t := range terms {
-			s := Series{Label: "Formula: " + f.String(), Index: -1, Breakdown: t, Data: make([]float64, len(buckets))}
-			v := make([]float64, len(q.Series))
-			for j := range buckets {
-				for i := range q.Series {
-					v[i] = 0
-					if d := values[key{i, t}]; d != nil {
-						v[i] = d[j]
-					}
-				}
-				s.Data[j] = f.Eval(v)
-			}
-			for i := range q.Series {
-				v[i] = totals[key{i, t}]
-			}
-			s.Total = f.Eval(v)
-			out.Series = append(out.Series, s)
+			out.Series = append(out.Series, g.formulaSeries(f, len(q.Series), len(buckets), t))
 		}
 		return out
 	}
 	for i := range q.Series {
 		for _, t := range terms {
-			d := values[key{i, t}]
+			d := g.values[seriesTerm{i, t}]
 			if d == nil {
 				if q.Breakdown != "" {
 					continue
 				}
 				d = make([]float64, len(buckets))
 			}
-			out.Series = append(out.Series, Series{Label: label(q, i), Index: i, Breakdown: t, Data: d, Total: totals[key{i, t}]})
+			out.Series = append(out.Series, Series{Label: label(q, i), Index: i, Breakdown: t, Data: d, Total: g.totals[seriesTerm{i, t}]})
 		}
 	}
 	return out
+}
+
+type seriesTerm struct {
+	series int
+	term   string
+}
+
+// trendGrid is every series' values per bucket and totals, per breakdown
+// term.
+type trendGrid struct {
+	values  map[seriesTerm][]float64
+	totals  map[seriesTerm]float64
+	termSum map[string]float64
+}
+
+// collect places rows into buckets; rows outside the range are dropped.
+func collect(q ch.TrendQuery, data []ch.TrendSeriesData, buckets []time.Time) trendGrid {
+	pos := make(map[int64]int, len(buckets))
+	for i, b := range buckets {
+		pos[b.Unix()] = i
+	}
+	g := trendGrid{values: map[seriesTerm][]float64{}, totals: map[seriesTerm]float64{}, termSum: map[string]float64{}}
+	row := func(k seriesTerm) []float64 {
+		if g.values[k] == nil {
+			g.values[k] = make([]float64, len(buckets))
+		}
+		return g.values[k]
+	}
+	for i, d := range data {
+		for _, r := range d.Buckets {
+			v := row(seriesTerm{i, r.Term})
+			if j, ok := pos[BucketStart(r.Bucket, q.Interval).Unix()]; ok {
+				v[j] += r.Value
+			}
+		}
+		for _, r := range d.Totals {
+			k := seriesTerm{i, r.Term}
+			g.totals[k] = r.Value
+			g.termSum[r.Term] += r.Value
+			row(k)
+		}
+	}
+	return g
+}
+
+// sortedTerms orders breakdown terms by total, OtherBreakdown last.
+func (g trendGrid) sortedTerms() []string {
+	terms := make([]string, 0, len(g.termSum))
+	for t := range g.termSum {
+		terms = append(terms, t)
+	}
+	sort.Slice(terms, func(a, b int) bool {
+		if (terms[a] == ch.OtherBreakdown) != (terms[b] == ch.OtherBreakdown) {
+			return terms[b] == ch.OtherBreakdown
+		}
+		if g.termSum[terms[a]] != g.termSum[terms[b]] {
+			return g.termSum[terms[a]] > g.termSum[terms[b]]
+		}
+		return terms[a] < terms[b]
+	})
+	return terms
+}
+
+// formulaSeries evaluates the formula per bucket and on the totals.
+func (g trendGrid) formulaSeries(f *Formula, nSeries, nBuckets int, term string) Series {
+	s := Series{Label: "Formula: " + f.String(), Index: -1, Breakdown: term, Data: make([]float64, nBuckets)}
+	v := make([]float64, nSeries)
+	for j := 0; j < nBuckets; j++ {
+		for i := range v {
+			v[i] = 0
+			if d := g.values[seriesTerm{i, term}]; d != nil {
+				v[i] = d[j]
+			}
+		}
+		s.Data[j] = f.Eval(v)
+	}
+	for i := range v {
+		v[i] = g.totals[seriesTerm{i, term}]
+	}
+	s.Total = f.Eval(v)
+	return s
 }

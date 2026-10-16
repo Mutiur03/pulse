@@ -93,20 +93,36 @@ const MaxNodesPerStep = 8
 // them. Each step keeps its busiest nodes; the rest merge into OtherNode.
 func BuildPaths(rows []ch.PathRow, steps, top int) Paths {
 	out := Paths{Nodes: []PathNode{}, Links: []PathLink{}, Top: []ch.PathRow{}}
-	// Pass 1: counts per (step, node) to choose what to keep.
 	count := map[int]map[string]int64{}
 	for _, r := range rows {
 		out.Total += int64(r.Sessions)
-		for i, n := range r.Path {
-			if i >= steps {
-				break
-			}
+		for i, n := range truncate(r.Path, steps) {
 			if count[i] == nil {
 				count[i] = map[string]int64{}
 			}
 			count[i][n] += int64(r.Sessions)
 		}
 	}
+	g := pathGraph{keep: keepBusiest(count), nodes: map[nodeKey]*PathNode{}, links: map[linkKey]int64{}}
+	for _, r := range rows {
+		g.add(r, steps)
+	}
+	out.Nodes = g.sortedNodes()
+	out.Links = g.sortedLinks()
+	out.Top = topPaths(rows, steps, top)
+	return out
+}
+
+func truncate(path []string, steps int) []string {
+	if len(path) > steps {
+		return path[:steps]
+	}
+	return path
+}
+
+// keepBusiest picks, per step, the MaxNodesPerStep names with the most
+// sessions (ties by name).
+func keepBusiest(count map[int]map[string]int64) map[int]map[string]bool {
 	keep := map[int]map[string]bool{}
 	for step, m := range count {
 		names := make([]string, 0, len(m))
@@ -126,47 +142,61 @@ func BuildPaths(rows []ch.PathRow, steps, top int) Paths {
 			}
 		}
 	}
-	name := func(step int, n string) string {
-		if keep[step][n] {
-			return n
+	return keep
+}
+
+type nodeKey struct {
+	step int
+	name string
+}
+
+type linkKey struct {
+	step     int
+	src, dst string
+}
+
+// pathGraph accumulates nodes and links, folding uncommon names into
+// OtherNode.
+type pathGraph struct {
+	keep  map[int]map[string]bool
+	nodes map[nodeKey]*PathNode
+	links map[linkKey]int64
+}
+
+func (g *pathGraph) name(step int, n string) string {
+	if g.keep[step][n] {
+		return n
+	}
+	return OtherNode
+}
+
+// add counts one distinct path. A path that ends within the step limit
+// drops off at its last node.
+func (g *pathGraph) add(r ch.PathRow, steps int) {
+	path := truncate(r.Path, steps)
+	for i, n := range path {
+		k := nodeKey{i, g.name(i, n)}
+		if g.nodes[k] == nil {
+			g.nodes[k] = &PathNode{Step: i, Name: k.name}
 		}
-		return OtherNode
-	}
-	type nk struct {
-		step int
-		name string
-	}
-	type lk struct {
-		step     int
-		src, dst string
-	}
-	nodes := map[nk]*PathNode{}
-	links := map[lk]int64{}
-	for _, r := range rows {
-		path := r.Path
-		if len(path) > steps {
-			path = path[:steps]
-		}
-		for i, n := range path {
-			k := nk{i, name(i, n)}
-			if nodes[k] == nil {
-				nodes[k] = &PathNode{Step: i, Name: k.name}
-			}
-			nodes[k].Sessions += int64(r.Sessions)
-			if i == len(path)-1 {
-				if len(r.Path) <= steps {
-					nodes[k].Dropoff += int64(r.Sessions)
-				}
-			} else {
-				links[lk{i, k.name, name(i+1, path[i+1])}] += int64(r.Sessions)
-			}
+		g.nodes[k].Sessions += int64(r.Sessions)
+		switch {
+		case i < len(path)-1:
+			g.links[linkKey{i, k.name, g.name(i+1, path[i+1])}] += int64(r.Sessions)
+		case len(r.Path) <= steps:
+			g.nodes[k].Dropoff += int64(r.Sessions)
 		}
 	}
-	for _, n := range nodes {
-		out.Nodes = append(out.Nodes, *n)
+}
+
+// sortedNodes orders by step, then busiest first with OtherNode last.
+func (g *pathGraph) sortedNodes() []PathNode {
+	out := []PathNode{}
+	for _, n := range g.nodes {
+		out = append(out, *n)
 	}
-	sort.Slice(out.Nodes, func(a, b int) bool {
-		x, y := out.Nodes[a], out.Nodes[b]
+	sort.Slice(out, func(a, b int) bool {
+		x, y := out[a], out[b]
 		if x.Step != y.Step {
 			return x.Step < y.Step
 		}
@@ -178,11 +208,17 @@ func BuildPaths(rows []ch.PathRow, steps, top int) Paths {
 		}
 		return x.Name < y.Name
 	})
-	for k, v := range links {
-		out.Links = append(out.Links, PathLink{Step: k.step, Source: k.src, Target: k.dst, Sessions: v})
+	return out
+}
+
+// sortedLinks orders by step, then busiest first, then names.
+func (g *pathGraph) sortedLinks() []PathLink {
+	out := []PathLink{}
+	for k, v := range g.links {
+		out = append(out, PathLink{Step: k.step, Source: k.src, Target: k.dst, Sessions: v})
 	}
-	sort.Slice(out.Links, func(a, b int) bool {
-		x, y := out.Links[a], out.Links[b]
+	sort.Slice(out, func(a, b int) bool {
+		x, y := out[a], out[b]
 		if x.Step != y.Step {
 			return x.Step < y.Step
 		}
@@ -194,13 +230,16 @@ func BuildPaths(rows []ch.PathRow, steps, top int) Paths {
 		}
 		return x.Target < y.Target
 	})
+	return out
+}
+
+// topPaths merges paths that are equal after truncation and returns the
+// busiest, keeping first-seen order among ties.
+func topPaths(rows []ch.PathRow, steps, top int) []ch.PathRow {
 	byPath := map[string]*ch.PathRow{}
 	var order []string
 	for _, r := range rows {
-		path := r.Path
-		if len(path) > steps {
-			path = path[:steps]
-		}
+		path := truncate(r.Path, steps)
 		k := strings.Join(path, "\x00")
 		if byPath[k] == nil {
 			byPath[k] = &ch.PathRow{Path: path}
@@ -208,12 +247,13 @@ func BuildPaths(rows []ch.PathRow, steps, top int) Paths {
 		}
 		byPath[k].Sessions += r.Sessions
 	}
+	out := []ch.PathRow{}
 	for _, k := range order {
-		out.Top = append(out.Top, *byPath[k])
+		out = append(out, *byPath[k])
 	}
-	sort.SliceStable(out.Top, func(a, b int) bool { return out.Top[a].Sessions > out.Top[b].Sessions })
-	if len(out.Top) > top {
-		out.Top = out.Top[:top]
+	sort.SliceStable(out, func(a, b int) bool { return out[a].Sessions > out[b].Sessions })
+	if len(out) > top {
+		out = out[:top]
 	}
 	return out
 }

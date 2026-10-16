@@ -1,0 +1,58 @@
+{
+  "Buckets": [
+    "2026-10-01T00:00:00Z",
+    "2026-10-02T00:00:00Z",
+    "2026-10-03T00:00:00Z",
+    "2026-10-04T00:00:00Z"
+  ],
+  "Series": [
+    {
+      "Label": "Formula: A / B * 100",
+      "Index": -1,
+      "Breakdown": "US",
+      "Data": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "Total": 50
+    },
+    {
+      "Label": "Formula: A / B * 100",
+      "Index": -1,
+      "Breakdown": "DE",
+      "Data": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "Total": 0
+    },
+    {
+      "Label": "Formula: A / B * 100",
+      "Index": -1,
+      "Breakdown": "BD",
+      "Data": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "Total": 0
+    },
+    {
+      "Label": "Formula: A / B * 100",
+      "Index": -1,
+      "Breakdown": "$other",
+      "Data": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "Total": 0
+    }
+  ]
+}

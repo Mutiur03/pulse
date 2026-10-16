@@ -1,0 +1,46 @@
+{
+  "Buckets": [
+    "2026-10-01T00:00:00Z",
+    "2026-10-02T00:00:00Z",
+    "2026-10-03T00:00:00Z",
+    "2026-10-04T00:00:00Z"
+  ],
+  "Series": [
+    {
+      "Label": "A. signup",
+      "Index": 0,
+      "Breakdown": "",
+      "Data": [
+        2,
+        0,
+        5,
+        0
+      ],
+      "Total": 7
+    },
+    {
+      "Label": "B. All events (sum of amount)",
+      "Index": 1,
+      "Breakdown": "",
+      "Data": [
+        0,
+        10,
+        0,
+        0
+      ],
+      "Total": 10
+    },
+    {
+      "Label": "C. pay (p95)",
+      "Index": 2,
+      "Breakdown": "",
+      "Data": [
+        0,
+        0,
+        0,
+        0
+      ],
+      "Total": 0
+    }
+  ]
+}

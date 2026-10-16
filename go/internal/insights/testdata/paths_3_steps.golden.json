@@ -1,0 +1,247 @@
+{
+  "Total": 161,
+  "Nodes": [
+    {
+      "Step": 0,
+      "Name": "/home",
+      "Sessions": 158,
+      "Dropoff": 7
+    },
+    {
+      "Step": 0,
+      "Name": "/blog",
+      "Sessions": 3,
+      "Dropoff": 0
+    },
+    {
+      "Step": 1,
+      "Name": "/p9",
+      "Sessions": 25,
+      "Dropoff": 0
+    },
+    {
+      "Step": 1,
+      "Name": "/p8",
+      "Sessions": 18,
+      "Dropoff": 0
+    },
+    {
+      "Step": 1,
+      "Name": "/p7",
+      "Sessions": 17,
+      "Dropoff": 0
+    },
+    {
+      "Step": 1,
+      "Name": "/p6",
+      "Sessions": 16,
+      "Dropoff": 0
+    },
+    {
+      "Step": 1,
+      "Name": "/p5",
+      "Sessions": 15,
+      "Dropoff": 0
+    },
+    {
+      "Step": 1,
+      "Name": "/p4",
+      "Sessions": 14,
+      "Dropoff": 0
+    },
+    {
+      "Step": 1,
+      "Name": "/p3",
+      "Sessions": 13,
+      "Dropoff": 0
+    },
+    {
+      "Step": 1,
+      "Name": "/p2",
+      "Sessions": 12,
+      "Dropoff": 0
+    },
+    {
+      "Step": 1,
+      "Name": "Other",
+      "Sessions": 24,
+      "Dropoff": 3
+    },
+    {
+      "Step": 2,
+      "Name": "/checkout",
+      "Sessions": 147,
+      "Dropoff": 2
+    },
+    {
+      "Step": 2,
+      "Name": "/cart",
+      "Sessions": 4,
+      "Dropoff": 4
+    }
+  ],
+  "Links": [
+    {
+      "Step": 0,
+      "Source": "/home",
+      "Target": "/p9",
+      "Sessions": 25
+    },
+    {
+      "Step": 0,
+      "Source": "/home",
+      "Target": "Other",
+      "Sessions": 21
+    },
+    {
+      "Step": 0,
+      "Source": "/home",
+      "Target": "/p8",
+      "Sessions": 18
+    },
+    {
+      "Step": 0,
+      "Source": "/home",
+      "Target": "/p7",
+      "Sessions": 17
+    },
+    {
+      "Step": 0,
+      "Source": "/home",
+      "Target": "/p6",
+      "Sessions": 16
+    },
+    {
+      "Step": 0,
+      "Source": "/home",
+      "Target": "/p5",
+      "Sessions": 15
+    },
+    {
+      "Step": 0,
+      "Source": "/home",
+      "Target": "/p4",
+      "Sessions": 14
+    },
+    {
+      "Step": 0,
+      "Source": "/home",
+      "Target": "/p3",
+      "Sessions": 13
+    },
+    {
+      "Step": 0,
+      "Source": "/home",
+      "Target": "/p2",
+      "Sessions": 12
+    },
+    {
+      "Step": 0,
+      "Source": "/blog",
+      "Target": "Other",
+      "Sessions": 3
+    },
+    {
+      "Step": 1,
+      "Source": "/p9",
+      "Target": "/checkout",
+      "Sessions": 21
+    },
+    {
+      "Step": 1,
+      "Source": "Other",
+      "Target": "/checkout",
+      "Sessions": 21
+    },
+    {
+      "Step": 1,
+      "Source": "/p8",
+      "Target": "/checkout",
+      "Sessions": 18
+    },
+    {
+      "Step": 1,
+      "Source": "/p7",
+      "Target": "/checkout",
+      "Sessions": 17
+    },
+    {
+      "Step": 1,
+      "Source": "/p6",
+      "Target": "/checkout",
+      "Sessions": 16
+    },
+    {
+      "Step": 1,
+      "Source": "/p5",
+      "Target": "/checkout",
+      "Sessions": 15
+    },
+    {
+      "Step": 1,
+      "Source": "/p4",
+      "Target": "/checkout",
+      "Sessions": 14
+    },
+    {
+      "Step": 1,
+      "Source": "/p3",
+      "Target": "/checkout",
+      "Sessions": 13
+    },
+    {
+      "Step": 1,
+      "Source": "/p2",
+      "Target": "/checkout",
+      "Sessions": 12
+    },
+    {
+      "Step": 1,
+      "Source": "/p9",
+      "Target": "/cart",
+      "Sessions": 4
+    }
+  ],
+  "Top": [
+    {
+      "Path": [
+        "/home",
+        "/p9",
+        "/checkout"
+      ],
+      "Sessions": 21
+    },
+    {
+      "Path": [
+        "/home",
+        "/p8",
+        "/checkout"
+      ],
+      "Sessions": 18
+    },
+    {
+      "Path": [
+        "/home",
+        "/p7",
+        "/checkout"
+      ],
+      "Sessions": 17
+    },
+    {
+      "Path": [
+        "/home",
+        "/p6",
+        "/checkout"
+      ],
+      "Sessions": 16
+    },
+    {
+      "Path": [
+        "/home",
+        "/p5",
+        "/checkout"
+      ],
+      "Sessions": 15
+    }
+  ]
+}

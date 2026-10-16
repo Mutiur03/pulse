@@ -110,37 +110,23 @@ func (p *parser) peek() byte {
 	return 0
 }
 
-func (p *parser) sum() (node, error) {
-	l, err := p.product()
-	if err != nil {
-		return nil, err
-	}
-	for {
-		c := p.peek()
-		if c != '+' && c != '-' {
-			return l, nil
-		}
-		p.i++
-		r, err := p.product()
-		if err != nil {
-			return nil, err
-		}
-		l = bin{op: c, l: l, r: r}
-	}
-}
+func (p *parser) sum() (node, error) { return p.binary("+-", p.product) }
 
-func (p *parser) product() (node, error) {
-	l, err := p.unary()
+func (p *parser) product() (node, error) { return p.binary("*/", p.unary) }
+
+// binary parses a left-associative chain of next separated by ops.
+func (p *parser) binary(ops string, next func() (node, error)) (node, error) {
+	l, err := next()
 	if err != nil {
 		return nil, err
 	}
 	for {
 		c := p.peek()
-		if c != '*' && c != '/' {
+		if c == 0 || !strings.ContainsRune(ops, rune(c)) {
 			return l, nil
 		}
 		p.i++
-		r, err := p.unary()
+		r, err := next()
 		if err != nil {
 			return nil, err
 		}

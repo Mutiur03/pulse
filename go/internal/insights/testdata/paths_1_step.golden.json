@@ -1,0 +1,32 @@
+{
+  "Total": 161,
+  "Nodes": [
+    {
+      "Step": 0,
+      "Name": "/home",
+      "Sessions": 158,
+      "Dropoff": 7
+    },
+    {
+      "Step": 0,
+      "Name": "/blog",
+      "Sessions": 3,
+      "Dropoff": 0
+    }
+  ],
+  "Links": [],
+  "Top": [
+    {
+      "Path": [
+        "/home"
+      ],
+      "Sessions": 158
+    },
+    {
+      "Path": [
+        "/blog"
+      ],
+      "Sessions": 3
+    }
+  ]
+}
