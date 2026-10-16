@@ -146,6 +146,11 @@ func main() {
 					ok = false
 				} else {
 					log.Printf("Successfully inserted %d events", len(events))
+					if aliases := ch.AliasesFromEvents(events); len(aliases) > 0 {
+						if err := retry(ctx, func() error { return chClient.InsertAliases(ctx, aliases) }); err != nil {
+							log.Printf("Failed to insert %d identity links: %v", len(aliases), err)
+						}
+					}
 				}
 			}
 

@@ -53,7 +53,11 @@ is hidden. Requests use `text/plain` so they don't need a CORS preflight.
 A session ends after 30 minutes without activity (`sessionTimeoutMs`) and is
 shared across tabs. The anonymous id is stored in `localStorage`;
 `identify()` switches `distinct_id` to the user id and emits `$identify` with
-the previous anonymous id so the two can be merged.
+the previous anonymous id. Pulse then counts the anonymous and identified
+events as one person. `alias(id)` links another id to the current user, such
+as a backend account id that server-side events use. Traits passed to
+`identify(id, traits)` appear on the person profile. With `release` set in
+`init()`, every event carries `$release`.
 
 ## Build
 

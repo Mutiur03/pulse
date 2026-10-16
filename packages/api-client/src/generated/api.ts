@@ -1002,10 +1002,211 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/persons": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List persons
+         * @description People seen in the range (default the last 30 days), most recently active first. Anonymous and identified ids linked by $identify or $create_alias count as one person. Search matches ids and traits.
+         */
+        get: operations["listPersons"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/persons/profile": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** A person with their sessions and recent events */
+        get: operations["getPerson"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/insights/retention": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Retention cohorts
+         * @description Groups persons by the day or week they first did the start event and counts how many did the return event in each following period.
+         */
+        post: operations["queryRetention"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/insights/paths": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * User paths
+         * @description Follows sessions page by page (or event by event), optionally from a start page, and returns the flows between steps.
+         */
+        post: operations["queryPaths"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        Person: {
+            /** @description The identified user id, or the anonymous id for people who never identified. */
+            id: string;
+            distinct_ids: string[];
+            /** Format: date-time */
+            first_seen: string;
+            /** Format: date-time */
+            last_seen: string;
+            /** Format: int64 */
+            events: number;
+            /** Format: int64 */
+            sessions: number;
+            /** @description Properties of the latest $identify event. */
+            traits: {
+                [key: string]: unknown;
+            };
+            browser: string;
+            os: string;
+            country: string;
+            last_url: string;
+        };
+        PersonList: {
+            persons: components["schemas"]["Person"][];
+        };
+        PersonSession: {
+            session_id: string;
+            /** Format: date-time */
+            start: string;
+            /** Format: date-time */
+            end: string;
+            /** Format: int64 */
+            events: number;
+            /** Format: int64 */
+            pageviews: number;
+            entry_path: string;
+            exit_path: string;
+            has_replay: boolean;
+            /** Format: int64 */
+            errors: number;
+        };
+        PersonDetail: {
+            person: components["schemas"]["Person"];
+            sessions: components["schemas"]["PersonSession"][];
+            events: components["schemas"]["ProductEvent"][];
+        };
+        RetentionQuery: {
+            /** @description Event that puts a person in a cohort; empty means any event. */
+            start_event?: string;
+            /** @description Event that counts as coming back; empty means any event. */
+            return_event?: string;
+            /** @enum {string} */
+            period?: "day" | "week";
+            /** @description Periods after the first (1-30, default 7). */
+            periods?: number;
+            /**
+             * Format: date-time
+             * @description Default 14 days (day) or 8 weeks (week) before to.
+             */
+            from?: string;
+            /** Format: date-time */
+            to?: string;
+        };
+        RetentionCohort: {
+            /** Format: date-time */
+            start: string;
+            /** Format: int64 */
+            size: number;
+            /** @description Returning persons at offsets 0, 1, ...; periods that have not started yet are left out. */
+            values: number[];
+        };
+        RetentionResult: {
+            /** @enum {string} */
+            period: "day" | "week";
+            periods: number;
+            cohorts: components["schemas"]["RetentionCohort"][];
+        };
+        PathsQuery: {
+            /** @enum {string} */
+            mode?: "pageview" | "event";
+            /** @description Page path (or event) to start from; empty starts at each session's first step. */
+            start?: string;
+            /** @description 2-8, default 4. */
+            steps?: number;
+            /**
+             * Format: date-time
+             * @description Default 7 days ago.
+             */
+            from?: string;
+            /** Format: date-time */
+            to?: string;
+        };
+        PathNode: {
+            step: number;
+            name: string;
+            /** Format: int64 */
+            sessions: number;
+            /**
+             * Format: int64
+             * @description Sessions that ended at this node.
+             */
+            dropoff: number;
+        };
+        PathLink: {
+            /** @description Step of the source node. */
+            step: number;
+            source: string;
+            target: string;
+            /** Format: int64 */
+            sessions: number;
+        };
+        PathsResult: {
+            mode: string;
+            steps: number;
+            /** Format: int64 */
+            total_sessions: number;
+            nodes: components["schemas"]["PathNode"][];
+            links: components["schemas"]["PathLink"][];
+            top_paths: components["schemas"]["PathCount"][];
+        };
+        PathCount: {
+            path: string[];
+            /** Format: int64 */
+            sessions: number;
+        };
         /**
          * @description Bucket size of a time series.
          * @enum {string}
@@ -3559,6 +3760,121 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    listPersons: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                search?: string;
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Persons */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonList"];
+                };
+            };
+        };
+    };
+    getPerson: {
+        parameters: {
+            query: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                /** @description The person id (or any of its distinct ids). */
+                id: string;
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The person */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PersonDetail"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    queryRetention: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RetentionQuery"];
+            };
+        };
+        responses: {
+            /** @description Cohort matrix */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["RetentionResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+        };
+    };
+    queryPaths: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PathsQuery"];
+            };
+        };
+        responses: {
+            /** @description Paths */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PathsResult"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
         };
     };
 }

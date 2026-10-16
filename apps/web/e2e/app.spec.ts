@@ -870,3 +870,102 @@ test('dashboards are private until shared with the organization', async ({ page,
   expect(edit.status()).toBe(403);
   await ctx.close();
 });
+
+test('persons stitch anonymous and identified ids, with retention and paths', async ({ browser }) => {
+  test.setTimeout(120_000);
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const owner = `analytics-${Date.now()}@example.com`;
+  await page.goto('/signup');
+  await page.getByLabel('Name').fill('Analytics Owner');
+  await page.getByLabel('Email').fill(owner);
+  await page.getByLabel('Password').fill('a-long-e2e-password');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/\/projects\/new/);
+  await page.getByLabel('Project name').fill('Analytics Shop');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  const key = (await page.getByTestId('new-project-key').innerText()).trim();
+
+  // One visitor browses anonymously, signs up (identify) and later buys
+  // under an alias; another visitor only comes once, two days ago.
+  const day = 24 * 3600 * 1000;
+  const at = (daysAgo: number, min: number) => new Date(Date.now() - daysAgo * day - 3600_000 + min * 60_000).toISOString();
+  const pv = (id: string, session: string, path: string, ts: string) => ({
+    event: '$pageview', distinct_id: id, session_id: session, timestamp: ts,
+    properties: { $pathname: path, $current_url: `https://shop.example${path}` },
+  });
+  const events = [
+    pv('anon-ana', 's-ana-1', '/', at(2, 0)),
+    pv('anon-ana', 's-ana-1', '/pricing', at(2, 1)),
+    pv('anon-ana', 's-ana-1', '/signup', at(2, 2)),
+    { event: '$identify', distinct_id: 'user-ana', session_id: 's-ana-1', timestamp: at(2, 3),
+      properties: { $anon_distinct_id: 'anon-ana', email: 'ana@shop.example', plan: 'pro' } },
+    pv('user-ana', 's-ana-2', '/', at(1, 0)),
+    pv('user-ana', 's-ana-2', '/pricing', at(1, 1)),
+    { event: '$create_alias', distinct_id: 'user-ana', session_id: 's-ana-2', timestamp: at(1, 2), properties: { alias: 'acct-ana' } },
+    { event: 'purchase', distinct_id: 'acct-ana', session_id: 's-ana-3', timestamp: at(0, 0), properties: { amount: 30 } },
+    pv('anon-bo', 's-bo-1', '/', at(2, 5)),
+    pv('anon-bo', 's-bo-1', '/docs', at(2, 6)),
+  ];
+  const sent = await page.request.post(`${ingestURL}/v1/events?key=${key}`, {
+    headers: {
+      'Content-Type': 'text/plain',
+      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 Mobile/15E148 Safari/604.1',
+      'CF-IPCountry': 'BD',
+    },
+    data: JSON.stringify(events),
+  });
+  expect(sent.status()).toBe(202);
+
+  // The three ids of the first visitor are one person.
+  await page.goto('/persons');
+  const search = page.getByLabel('Search persons');
+  await expect(async () => {
+    await page.reload();
+    await search.fill('ana@shop.example');
+    await search.press('Enter');
+    await expect(page.getByTestId('person-row')).toHaveCount(1, { timeout: 3000 });
+  }).toPass({ timeout: 60_000 });
+  await expect(page.getByTestId('person-row')).toContainText('ana@shop.example');
+  await search.fill('');
+  await search.press('Enter');
+  await expect(page.getByTestId('person-row')).toHaveCount(2);
+  await shot(page, '43-persons');
+
+  // Opening any of the ids shows the merged profile.
+  await page.goto('/persons/profile?id=anon-ana');
+  const ids = page.getByTestId('person-ids');
+  for (const id of ['anon-ana', 'user-ana', 'acct-ana']) await expect(ids).toContainText(id);
+  const props = page.getByTestId('person-properties');
+  await expect(props).toContainText('ana@shop.example');
+  await expect(props).toContainText('Safari');
+  await expect(props).toContainText('iOS');
+  await expect(props).toContainText('BD');
+  await expect(page.getByTestId('person-session')).toHaveCount(3);
+  await expect(page.getByTestId('person-events')).toContainText('purchase');
+  await shot(page, '44-person-profile');
+
+  // Day retention: both visitors start two days ago, one returns the next day.
+  await page.goto('/retention');
+  await page.getByLabel('Start event').selectOption('$pageview');
+  await page.getByLabel('Return event').selectOption('$pageview');
+  await page.getByTestId('run-retention').click();
+  await expect(page.getByTestId('run-retention')).toHaveAttribute('data-busy', 'false');
+  const avg = page.getByTestId('retention-average');
+  await expect(avg.getByTestId('retention-cell').nth(0)).toHaveText('100%');
+  await expect(avg.getByTestId('retention-cell').nth(1)).toHaveText('50%');
+  await expect(page.getByTestId('retention-row').filter({ has: page.getByTestId('retention-cell') })).toHaveCount(1);
+  await shot(page, '45-retention');
+
+  // Paths from the home page split into /pricing and /docs.
+  await page.goto('/paths');
+  await page.getByLabel('Path start').fill('/');
+  await page.getByTestId('run-paths').click();
+  await expect(page.getByTestId('run-paths')).toHaveAttribute('data-busy', 'false');
+  const top = page.getByTestId('top-paths');
+  await expect(top).toContainText('/pricing');
+  await expect(top).toContainText('/docs');
+  await expect(page.getByTestId('path-node').first()).toBeVisible();
+  await shot(page, '46-paths');
+  await ctx.close();
+});

@@ -65,6 +65,9 @@ func main() {
 		defer func() { _ = chClient.Close() }()
 		opts = append(opts, ingest.WithReplay(&replay.Writer{Objects: objects, Meta: chClient}))
 	}
+	if h := os.Getenv("COUNTRY_HEADER"); h != "" {
+		opts = append(opts, ingest.WithCountryHeader(h))
+	}
 	addr := fmt.Sprintf(":%d", cfg.IngestGatewayPort)
 	server := &http.Server{
 		Addr:              addr,

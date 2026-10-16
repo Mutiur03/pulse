@@ -130,6 +130,8 @@ type Server struct {
 	// custom dashboards. nil disables each.
 	Insights   InsightReader
 	Dashboards DashboardStore
+	// Analytics serves persons, retention and paths; nil disables them.
+	Analytics AnalyticsReader
 	// Metrics reads OTLP metrics; nil returns empty results.
 	Metrics      MetricReader
 	SecureCookie bool

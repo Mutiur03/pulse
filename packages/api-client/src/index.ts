@@ -67,6 +67,15 @@ export type Dashboard = Schemas['Dashboard'];
 export type DashboardInput = Schemas['DashboardInput'];
 export type DashboardWidget = Schemas['DashboardWidget'];
 export type TraceStatsQuery = NonNullable<operations['traceStats']['parameters']['query']>;
+export type Person = Schemas['Person'];
+export type PersonList = Schemas['PersonList'];
+export type PersonDetail = Schemas['PersonDetail'];
+export type PersonSession = Schemas['PersonSession'];
+export type RetentionQuery = Schemas['RetentionQuery'];
+export type RetentionResult = Schemas['RetentionResult'];
+export type PathsQuery = Schemas['PathsQuery'];
+export type PathsResult = Schemas['PathsResult'];
+export type ListPersonsQuery = NonNullable<operations['listPersons']['parameters']['query']>;
 export type ListIssuesQuery = NonNullable<operations['listIssues']['parameters']['query']>;
 export type ListTracesQuery = NonNullable<operations['listTraces']['parameters']['query']>;
 export type ListEventsQuery = NonNullable<operations['listEvents']['parameters']['query']>;
@@ -256,6 +265,22 @@ export class APIClient {
 
   queryTrend(body: TrendQuery, projectId?: number): Promise<TrendResult> {
     return this.request('POST', '/v1/insights/trends', { project_id: projectId }, body);
+  }
+
+  listPersons(query: ListPersonsQuery = {}): Promise<PersonList> {
+    return this.request('GET', '/v1/persons', query as Query);
+  }
+
+  getPerson(id: string, query: RangeQuery = {}): Promise<PersonDetail> {
+    return this.request('GET', '/v1/persons/profile', { ...query, id });
+  }
+
+  queryRetention(body: RetentionQuery, projectId?: number): Promise<RetentionResult> {
+    return this.request('POST', '/v1/insights/retention', { project_id: projectId }, body);
+  }
+
+  queryPaths(body: PathsQuery, projectId?: number): Promise<PathsResult> {
+    return this.request('POST', '/v1/insights/paths', { project_id: projectId }, body);
   }
 
   traceStats(query: TraceStatsQuery = {}): Promise<TraceStats> {

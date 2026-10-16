@@ -1471,6 +1471,101 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/persons:
+    get:
+      summary: List persons
+      description: >
+        People seen in the range (default the last 30 days), most recently
+        active first. Anonymous and identified ids linked by $identify or
+        $create_alias count as one person. Search matches ids and traits.
+      operationId: listPersons
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+        - name: search
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Persons
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonList'
+  /v1/persons/profile:
+    get:
+      summary: A person with their sessions and recent events
+      operationId: getPerson
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+        - name: id
+          in: query
+          required: true
+          description: The person id (or any of its distinct ids).
+          schema:
+            type: string
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: The person
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonDetail'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/insights/retention:
+    post:
+      summary: Retention cohorts
+      description: >
+        Groups persons by the day or week they first did the start event
+        and counts how many did the return event in each following period.
+      operationId: queryRetention
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RetentionQuery'
+      responses:
+        '200':
+          description: Cohort matrix
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/RetentionResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+  /v1/insights/paths:
+    post:
+      summary: User paths
+      description: >
+        Follows sessions page by page (or event by event), optionally from a
+        start page, and returns the flows between steps.
+      operationId: queryPaths
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PathsQuery'
+      responses:
+        '200':
+          description: Paths
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PathsResult'
+        '400':
+          $ref: '#/components/responses/BadRequest'
 components:
   securitySchemes:
     session:
@@ -1591,6 +1686,223 @@ components:
           schema:
             $ref: '#/components/schemas/Error'
   schemas:
+    Person:
+      type: object
+      required: [id, distinct_ids, first_seen, last_seen, events, sessions, traits, browser, os, country, last_url]
+      properties:
+        id:
+          type: string
+          description: The identified user id, or the anonymous id for people who never identified.
+        distinct_ids:
+          type: array
+          items:
+            type: string
+        first_seen:
+          type: string
+          format: date-time
+        last_seen:
+          type: string
+          format: date-time
+        events:
+          type: integer
+          format: int64
+        sessions:
+          type: integer
+          format: int64
+        traits:
+          type: object
+          additionalProperties: true
+          description: Properties of the latest $identify event.
+        browser:
+          type: string
+        os:
+          type: string
+        country:
+          type: string
+        last_url:
+          type: string
+    PersonList:
+      type: object
+      required: [persons]
+      properties:
+        persons:
+          type: array
+          items:
+            $ref: '#/components/schemas/Person'
+    PersonSession:
+      type: object
+      required: [session_id, start, end, events, pageviews, entry_path, exit_path, has_replay, errors]
+      properties:
+        session_id:
+          type: string
+        start:
+          type: string
+          format: date-time
+        end:
+          type: string
+          format: date-time
+        events:
+          type: integer
+          format: int64
+        pageviews:
+          type: integer
+          format: int64
+        entry_path:
+          type: string
+        exit_path:
+          type: string
+        has_replay:
+          type: boolean
+        errors:
+          type: integer
+          format: int64
+    PersonDetail:
+      type: object
+      required: [person, sessions, events]
+      properties:
+        person:
+          $ref: '#/components/schemas/Person'
+        sessions:
+          type: array
+          items:
+            $ref: '#/components/schemas/PersonSession'
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProductEvent'
+    RetentionQuery:
+      type: object
+      properties:
+        start_event:
+          type: string
+          description: Event that puts a person in a cohort; empty means any event.
+        return_event:
+          type: string
+          description: Event that counts as coming back; empty means any event.
+        period:
+          type: string
+          enum: [day, week]
+        periods:
+          type: integer
+          description: Periods after the first (1-30, default 7).
+        from:
+          type: string
+          format: date-time
+          description: Default 14 days (day) or 8 weeks (week) before to.
+        to:
+          type: string
+          format: date-time
+    RetentionCohort:
+      type: object
+      required: [start, size, values]
+      properties:
+        start:
+          type: string
+          format: date-time
+        size:
+          type: integer
+          format: int64
+        values:
+          type: array
+          description: Returning persons at offsets 0, 1, ...; periods that have not started yet are left out.
+          items:
+            type: integer
+            format: int64
+    RetentionResult:
+      type: object
+      required: [period, periods, cohorts]
+      properties:
+        period:
+          type: string
+          enum: [day, week]
+        periods:
+          type: integer
+        cohorts:
+          type: array
+          items:
+            $ref: '#/components/schemas/RetentionCohort'
+    PathsQuery:
+      type: object
+      properties:
+        mode:
+          type: string
+          enum: [pageview, event]
+        start:
+          type: string
+          description: Page path (or event) to start from; empty starts at each session's first step.
+        steps:
+          type: integer
+          description: 2-8, default 4.
+        from:
+          type: string
+          format: date-time
+          description: Default 7 days ago.
+        to:
+          type: string
+          format: date-time
+    PathNode:
+      type: object
+      required: [step, name, sessions, dropoff]
+      properties:
+        step:
+          type: integer
+        name:
+          type: string
+        sessions:
+          type: integer
+          format: int64
+        dropoff:
+          type: integer
+          format: int64
+          description: Sessions that ended at this node.
+    PathLink:
+      type: object
+      required: [step, source, target, sessions]
+      properties:
+        step:
+          type: integer
+          description: Step of the source node.
+        source:
+          type: string
+        target:
+          type: string
+        sessions:
+          type: integer
+          format: int64
+    PathsResult:
+      type: object
+      required: [mode, steps, total_sessions, nodes, links, top_paths]
+      properties:
+        mode:
+          type: string
+        steps:
+          type: integer
+        total_sessions:
+          type: integer
+          format: int64
+        nodes:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathNode'
+        links:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathLink'
+        top_paths:
+          type: array
+          items:
+            $ref: '#/components/schemas/PathCount'
+    PathCount:
+      type: object
+      required: [path, sessions]
+      properties:
+        path:
+          type: array
+          items:
+            type: string
+        sessions:
+          type: integer
+          format: int64
     TrendInterval:
       description: Bucket size of a time series.
       type: string

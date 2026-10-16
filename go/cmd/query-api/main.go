@@ -121,6 +121,7 @@ func main() {
 		Replays:    chClient,
 		Metrics:    chClient,
 		Insights:   chClient,
+		Analytics:  chClient,
 		Dashboards: &dashboards.Store{DB: db},
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: os.Getenv("COOKIE_SECURE") != "false",

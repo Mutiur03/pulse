@@ -24,6 +24,11 @@ export function identify(userId: string, traits?: Properties): void {
 }
 
 /** Clear the identified user and session, e.g. on logout. */
+/** Links another id to the current user; events under either id belong to one person. */
+export function alias(id: string): void {
+  client?.alias(id);
+}
+
 export function reset(): void {
   client?.reset();
 }

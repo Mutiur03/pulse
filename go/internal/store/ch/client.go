@@ -40,7 +40,7 @@ func (c *Client) InsertEvents(ctx context.Context, events []map[string]interface
 		return nil
 	}
 
-	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO events (project_id, event, timestamp, distinct_id, session_id, trace_id, span_id, properties)")
+	batch, err := c.conn.PrepareBatch(ctx, "INSERT INTO events (project_id, event, timestamp, distinct_id, session_id, trace_id, span_id, properties, current_url, release, country, browser, os)")
 	if err != nil {
 		return fmt.Errorf("failed to prepare batch: %w", err)
 	}
@@ -81,13 +81,16 @@ func (c *Client) InsertEvents(ctx context.Context, events []map[string]interface
 		}
 
 		propsJSON := "{}"
-		if props, ok := event["properties"]; ok {
-			if b, err := json.Marshal(props); err == nil {
+		props, _ := event["properties"].(map[string]interface{})
+		if p, ok := event["properties"]; ok {
+			if b, err := json.Marshal(p); err == nil {
 				propsJSON = string(b)
 			}
 		}
+		col := EventColumns(props)
 
-		if err := batch.Append(projectID, eventName, timestamp, distinctID, sessionID, traceID, str(event, "span_id"), propsJSON); err != nil {
+		if err := batch.Append(projectID, eventName, timestamp, distinctID, sessionID, traceID, str(event, "span_id"), propsJSON,
+			col.CurrentURL, col.Release, col.Country, col.Browser, col.OS); err != nil {
 			return fmt.Errorf("failed to append to batch: %w", err)
 		}
 	}

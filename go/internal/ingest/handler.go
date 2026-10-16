@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/Mutiur03/pulse/internal/useragent"
 	"io"
 	"log"
 	"math"
@@ -53,7 +54,15 @@ type handler struct {
 	p       Producer
 	auth    Authenticator
 	replays ReplaySink
+	// countryHeader names a header set by a trusted proxy or CDN with the
+	// client's ISO country code (e.g. CF-IPCountry); empty disables it.
+	countryHeader string
 }
+
+// WithCountryHeader reads the client country from a header set by a
+// trusted proxy or CDN. Only enable it behind one that overwrites the
+// header, or clients can choose their own country.
+func WithCountryHeader(name string) Option { return func(h *handler) { h.countryHeader = name } }
 
 // Option configures optional routes.
 type Option func(*handler)
@@ -190,9 +199,42 @@ func (h *handler) events(r *http.Request, body []byte, project string) (int, *ap
 		if e.Timestamp.IsZero() {
 			e.Timestamp = time.Now().UTC()
 		}
+		h.enrich(r, e)
 		keys[i], vals[i] = e.ProjectID, e
 	}
 	return len(events), h.produceAll(r.Context(), TopicEvents, keys, vals)
+}
+
+// enrich adds $browser, $browser_version, $os and $device_type from the
+// request's User-Agent and $country from the trusted country header,
+// keeping values the client already set (server-side SDKs send their
+// users' details explicitly).
+func (h *handler) enrich(r *http.Request, e *Event) {
+	if e.Properties == nil {
+		e.Properties = map[string]interface{}{}
+	}
+	set := func(k, v string) {
+		if v == "" {
+			return
+		}
+		if cur, ok := e.Properties[k].(string); ok && cur != "" {
+			return
+		}
+		e.Properties[k] = v
+	}
+	ua := useragent.Parse(r.Header.Get("User-Agent"))
+	if ua.Browser != "" {
+		set("$browser", ua.Browser)
+		set("$browser_version", ua.Version)
+	}
+	set("$os", ua.OS)
+	set("$device_type", ua.Device)
+	if h.countryHeader != "" {
+		c := strings.ToUpper(strings.TrimSpace(r.Header.Get(h.countryHeader)))
+		if len(c) == 2 && c != "XX" && c != "T1" {
+			set("$country", c)
+		}
+	}
 }
 
 func isProtobuf(r *http.Request) bool {

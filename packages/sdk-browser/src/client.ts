@@ -117,6 +117,7 @@ export class PulseClient {
         $current_url: safeUrl(location.href),
         $pathname: location.pathname,
         $lib: 'pulse-browser',
+        ...(this.config.release ? { $release: this.config.release } : {}),
         ...properties,
       },
     };
@@ -127,6 +128,11 @@ export class PulseClient {
   identify(userId: string, traits: Properties = {}): void {
     const previous = this.identity.identify(userId);
     if (previous !== undefined) this.capture('$identify', { $anon_distinct_id: previous, ...traits });
+  }
+
+  /** Links another id (e.g. a backend account id) to the current user, so both resolve to one person. */
+  alias(alias: string): void {
+    if (alias && alias !== this.identity.distinctId) this.capture('$create_alias', { alias });
   }
 
   reset(): void {

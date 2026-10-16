@@ -97,6 +97,16 @@ export default function EventsPage() {
                     >
                       {e.distinct_id.slice(0, 18)}
                     </button>
+                    {e.distinct_id && (
+                      <Link
+                        href={`/persons/profile?id=${encodeURIComponent(e.distinct_id)}`}
+                        onClick={(x) => x.stopPropagation()}
+                        className="ml-2 text-[11px] text-primary hover:underline"
+                        data-testid="event-person-link"
+                      >
+                        profile
+                      </Link>
+                    )}
                   </Td>
                   <Td className="font-mono text-xs">
                     <button

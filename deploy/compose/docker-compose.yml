@@ -164,6 +164,10 @@ services:
       - "4317:4317"
     environment:
       SERVICE_NAME: ingest-gateway
+      # Read the visitor country from this header. Only set it behind a CDN or
+      # proxy that overwrites it (Cloudflare sets CF-IPCountry); the local
+      # stack enables it so tests can check the country column.
+      COUNTRY_HEADER: CF-IPCountry
       KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       REDIS_ADDR: redis:6379
       CLICKHOUSE_ADDR: clickhouse:9000
