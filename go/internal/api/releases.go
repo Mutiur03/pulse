@@ -4,9 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"io"
 	"net/http"
-	"sort"
 	"strings"
 	"time"
 
@@ -14,7 +12,6 @@ import (
 	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
-	"github.com/Mutiur03/pulse/internal/sourcemap"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/symbolicate"
 )
@@ -120,109 +117,72 @@ func (s *Server) UploadSourcemaps(w http.ResponseWriter, r *http.Request, projec
 		writeErr(w, http.StatusServiceUnavailable, "object storage is not configured")
 		return
 	}
-	secret, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
-	project, err := s.Releases.Authenticate(r.Context(), strings.TrimSpace(secret))
-	if errors.Is(err, artifacts.ErrNotFound) || (err == nil && project != projectID) {
-		writeErr(w, http.StatusUnauthorized, "invalid upload token")
-		return
-	} else if err != nil {
-		internal(w, err)
+	if !s.uploadTokenOK(w, r, projectID) {
 		return
 	}
 	if !artifacts.ValidVersion(version) {
 		writeErr(w, http.StatusBadRequest, "release may use letters, digits and . _ - + @, up to 200 characters")
 		return
 	}
-	r.Body = http.MaxBytesReader(w, r.Body, MaxUploadBytes)
-	if err := r.ParseMultipartForm(8 << 20); err != nil { //nolint:gosec // body capped by MaxBytesReader above
-		var tooBig *http.MaxBytesError
-		if errors.As(err, &tooBig) {
-			writeErr(w, http.StatusRequestEntityTooLarge, "upload is larger than 50 MB")
-			return
-		}
-		writeErr(w, http.StatusBadRequest, "expected a multipart form")
+	if !parseUploadForm(w, r) {
 		return
 	}
 	defer func() { _ = r.MultipartForm.RemoveAll() }()
 
-	type upload struct {
-		name    string
-		data    []byte
-		debugID string
-	}
-	var ups []upload
-	fields := make([]string, 0, len(r.MultipartForm.File))
-	for f := range r.MultipartForm.File {
-		fields = append(fields, f)
-	}
-	sort.Strings(fields)
-	for _, field := range fields {
-		for _, fh := range r.MultipartForm.File[field] {
-			if len(ups) >= MaxUploadFiles {
-				writeErr(w, http.StatusBadRequest, "too many files in one upload")
-				return
-			}
-			name, err := artifacts.ArtifactName(field)
-			if err != nil {
-				writeErr(w, http.StatusBadRequest, "invalid file name "+field)
-				return
-			}
-			if !strings.HasSuffix(name, ".map") {
-				name += ".map"
-			}
-			if fh.Size > MaxSourcemapSize {
-				writeErr(w, http.StatusRequestEntityTooLarge, name+" is larger than 20 MB")
-				return
-			}
-			f, err := fh.Open()
-			if err != nil {
-				internal(w, err)
-				return
-			}
-			data, err := io.ReadAll(io.LimitReader(f, MaxSourcemapSize+1))
-			_ = f.Close()
-			if err != nil {
-				internal(w, err)
-				return
-			}
-			m, err := sourcemap.Parse(data)
-			if err != nil {
-				writeErr(w, http.StatusBadRequest, name+": "+err.Error())
-				return
-			}
-			ups = append(ups, upload{name: name, data: data, debugID: m.DebugID})
+	ups, err := artifacts.ReadUploads(r.MultipartForm, MaxUploadFiles, MaxSourcemapSize)
+	var bad *artifacts.UploadError
+	if errors.As(err, &bad) {
+		code := http.StatusBadRequest
+		if bad.TooLarge {
+			code = http.StatusRequestEntityTooLarge
 		}
-	}
-	if len(ups) == 0 {
-		writeErr(w, http.StatusBadRequest, "no source map files in the upload")
+		writeErr(w, code, bad.Msg)
+		return
+	} else if err != nil {
+		internal(w, err)
 		return
 	}
-	rel, err := s.Releases.EnsureRelease(r.Context(), projectID, version)
+	arts, err := artifacts.Publish(r.Context(), s.Releases, s.ArtifactObjects, projectID, version, ups)
 	if err != nil {
 		internal(w, err)
 		return
 	}
-	out := make([]gen.Artifact, 0, len(ups))
-	for _, u := range ups {
-		sha := artifacts.SHA256(u.data)
-		key := artifacts.ObjectKey(projectID, sha)
-		if err := s.ArtifactObjects.Put(r.Context(), key, u.data); err != nil {
-			internal(w, err)
-			return
-		}
-		a, err := s.Releases.PutArtifact(r.Context(), artifacts.Artifact{
-			ReleaseID: rel.ID, ProjectID: projectID, Name: u.name, DebugID: u.debugID,
-			ObjectKey: key, Size: int64(len(u.data)), SHA256: sha,
-		})
-		if err != nil {
-			internal(w, err)
-			return
-		}
+	out := make([]gen.Artifact, 0, len(arts))
+	for _, a := range arts {
 		out = append(out, toArtifact(a))
 	}
 	// Frames that missed a map a moment ago can resolve now.
 	s.Symbolicator.Forget()
 	writeJSON(w, http.StatusCreated, out)
+}
+
+// uploadTokenOK checks the bearer upload token belongs to the project.
+func (s *Server) uploadTokenOK(w http.ResponseWriter, r *http.Request, projectID int64) bool {
+	secret, _ := strings.CutPrefix(r.Header.Get("Authorization"), "Bearer ")
+	project, err := s.Releases.Authenticate(r.Context(), strings.TrimSpace(secret))
+	if errors.Is(err, artifacts.ErrNotFound) || (err == nil && project != projectID) {
+		writeErr(w, http.StatusUnauthorized, "invalid upload token")
+		return false
+	} else if err != nil {
+		internal(w, err)
+		return false
+	}
+	return true
+}
+
+// parseUploadForm reads the multipart body, capped at MaxUploadBytes.
+func parseUploadForm(w http.ResponseWriter, r *http.Request) bool {
+	r.Body = http.MaxBytesReader(w, r.Body, MaxUploadBytes)
+	if err := r.ParseMultipartForm(8 << 20); err != nil { //nolint:gosec // body capped by MaxBytesReader above
+		var tooBig *http.MaxBytesError
+		if errors.As(err, &tooBig) {
+			writeErr(w, http.StatusRequestEntityTooLarge, "upload is larger than 50 MB")
+			return false
+		}
+		writeErr(w, http.StatusBadRequest, "expected a multipart form")
+		return false
+	}
+	return true
 }
 
 func (s *Server) ListUploadTokens(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath) {
