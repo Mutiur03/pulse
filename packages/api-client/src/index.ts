@@ -76,6 +76,12 @@ export type RetentionResult = Schemas['RetentionResult'];
 export type PathsQuery = Schemas['PathsQuery'];
 export type PathsResult = Schemas['PathsResult'];
 export type ListPersonsQuery = NonNullable<operations['listPersons']['parameters']['query']>;
+export type LogRecord = Schemas['LogRecord'];
+export type LogList = Schemas['LogList'];
+export type LogStats = Schemas['LogStats'];
+export type LogBucket = Schemas['LogBucket'];
+export type SearchLogsQuery = NonNullable<operations['searchLogs']['parameters']['query']>;
+export type LogStatsQuery = NonNullable<operations['logStats']['parameters']['query']>;
 export type ListIssuesQuery = NonNullable<operations['listIssues']['parameters']['query']>;
 export type ListTracesQuery = NonNullable<operations['listTraces']['parameters']['query']>;
 export type ListEventsQuery = NonNullable<operations['listEvents']['parameters']['query']>;
@@ -265,6 +271,14 @@ export class APIClient {
 
   queryTrend(body: TrendQuery, projectId?: number): Promise<TrendResult> {
     return this.request('POST', '/v1/insights/trends', { project_id: projectId }, body);
+  }
+
+  searchLogs(query: SearchLogsQuery = {}): Promise<LogList> {
+    return this.request('GET', '/v1/logs', query as Query);
+  }
+
+  logStats(query: LogStatsQuery = {}): Promise<LogStats> {
+    return this.request('GET', '/v1/logs/stats', query as Query);
   }
 
   listPersons(query: ListPersonsQuery = {}): Promise<PersonList> {

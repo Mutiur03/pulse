@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Mutiur03/pulse/internal/logquery"
 )
 
 // Query is a ClickHouse query for a threshold metric. It selects the value v,
@@ -39,6 +41,7 @@ func build(r *Rule, from, to time.Time, bucket time.Duration) (Query, error) {
 		where                          = []string{"project_id = ?", "%[1]s >= ?", "%[1]s < ?"}
 		args                           = []interface{}{uint64(r.ProjectID), from, to}
 		empty                          bool
+		logCond                        string
 	)
 	switch r.Metric {
 	case ErrorCount, ErrorRate:
@@ -99,10 +102,28 @@ func build(r *Rule, from, to time.Time, bucket time.Duration) (Query, error) {
 		if r.Route != "" {
 			where, args = append(where, "positionCaseInsensitive(current_url, ?) > 0"), append(args, r.Route)
 		}
+	case LogCount:
+		table, ts = "logs", "timestamp"
+		value = "toFloat64(count())"
+		trace, issue = "argMax(trace_id, timestamp)", "toUInt64(0)"
+		q, err := logquery.Parse(r.LogQuery)
+		if err != nil {
+			return Query{}, err
+		}
+		cond, qargs := q.Where()
+		if r.Service != "" {
+			where, args = append(where, "service_name = ?"), append(args, r.Service)
+		}
+		// The condition may contain %, so it is an argument of the format.
+		where, args = append(where, "%[2]s"), append(args, qargs...)
+		logCond = cond
 	default:
 		return Query{}, fmt.Errorf("metric %q has no query", r.Metric)
 	}
-	cond := fmt.Sprintf(strings.Join(where, " AND "), ts)
+	cond := fmt.Sprintf(strings.Join(where, " AND "), ts, logCond)
+	if logCond == "" {
+		cond = fmt.Sprintf(strings.Join(where, " AND "), ts)
+	}
 	sel := fmt.Sprintf("toFloat64(%s) AS v, count() AS n, %s AS t, toUInt64(%s) AS i", value, trace, issue)
 	if bucket == 0 {
 		return Query{SQL: "SELECT " + sel + " FROM " + table + " WHERE " + cond, Args: args, Empty: empty}, nil

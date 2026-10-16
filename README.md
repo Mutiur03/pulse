@@ -11,6 +11,7 @@ See [docs/architecture.md](docs/architecture.md) for the complete technical desi
 ## Features
 
 - **Product Analytics**: Events, autocapture, funnels, retention, paths, cohorts, session replay
+- **Logs Explorer**: Search OpenTelemetry logs by text, level, service, trace and attributes, live tail, logs on the trace view, and log count alerts; see [docs/logs.md](docs/logs.md)
 - **Observability (APM)**: Distributed traces, service maps, RED metrics, logs with full-text search
 - **Error Tracking**: Exception capture, stack traces, symbolication, issue grouping
 - **Unified Correlation**: Every signal (event, span, log, error, replay) shares `trace_id`, `session_id`, and `person_id`

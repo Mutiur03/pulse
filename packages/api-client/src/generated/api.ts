@@ -1002,6 +1002,43 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Search logs
+         * @description Newest matching logs first. q uses the logs search language: words and "phrases" match the body, level:error (or level:warn+ for warn and worse), service:name, trace:id, span:id, any attribute as key:value, and -term to exclude. Page back with before set to next_before; poll with after set to the newest timestamp for live tail.
+         */
+        get: operations["searchLogs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/logs/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Log volume over time and by service and level */
+        get: operations["logStats"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/persons": {
         parameters: {
             query?: never;
@@ -1809,11 +1846,55 @@ export interface components {
         IssueUpdate: {
             status: components["schemas"]["IssueStatus"];
         };
+        LogRecord: {
+            /** Format: date-time */
+            timestamp: string;
+            /** @description TRACE, DEBUG, INFO, WARN, ERROR or FATAL; empty when the sender set none. */
+            severity: string;
+            service_name: string;
+            body: string;
+            trace_id?: string;
+            span_id?: string;
+            attributes: {
+                [key: string]: unknown;
+            };
+        };
+        LogList: {
+            logs: components["schemas"]["LogRecord"][];
+            /** @description The query as it was understood. */
+            query: string;
+            /**
+             * Format: date-time
+             * @description Set when there may be older logs; pass it as before.
+             */
+            next_before?: string;
+        };
+        LogBucket: {
+            /** Format: date-time */
+            start: string;
+            /** @description Logs per level in the bucket. */
+            counts: {
+                [key: string]: number;
+            };
+        };
+        LogFacetValue: {
+            value: string;
+            /** Format: int64 */
+            count: number;
+        };
+        LogStats: {
+            interval_seconds: number;
+            buckets: components["schemas"]["LogBucket"][];
+            /** Format: int64 */
+            total: number;
+            services: components["schemas"]["LogFacetValue"][];
+            levels: components["schemas"]["LogFacetValue"][];
+        };
         /**
-         * @description error_count (errors in the window), error_rate (errors per minute), failure_rate (percent of server requests that failed), latency_p95 and latency_p99 (server span milliseconds), throughput (server requests per minute; use lt to catch drops), event_count (product events named by event_name), new_issue and issue_regression (fire on each issue event).
+         * @description error_count (errors in the window), error_rate (errors per minute), failure_rate (percent of server requests that failed), latency_p95 and latency_p99 (server span milliseconds), throughput (server requests per minute; use lt to catch drops), event_count (product events named by event_name), log_count (logs matching log_query), new_issue and issue_regression (fire on each issue event).
          * @enum {string}
          */
-        AlertMetric: "error_count" | "error_rate" | "failure_rate" | "latency_p95" | "latency_p99" | "throughput" | "event_count" | "new_issue" | "issue_regression";
+        AlertMetric: "error_count" | "error_rate" | "failure_rate" | "latency_p95" | "latency_p99" | "throughput" | "event_count" | "log_count" | "new_issue" | "issue_regression";
         /** @enum {string} */
         AlertComparison: "gt" | "gte" | "lt" | "lte";
         /** @enum {string} */
@@ -1833,6 +1914,8 @@ export interface components {
             route?: string;
             environment?: string;
             event_name?: string;
+            /** @description Logs search for log_count, e.g. level:error+ service:checkout timeout. */
+            log_query?: string;
             /** @description Repeat while firing, and don't re-page a flapping rule, within this time. 0 disables. */
             renotify_seconds?: number;
             channel_ids?: number[];
@@ -1855,6 +1938,7 @@ export interface components {
             route: string;
             environment: string;
             event_name: string;
+            log_query: string;
             renotify_seconds: number;
             channel_ids: number[];
             enabled: boolean;
@@ -3760,6 +3844,83 @@ export interface operations {
             };
             403: components["responses"]["Forbidden"];
             404: components["responses"]["NotFound"];
+        };
+    };
+    searchLogs: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                q?: string;
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+                before?: string;
+                after?: string;
+                limit?: components["parameters"]["Limit"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Matching logs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogList"];
+                };
+            };
+            /** @description Invalid query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    logStats: {
+        parameters: {
+            query?: {
+                /** @description Defaults to the user's first project. */
+                project_id?: components["parameters"]["ProjectID"];
+                q?: string;
+                /** @description Start of the time range. Default 24 hours ago. */
+                from?: components["parameters"]["From"];
+                /** @description End of the time range. Default now. */
+                to?: components["parameters"]["To"];
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Histogram and facets of matching logs */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogStats"];
+                };
+            };
+            /** @description Invalid query */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
         };
     };
     listPersons: {

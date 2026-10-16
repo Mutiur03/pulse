@@ -34,7 +34,7 @@ type Entry struct {
 type Store struct{ DB *pgxpool.Pool }
 
 const ruleCols = `id, project_id, name, metric, comparison, threshold, window_seconds, interval_seconds,
-	service, route, environment, event_name, renotify_seconds, channel_ids, enabled, muted_until,
+	service, route, environment, event_name, log_query, renotify_seconds, channel_ids, enabled, muted_until,
 	state, state_since, last_value, last_evaluated_at, last_notified_at, last_triggered_at, created_at, updated_at`
 
 func scanRule(row pgx.Row) (Rule, error) {
@@ -42,7 +42,7 @@ func scanRule(row pgx.Row) (Rule, error) {
 	var window, interval, renotify int32
 	var metric, cmp, state string
 	err := row.Scan(&r.ID, &r.ProjectID, &r.Name, &metric, &cmp, &r.Threshold, &window, &interval,
-		&r.Service, &r.Route, &r.Environment, &r.EventName, &renotify, &r.ChannelIDs, &r.Enabled, &r.MutedUntil,
+		&r.Service, &r.Route, &r.Environment, &r.EventName, &r.LogQuery, &renotify, &r.ChannelIDs, &r.Enabled, &r.MutedUntil,
 		&state, &r.StateSince, &r.LastValue, &r.LastEvaluatedAt, &r.LastNotifiedAt, &r.LastTriggeredAt, &r.CreatedAt, &r.UpdatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return r, ErrNotFound
@@ -100,10 +100,10 @@ func (s *Store) CreateRule(ctx context.Context, r Rule) (Rule, error) {
 		return Rule{}, err
 	}
 	return scanRule(s.DB.QueryRow(ctx, `INSERT INTO alert_rules (project_id, name, metric, comparison, threshold,
-			window_seconds, interval_seconds, service, route, environment, event_name, renotify_seconds, channel_ids, enabled)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14) RETURNING `+ruleCols,
+			window_seconds, interval_seconds, service, route, environment, event_name, renotify_seconds, channel_ids, enabled, log_query)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15) RETURNING `+ruleCols,
 		r.ProjectID, r.Name, string(r.Metric), string(r.Comparison), r.Threshold, int(r.Window/time.Second), int(r.Interval/time.Second),
-		r.Service, r.Route, r.Environment, r.EventName, int(r.Renotify/time.Second), ids, r.Enabled))
+		r.Service, r.Route, r.Environment, r.EventName, int(r.Renotify/time.Second), ids, r.Enabled, r.LogQuery))
 }
 
 // UpdateRule saves the rule's settings. Changing what is measured resets the
@@ -115,15 +115,15 @@ func (s *Store) UpdateRule(ctx context.Context, r Rule) (Rule, error) {
 	}
 	return scanRule(s.DB.QueryRow(ctx, `UPDATE alert_rules SET name = $3, metric = $4, comparison = $5, threshold = $6,
 			window_seconds = $7, interval_seconds = $8, service = $9, route = $10, environment = $11, event_name = $12,
-			renotify_seconds = $13, channel_ids = $14, enabled = $15, updated_at = now(),
+			renotify_seconds = $13, channel_ids = $14, enabled = $15, log_query = $16, updated_at = now(),
 			last_evaluated_at = NULL,
 			state = CASE WHEN metric <> $4 OR comparison <> $5 OR threshold <> $6 OR window_seconds <> $7 OR service <> $9
-				OR route <> $10 OR environment <> $11 OR event_name <> $12 OR NOT $15 THEN 'ok' ELSE state END,
+				OR route <> $10 OR environment <> $11 OR event_name <> $12 OR log_query <> $16 OR NOT $15 THEN 'ok' ELSE state END,
 			state_since = CASE WHEN metric <> $4 OR comparison <> $5 OR threshold <> $6 OR window_seconds <> $7 OR service <> $9
-				OR route <> $10 OR environment <> $11 OR event_name <> $12 OR NOT $15 THEN now() ELSE state_since END
+				OR route <> $10 OR environment <> $11 OR event_name <> $12 OR log_query <> $16 OR NOT $15 THEN now() ELSE state_since END
 		WHERE project_id = $1 AND id = $2 RETURNING `+ruleCols,
 		r.ProjectID, r.ID, r.Name, string(r.Metric), string(r.Comparison), r.Threshold, int(r.Window/time.Second), int(r.Interval/time.Second),
-		r.Service, r.Route, r.Environment, r.EventName, int(r.Renotify/time.Second), ids, r.Enabled))
+		r.Service, r.Route, r.Environment, r.EventName, int(r.Renotify/time.Second), ids, r.Enabled, r.LogQuery))
 }
 
 func (s *Store) DeleteRule(ctx context.Context, project, id int64) error {

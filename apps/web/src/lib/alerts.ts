@@ -9,6 +9,7 @@ export const metrics: { value: AlertMetric; label: string; help: string }[] = [
   { value: 'latency_p99', label: 'Latency p99', help: 'Server span duration, ms' },
   { value: 'throughput', label: 'Throughput', help: 'Server requests per minute; use "below" for drops' },
   { value: 'event_count', label: 'Event count', help: 'Product events with this name' },
+  { value: 'log_count', label: 'Log count', help: 'Logs matching a logs search in the window' },
   { value: 'new_issue', label: 'New issue', help: 'Fires on every new issue' },
   { value: 'issue_regression', label: 'Issue regression', help: 'Fires when a resolved issue comes back' },
 ];

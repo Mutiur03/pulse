@@ -18,14 +18,15 @@ const blank: AlertRuleInput = {
   route: '',
   environment: '',
   event_name: '',
+  log_query: '',
   renotify_seconds: 0,
   channel_ids: [],
   enabled: true,
 };
 
 export function toInput(r: AlertRule): AlertRuleInput {
-  const { name, metric, comparison, threshold, window_seconds, interval_seconds, service, route, environment, event_name, renotify_seconds, channel_ids, enabled } = r;
-  return { name, metric, comparison, threshold, window_seconds, interval_seconds, service, route, environment, event_name, renotify_seconds, channel_ids, enabled };
+  const { name, metric, comparison, threshold, window_seconds, interval_seconds, service, route, environment, event_name, log_query, renotify_seconds, channel_ids, enabled } = r;
+  return { name, metric, comparison, threshold, window_seconds, interval_seconds, service, route, environment, event_name, log_query, renotify_seconds, channel_ids, enabled };
 }
 
 function Field({ label, children, help }: { label: string; children: React.ReactNode; help?: string }) {
@@ -38,8 +39,8 @@ function Field({ label, children, help }: { label: string; children: React.React
   );
 }
 
-export function AlertForm({ project, initial, onSave }: { project: number; initial?: AlertRuleInput; onSave: (r: AlertRuleInput) => Promise<void> }) {
-  const [r, setR] = useState<AlertRuleInput>(initial ?? blank);
+export function AlertForm({ project, initial, onSave }: { project: number; initial?: Partial<AlertRuleInput>; onSave: (r: AlertRuleInput) => Promise<void> }) {
+  const [r, setR] = useState<AlertRuleInput>({ ...blank, ...initial });
   const [channels, setChannels] = useState<AlertChannel[]>();
   const [preview, setPreview] = useState<AlertPreview>();
   const [previewing, setPreviewing] = useState(false);
@@ -140,6 +141,11 @@ export function AlertForm({ project, initial, onSave }: { project: number; initi
                     </option>
                   ))}
                 </Select>
+              </Field>
+            )}
+            {r.metric === 'log_count' && (
+              <Field label="Log search" help='Same syntax as the logs explorer, e.g. level:error+ "payment failed"'>
+                <Input value={r.log_query ?? ''} onChange={(e) => set({ log_query: e.target.value })} placeholder="level:error+" aria-label="Log search" className="font-mono" />
               </Field>
             )}
             {r.metric === 'event_count' && (

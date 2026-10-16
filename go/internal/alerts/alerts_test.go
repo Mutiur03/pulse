@@ -157,6 +157,15 @@ func TestValidate(t *testing.T) {
 		{Name: "x", Metric: ErrorCount, Window: 25 * time.Hour},
 		{Name: "x", Metric: ErrorCount, Interval: time.Second},
 		{Name: "x", Metric: ErrorCount, Threshold: -1},
+		{Name: "x", Metric: LogCount, LogQuery: "level:loud"},
+	}
+	logs := Rule{Name: "Declines", Metric: LogCount, LogQuery: "  declined   LEVEL:Error "}
+	if err := logs.Validate(); err != nil || logs.LogQuery != "declined level:error" {
+		t.Errorf("log query: %v %q", err, logs.LogQuery)
+	}
+	other := Rule{Name: "x", Metric: ErrorCount, LogQuery: "x"}
+	if err := other.Validate(); err != nil || other.LogQuery != "" {
+		t.Errorf("log query kept on %s", other.Metric)
 	}
 	for i, r := range bad {
 		if err := r.Validate(); err == nil {
@@ -211,6 +220,16 @@ func TestMetricQuery(t *testing.T) {
 	if s := SampleFrom(q, 0, 0, "", 0); !s.HasData {
 		t.Error("zero events is a value")
 	}
+	r.Metric, r.EventName, r.Service, r.LogQuery = LogCount, "", "api", `level:error+ "card declined"`
+	q, err = MetricQuery(r, t0)
+	if err != nil || !strings.Contains(q.SQL, "FROM logs") ||
+		!strings.Contains(q.SQL, "service_name = ? AND severity IN (?, ?) AND positionCaseInsensitive(body, ?) > 0") {
+		t.Errorf("logs: %v %s", err, q.SQL)
+	}
+	if n := len(q.Args); n != 7 || q.Args[3] != "api" || q.Args[4] != "ERROR" || q.Args[6] != "card declined" {
+		t.Errorf("logs args %v", q.Args)
+	}
+	r.Service = ""
 	r.Metric = NewIssue
 	if _, err := MetricQuery(r, t0); err == nil {
 		t.Error("event metrics have no query")

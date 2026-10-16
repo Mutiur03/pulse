@@ -87,7 +87,7 @@ export default function AlertPage({ params }: { params: Promise<{ id: string }> 
       </div>
       <PageHeader
         title={r?.name ?? 'Alert rule'}
-        description={r ? `${r.condition}${r.service ? ` · service ${r.service}` : ''}${r.route ? ` · route ${r.route}` : ''}${r.environment ? ` · env ${r.environment}` : ''}` : undefined}
+        description={r ? `${r.condition}${r.service ? ` · service ${r.service}` : ''}${r.route ? ` · route ${r.route}` : ''}${r.environment ? ` · env ${r.environment}` : ''}${r.log_query ? ` · logs ${r.log_query}` : ''}` : undefined}
         actions={
           r && (
             <div className="flex flex-wrap items-center gap-2">

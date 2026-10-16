@@ -132,6 +132,8 @@ type Server struct {
 	Dashboards DashboardStore
 	// Analytics serves persons, retention and paths; nil disables them.
 	Analytics AnalyticsReader
+	// Logs serves the logs explorer; nil disables it.
+	Logs LogsReader
 	// Metrics reads OTLP metrics; nil returns empty results.
 	Metrics      MetricReader
 	SecureCookie bool

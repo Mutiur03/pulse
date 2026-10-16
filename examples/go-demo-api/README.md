@@ -6,6 +6,8 @@ for traces and HTTP server metrics pointed at the Pulse ingest gateway:
 OTLP/gRPC with `OTEL_EXPORTER_OTLP_PROTOCOL=grpc` (the compose default, to
 `ingest-gateway:4317`), OTLP/HTTP protobuf otherwise. The browser demo
 calls it, so one trace covers browser click -> fetch -> Go handler -> SQL.
+Handlers also log through the OpenTelemetry slog bridge, so each log
+carries the trace and span it was written in.
 
 | Route | What it does |
 | --- | --- |

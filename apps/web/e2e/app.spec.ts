@@ -969,3 +969,80 @@ test('persons stitch anonymous and identified ids, with retention and paths', as
   await shot(page, '46-paths');
   await ctx.close();
 });
+
+test('logs explorer tails, searches and links logs to traces, and alerts on a search', async ({ page, request }) => {
+  test.setTimeout(150_000);
+  const demoApi = process.env.DEMO_API_URL ?? 'http://localhost:8090';
+  await login(page);
+
+  // Live tail picks up the logs of a failed payment as they arrive.
+  await page.goto('/logs?range=15m&q=service:go-demo-api');
+  await page.getByTestId('live-tail').click();
+  await expect(page.getByTestId('live-tail')).toHaveAttribute('data-live', 'true');
+  const res = await request.post(`${demoApi}/api/pay?fail=1`);
+  expect(res.status()).toBe(402);
+  const { trace_id: traceId, error: payError } = (await res.json()) as { trace_id: string; error: string };
+  const orderId = /order (\d+)/.exec(payError)![1];
+  // Other payments (the seed's) log too, so wait for this order's log.
+  const failed = page.getByTestId('log-row').filter({ hasText: 'payment failed' }).filter({ hasText: `order_id=${orderId}` });
+  await expect(failed).toBeVisible({ timeout: 60_000 });
+  await page.getByTestId('live-tail').click();
+
+  // Search by phrase, level and trace; the attributes are shown and filterable.
+  const search = page.getByLabel('Search logs');
+  await search.fill(`"payment failed" level:error trace:${traceId}`);
+  await search.press('Enter');
+  await expect(page.getByTestId('log-row')).toHaveCount(1);
+  await page.getByTestId('log-row').click();
+  const detail = page.getByTestId('log-detail');
+  await expect(detail).toContainText('order_id');
+  await expect(detail).toContainText('payment declined');
+  await expect(page.getByTestId('logs-histogram')).toBeVisible();
+  await search.fill(`trace:${traceId} level:warn+`);
+  await search.press('Enter');
+  await expect(page.getByTestId('log-row')).toHaveCount(2);
+  await search.fill(`trace:${traceId}`);
+  await search.press('Enter');
+  await expect(page.getByTestId('log-row')).toHaveCount(3, { timeout: 15_000 });
+  await search.fill('level:loud');
+  await search.press('Enter');
+  await expect(page.getByText(/unknown level/)).toBeVisible();
+  await search.fill(`service:go-demo-api level:warn+`);
+  await search.press('Enter');
+  await expect(page.getByTestId('log-row').first()).toBeVisible();
+  await shot(page, '47-logs');
+
+  // The trace shows its logs, and the selected span its own.
+  await page.goto(`/traces/${traceId}`);
+  const traceLogs = page.getByTestId('trace-log');
+  await expect(traceLogs).toHaveCount(3);
+  await expect(page.getByTestId('trace-logs')).toContainText('authorizing payment');
+  await traceLogs.filter({ hasText: 'payment provider timed out' }).click();
+  await expect(page.getByTestId('span-panel')).toContainText('payment-provider authorize');
+  await expect(page.getByTestId('span-logs')).toContainText('payment provider timed out');
+  await shot(page, '48-trace-logs');
+
+  // Alert on a log search; failed payments make it fire.
+  await page.goto(`/logs?range=15m&q=${encodeURIComponent('"payment failed" service:go-demo-api')}`);
+  await expect(page.getByTestId('log-row').first()).toBeVisible();
+  await page.getByTestId('logs-alert-link').click();
+  await expect(page.getByLabel('Metric')).toHaveValue('log_count');
+  await expect(page.getByLabel('Log search')).toHaveValue('"payment failed" service:go-demo-api');
+  await page.getByLabel('Name').fill(`Payment failures ${Date.now()}`);
+  await page.getByLabel('Threshold').fill('0');
+  await page.getByLabel('Window').selectOption('60');
+  await page.getByLabel('Interval').selectOption('10');
+  await expect(page.getByTestId('alert-chart')).toBeVisible();
+  await page.getByRole('button', { name: 'Save rule' }).click();
+  await expect(page).toHaveURL(/\/alerts\/\d+$/);
+  await expect(page.getByText('log_count > 0 over 1m')).toBeVisible();
+  for (let i = 0; i < 3; i++) await request.post(`${demoApi}/api/pay?fail=1`);
+  await expect(page.getByTestId('alert-state')).toHaveAttribute('data-state', 'alerting', { timeout: 90_000 });
+  await shot(page, '49-log-alert', false);
+
+  // Disable the rule so it does not keep firing for other tests.
+  await page.getByRole('link', { name: 'Edit' }).click();
+  await page.getByLabel('Enabled').uncheck();
+  await page.getByRole('button', { name: 'Save rule' }).click();
+  await expect(page).toHaveURL(/\/alerts\/\d+$/);
+});

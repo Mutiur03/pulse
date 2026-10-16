@@ -13,6 +13,7 @@ const links = [
   { href: '/paths', label: 'Paths', icon: 'M5 6h4l6 12h4M5 18h4l2-4M15 6h4' },
   { href: '/persons', label: 'Persons', icon: 'M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8ZM22 21v-2a4 4 0 0 0-3-3.9M16 3.1a4 4 0 0 1 0 7.8' },
   { href: '/traces', label: 'Traces', icon: 'M3 12h4l3-8 4 16 3-8h4' },
+  { href: '/logs', label: 'Logs', icon: 'M4 6h16M4 10h10M4 14h16M4 18h7' },
   { href: '/issues', label: 'Issues', icon: 'M12 9v4m0 4h.01M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z' },
   { href: '/metrics', label: 'Metrics', icon: 'M3 3v18h18M7 15l4-4 3 3 5-6' },
   { href: '/replays', label: 'Replays', icon: 'M4 5h16v14H4zM10 9l5 3-5 3z' },

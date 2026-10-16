@@ -8,6 +8,8 @@ import (
 	"fmt"
 	"strings"
 	"time"
+
+	"github.com/Mutiur03/pulse/internal/logquery"
 )
 
 // Metric is what a rule measures.
@@ -21,12 +23,13 @@ const (
 	LatencyP99      Metric = "latency_p99"      // milliseconds, server spans
 	Throughput      Metric = "throughput"       // requests per minute
 	EventCount      Metric = "event_count"      // product events named by the rule
+	LogCount        Metric = "log_count"        // logs matching the rule's log query
 	NewIssue        Metric = "new_issue"        // fires on each new issue
 	IssueRegression Metric = "issue_regression" // fires on each regression
 )
 
 // Metrics lists every metric in the order the UI shows them.
-var Metrics = []Metric{ErrorCount, ErrorRate, FailureRate, LatencyP95, LatencyP99, Throughput, EventCount, NewIssue, IssueRegression}
+var Metrics = []Metric{ErrorCount, ErrorRate, FailureRate, LatencyP95, LatencyP99, Throughput, EventCount, LogCount, NewIssue, IssueRegression}
 
 // EventDriven reports whether the metric fires from issue events rather than
 // from a scheduled query.
@@ -125,6 +128,8 @@ type Rule struct {
 	Route       string
 	Environment string
 	EventName   string
+	// LogQuery is the logs search (see package logquery) for log_count.
+	LogQuery string
 	// Renotify repeats the alert while it keeps firing, and also stops a rule
 	// that flaps from notifying again within that time. Zero disables both.
 	Renotify   time.Duration
@@ -163,6 +168,16 @@ func (r *Rule) Validate() error {
 		return fmt.Errorf("unknown metric %q", r.Metric)
 	case r.Metric == EventCount && strings.TrimSpace(r.EventName) == "":
 		return errors.New("event_count needs an event name")
+	}
+	r.LogQuery = strings.TrimSpace(r.LogQuery)
+	if r.Metric == LogCount {
+		q, err := logquery.Parse(r.LogQuery)
+		if err != nil {
+			return fmt.Errorf("log query: %w", err)
+		}
+		r.LogQuery = q.String()
+	} else {
+		r.LogQuery = ""
 	}
 	if r.Comparison == "" {
 		r.Comparison = Above

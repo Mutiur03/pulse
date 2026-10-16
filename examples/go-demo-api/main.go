@@ -12,6 +12,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"log/slog"
 	"math/rand"
 	"net/http"
 	"os"
@@ -22,16 +23,20 @@ import (
 
 	"github.com/XSAM/otelsql"
 	_ "github.com/jackc/pgx/v5/stdlib"
+	"go.opentelemetry.io/contrib/bridges/otelslog"
 	"go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/baggage"
 	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploggrpc"
+	"go.opentelemetry.io/otel/exporters/otlp/otlplog/otlploghttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetrichttp"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp"
 	"go.opentelemetry.io/otel/propagation"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
 	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
@@ -57,6 +62,7 @@ func setupTelemetry(ctx context.Context) (func(context.Context) error, error) {
 	noEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT") == ""
 	var exp sdktrace.SpanExporter
 	var mexp sdkmetric.Exporter
+	var lexp sdklog.Exporter
 	var err error
 	if grpcExport() {
 		var topts []otlptracegrpc.Option
@@ -65,8 +71,15 @@ func setupTelemetry(ctx context.Context) (func(context.Context) error, error) {
 			topts = append(topts, otlptracegrpc.WithEndpointURL("http://localhost:4317"))
 			mopts = append(mopts, otlpmetricgrpc.WithEndpointURL("http://localhost:4317"))
 		}
+		var lopts []otlploggrpc.Option
+		if noEndpoint {
+			lopts = append(lopts, otlploggrpc.WithEndpointURL("http://localhost:4317"))
+		}
 		if exp, err = otlptracegrpc.New(ctx, topts...); err == nil {
 			mexp, err = otlpmetricgrpc.New(ctx, mopts...)
+		}
+		if err == nil {
+			lexp, err = otlploggrpc.New(ctx, lopts...)
 		}
 	} else {
 		var topts []otlptracehttp.Option
@@ -77,8 +90,15 @@ func setupTelemetry(ctx context.Context) (func(context.Context) error, error) {
 		if noEndpoint && os.Getenv("OTEL_EXPORTER_OTLP_METRICS_ENDPOINT") == "" {
 			mopts = append(mopts, otlpmetrichttp.WithEndpointURL("http://localhost:8080/v1/metrics"))
 		}
+		var lopts []otlploghttp.Option
+		if noEndpoint && os.Getenv("OTEL_EXPORTER_OTLP_LOGS_ENDPOINT") == "" {
+			lopts = append(lopts, otlploghttp.WithEndpointURL("http://localhost:8080/v1/logs"))
+		}
 		if exp, err = otlptracehttp.New(ctx, topts...); err == nil {
 			mexp, err = otlpmetrichttp.New(ctx, mopts...)
+		}
+		if err == nil {
+			lexp, err = otlploghttp.New(ctx, lopts...)
 		}
 	}
 	if err != nil {
@@ -98,17 +118,26 @@ func setupTelemetry(ctx context.Context) (func(context.Context) error, error) {
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(mexp, sdkmetric.WithInterval(10*time.Second))),
 		sdkmetric.WithResource(res),
 	)
+	lp := sdklog.NewLoggerProvider(
+		sdklog.WithProcessor(sdklog.NewBatchProcessor(lexp, sdklog.WithExportInterval(time.Second))),
+		sdklog.WithResource(res),
+	)
+	// Logs written with the request context carry its trace and span ids.
+	logger = otelslog.NewLogger("go-demo-api", otelslog.WithLoggerProvider(lp))
 	otel.SetTracerProvider(tp)
 	otel.SetMeterProvider(mp)
 	otel.SetTextMapPropagator(propagation.NewCompositeTextMapPropagator(propagation.TraceContext{}, propagation.Baggage{}))
 	return func(ctx context.Context) error {
-		return errors.Join(tp.Shutdown(ctx), mp.Shutdown(ctx))
+		return errors.Join(tp.Shutdown(ctx), mp.Shutdown(ctx), lp.Shutdown(ctx))
 	}, nil
 }
 
 type server struct{ db *sql.DB }
 
-var tracer = otel.Tracer("go-demo-api")
+var (
+	tracer = otel.Tracer("go-demo-api")
+	logger = slog.Default()
+)
 
 func writeJSON(w http.ResponseWriter, code int, v interface{}) {
 	w.Header().Set("Content-Type", "application/json")
@@ -141,6 +170,7 @@ func (s *server) orders(w http.ResponseWriter, r *http.Request) {
 		}
 		out = append(out, o)
 	}
+	logger.InfoContext(r.Context(), "listed orders", "count", len(out))
 	writeJSON(w, http.StatusOK, map[string]interface{}{"orders": out, "trace_id": trace.SpanContextFromContext(r.Context()).TraceID().String()})
 }
 
@@ -164,11 +194,15 @@ func chargeCard(ctx context.Context, db *sql.DB, orderID int, fail bool) error {
 	if err := db.QueryRowContext(ctx, `SELECT 1000 + $1::int`, orderID).Scan(&limit); err != nil {
 		return err
 	}
-	_, provider := tracer.Start(ctx, "payment-provider authorize")
+	pctx, provider := tracer.Start(ctx, "payment-provider authorize")
+	logger.InfoContext(pctx, "authorizing payment", "order_id", orderID, "limit_cents", limit)
 	if fail {
 		time.Sleep(time.Duration(700+rand.Intn(1800)) * time.Millisecond)
 	} else {
 		time.Sleep(time.Duration(20+rand.Intn(80)) * time.Millisecond)
+	}
+	if fail {
+		logger.WarnContext(pctx, "payment provider timed out", "order_id", orderID)
 	}
 	provider.End()
 	if !fail {
@@ -195,11 +229,13 @@ func (s *server) pay(w http.ResponseWriter, r *http.Request) {
 		// request span only gets an error status.
 		span := trace.SpanFromContext(r.Context())
 		span.SetStatus(codes.Error, "payment failed")
+		logger.ErrorContext(r.Context(), "payment failed", "order_id", orderID, "error", err.Error())
 		writeJSON(w, http.StatusPaymentRequired, map[string]string{
 			"error": err.Error(), "trace_id": span.SpanContext().TraceID().String(),
 		})
 		return
 	}
+	logger.InfoContext(r.Context(), "payment succeeded", "order_id", orderID)
 	writeJSON(w, http.StatusOK, map[string]string{"status": "paid"})
 }
 

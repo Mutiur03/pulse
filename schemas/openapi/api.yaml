@@ -1471,6 +1471,73 @@ paths:
           $ref: '#/components/responses/Forbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+  /v1/logs:
+    get:
+      summary: Search logs
+      description: >
+        Newest matching logs first. q uses the logs search language: words
+        and "phrases" match the body, level:error (or level:warn+ for warn
+        and worse), service:name, trace:id, span:id, any attribute as
+        key:value, and -term to exclude. Page back with before set to
+        next_before; poll with after set to the newest timestamp for live tail.
+      operationId: searchLogs
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+        - name: q
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+        - name: before
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - name: after
+          in: query
+          schema:
+            type: string
+            format: date-time
+        - $ref: '#/components/parameters/Limit'
+      responses:
+        '200':
+          description: Matching logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogList'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/logs/stats:
+    get:
+      summary: Log volume over time and by service and level
+      operationId: logStats
+      parameters:
+        - $ref: '#/components/parameters/ProjectID'
+        - name: q
+          in: query
+          schema:
+            type: string
+        - $ref: '#/components/parameters/From'
+        - $ref: '#/components/parameters/To'
+      responses:
+        '200':
+          description: Histogram and facets of matching logs
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogStats'
+        '400':
+          description: Invalid query
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
   /v1/persons:
     get:
       summary: List persons
@@ -3026,6 +3093,85 @@ components:
       properties:
         status:
           $ref: '#/components/schemas/IssueStatus'
+    LogRecord:
+      type: object
+      required: [timestamp, severity, service_name, body, attributes]
+      properties:
+        timestamp:
+          type: string
+          format: date-time
+        severity:
+          type: string
+          description: TRACE, DEBUG, INFO, WARN, ERROR or FATAL; empty when the sender set none.
+        service_name:
+          type: string
+        body:
+          type: string
+        trace_id:
+          type: string
+        span_id:
+          type: string
+        attributes:
+          type: object
+          additionalProperties: true
+    LogList:
+      type: object
+      required: [logs, query]
+      properties:
+        logs:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogRecord'
+        query:
+          type: string
+          description: The query as it was understood.
+        next_before:
+          type: string
+          format: date-time
+          description: Set when there may be older logs; pass it as before.
+    LogBucket:
+      type: object
+      required: [start, counts]
+      properties:
+        start:
+          type: string
+          format: date-time
+        counts:
+          type: object
+          description: Logs per level in the bucket.
+          additionalProperties:
+            type: integer
+            format: int64
+    LogFacetValue:
+      type: object
+      required: [value, count]
+      properties:
+        value:
+          type: string
+        count:
+          type: integer
+          format: int64
+    LogStats:
+      type: object
+      required: [interval_seconds, buckets, total, services, levels]
+      properties:
+        interval_seconds:
+          type: integer
+        buckets:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogBucket'
+        total:
+          type: integer
+          format: int64
+        services:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogFacetValue'
+        levels:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogFacetValue'
     AlertMetric:
       type: string
       description: >
@@ -3033,8 +3179,9 @@ components:
         failure_rate (percent of server requests that failed), latency_p95 and
         latency_p99 (server span milliseconds), throughput (server requests per
         minute; use lt to catch drops), event_count (product events named by
-        event_name), new_issue and issue_regression (fire on each issue event).
-      enum: [error_count, error_rate, failure_rate, latency_p95, latency_p99, throughput, event_count, new_issue, issue_regression]
+        event_name), log_count (logs matching log_query), new_issue and
+        issue_regression (fire on each issue event).
+      enum: [error_count, error_rate, failure_rate, latency_p95, latency_p99, throughput, event_count, log_count, new_issue, issue_regression]
     AlertComparison:
       type: string
       enum: [gt, gte, lt, lte]
@@ -3073,6 +3220,9 @@ components:
           type: string
         event_name:
           type: string
+        log_query:
+          type: string
+          description: Logs search for log_count, e.g. level:error+ service:checkout timeout.
         renotify_seconds:
           type: integer
           minimum: 0
@@ -3088,7 +3238,7 @@ components:
     AlertRule:
       type: object
       required: [id, project_id, name, metric, comparison, threshold, window_seconds, interval_seconds, service, route,
-        environment, event_name, renotify_seconds, channel_ids, enabled, state, state_since, condition, unit, created_at]
+        environment, event_name, log_query, renotify_seconds, channel_ids, enabled, state, state_since, condition, unit, created_at]
       properties:
         id:
           type: integer
@@ -3116,6 +3266,8 @@ components:
         environment:
           type: string
         event_name:
+          type: string
+        log_query:
           type: string
         renotify_seconds:
           type: integer

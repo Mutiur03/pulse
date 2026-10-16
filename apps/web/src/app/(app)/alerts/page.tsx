@@ -54,6 +54,7 @@ export default function AlertsPage() {
                     {r.service && ` · ${r.service}`}
                     {r.route && ` · ${r.route}`}
                     {r.environment && ` · ${r.environment}`}
+                    {r.log_query && ` · ${r.log_query}`}
                   </div>
                   <div className="mt-0.5 flex gap-1">
                     {!r.enabled && <Badge>disabled</Badge>}
