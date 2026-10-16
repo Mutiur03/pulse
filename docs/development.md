@@ -80,7 +80,7 @@ make generate
 ```
 
 This runs:
-1. `oapi-codegen` - Generates Go chi server interfaces and models in `go/internal/api/gen/`
+1. `oapi-codegen` - Generates the shared models in `go/internal/api/gen/` and one server interface per query-api module in `go/internal/modules/<module>/adapters/httpapi/oapi/` (configs in `schemas/openapi/modules/`)
 2. `openapi-typescript` - Generates TypeScript types in `packages/api-client/src/generated/`
 
 The generated code is checked into git and validated in CI.

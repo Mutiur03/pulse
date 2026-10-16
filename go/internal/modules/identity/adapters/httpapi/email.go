@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 import (
 	"context"
@@ -12,9 +12,10 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/modules/identity/domain"
 )
 
-func (s *Server) link(path, token string) string {
+func (s *Handlers) link(path, token string) string {
 	base := strings.TrimRight(s.AppURL, "/")
 	if base == "" {
 		base = "http://localhost:3000"
@@ -22,22 +23,20 @@ func (s *Server) link(path, token string) string {
 	return base + path + "?token=" + url.QueryEscape(token)
 }
 
-func (s *Server) send(m mail.Message) {
+func (s *Handlers) send(m mail.Message) {
 	if s.Mail == nil {
 		return
 	}
 	mail.Async(s.Mail, m)
 }
 
-func (s *Server) sendVerification(ctx context.Context, u auth.User) {
+func (s *Handlers) sendVerification(ctx context.Context, u auth.User) {
 	token, err := s.Accounts.IssueVerify(ctx, u.ID)
 	if err != nil {
 		slog.Error("issue verification token", "err", err)
 		return
 	}
-	s.send(mail.Message{To: u.Email, Subject: "Confirm your email for Pulse", Text: "Hi " + u.Name + ",\n\n" +
-		"Confirm your email address by opening this link:\n\n" + s.link("/verify-email", token) + "\n\n" +
-		"If you did not create a Pulse account, you can ignore this email.\n"})
+	s.send(domain.VerificationMail(u, s.link("/verify-email", token)))
 }
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
@@ -48,7 +47,7 @@ func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	return true
 }
 
-func (s *Server) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	var body gen.PasswordResetRequest
 	if !decode(w, r, &body) {
 		return
@@ -70,17 +69,14 @@ func (s *Server) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 		if ok {
-			s.send(mail.Message{To: u.Email, Subject: "Reset your Pulse password", Text: "Hi " + u.Name + ",\n\n" +
-				"Someone asked to reset the password for your Pulse account. Open this link within an hour to choose a new one:\n\n" +
-				s.link("/reset-password", token) + "\n\n" +
-				"If it was not you, ignore this email; your password stays the same.\n"})
+			s.send(domain.ResetMail(u, s.link("/reset-password", token)))
 		}
 	}
 	// Same answer whether or not the account exists.
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 	var body gen.PasswordResetConfirm
 	if !decode(w, r, &body) {
 		return
@@ -101,7 +97,7 @@ func (s *Server) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) VerifyEmail(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	var body gen.TokenRequest
 	if !decode(w, r, &body) {
 		return
@@ -117,7 +113,7 @@ func (s *Server) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (s *Server) ResendVerification(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	if p == nil {
 		writeErr(w, http.StatusUnauthorized, "not logged in")

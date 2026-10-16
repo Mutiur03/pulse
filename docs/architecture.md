@@ -81,7 +81,7 @@ We are building **one platform that replaces three tool categories**:
 |---|---|---|---|---|
 | 1 | **ingest-gateway** | Go | Public write endpoint. Takes OTLP/HTTP and OTLP/gRPC, batched SDK envelopes (events, replay chunks) and `sendBeacon`. Validates the project key (cached in Redis), applies rate limits and quotas, scrubs PII, adds server receive time and client IP→geo (IP is then dropped), then produces to Kafka. Ships as an OTel Collector distribution (built with `ocb`) with our custom receivers and processors. | Request rate |
 | 2 | **stream-processor** | Go | Kafka consumers running pipeline stages: **enrich** (geo/UA, release, person resolution), **identity stitching**, **sample** (tail sampling for traces), **error grouping** (fingerprinting), **symbolication** (source maps and debug files from S3/MinIO), **sessionization** (session rollups, replay chunk indexing). Batch-writes to ClickHouse, upserts issues and persons in Postgres, and publishes `issue.*`. | Partitions / consumer lag |
-| 3 | **query-api** | Go (chi) | The authenticated read and control-plane API. Compiles insights (funnels, retention, paths, cohorts) to ClickHouse SQL. Serves trace, log, error and replay queries. Handles CRUD for projects, dashboards, alerts and cohorts, plus source-map uploads. Enforces RBAC (chi middleware), tenant scoping and query cost limits. Handlers implement the oapi-codegen strict-server interface generated from `schemas/openapi/`. Reads use clickhouse-go and pgx/sqlc. | Read QPS |
+| 3 | **query-api** | Go (chi) | The authenticated read and control-plane API. Compiles insights (funnels, retention, paths, cohorts) to ClickHouse SQL. Serves trace, log, error and replay queries. Handles CRUD for projects, dashboards, alerts and cohorts, plus source-map uploads. Enforces RBAC (chi middleware), tenant scoping and query cost limits. It is a modular monolith (ADR 0001): one module per domain under `internal/modules/` (analytics, telemetry, issues, replay, sourcemaps, dashboards, alerts, governance, projects, identity, system), each with domain, service, ports and adapters, and a per-module oapi-codegen interface generated from `schemas/openapi/`. Import boundaries are checked in CI by `internal/archtest`. Reads use clickhouse-go and pgx/sqlc. | Read QPS |
 | 4 | **alerting-worker** | Go | Scheduled rule evaluation (a ticker that runs each due rule's ClickHouse query, with a Redis lease per rule so replicas don't double-evaluate; asynq can replace the ticker when rule counts need a queue) plus event-driven rules (`new_issue`, `regression` on `issue.events`) through a franz-go consumer. The metric SQL lives in one shared Go package (`internal/alerts`) that query-api also uses for the rule preview chart, so an alert evaluates exactly what the chart shows. Dedups and throttles in Redis. Notifies email, Slack and signed webhooks (PagerDuty later). | Rule count |
 | 5 | **ai-worker** | Python | Root-cause analysis, summaries, near-duplicate grouping suggestions and natural language to query. Read-only access to data. Writes results back through query-api or `ai.results`. | Job queue depth |
 | 6 | **web** | Next.js/React | The UI. Talks only to query-api. | Users |
@@ -106,7 +106,7 @@ In Compose self-host mode, all four Go services *can* run as one combined binary
 All Go services live in **one Go module** (`go/go.mod`, module `github.com/Mutiur03/pulse`), with one `cmd/<service>` entrypoint per service and shared code in `internal/`. Benefits: one dependency graph, atomic refactors across services, and no version skew between the shared Kafka, ClickHouse, auth and telemetry packages.
 
 ```
-schemas/openapi/*.yaml ── oapi-codegen ──▶ go/internal/api/gen     (chi strict-server interfaces + models)
+schemas/openapi/*.yaml ── oapi-codegen ──▶ go/internal/api/gen (models) + go/internal/modules/<m>/adapters/httpapi/oapi (per-module servers)
         │              ── openapi-typescript ──▶ packages/api-client (TS types + openapi-fetch client) ──▶ apps/web
 schemas/postgres/*.sql ── sqlc ──▶ go/internal/store/pg            (pgx v5 typed queries)
 schemas/proto/*.proto  ── buf  ──▶ go/internal/proto · workers/ai-worker (Python)
@@ -602,14 +602,15 @@ Plans adjust the TTLs per project (per-project TTL columns or a separate table s
 │  ├─ cmd/
 │  │  ├─ ingest-gateway/   # OTel Collector distro (ocb builder-config + generated main)
 │  │  ├─ stream-processor/ # enrich, identity, tail-sample, group, symbolicate, sessionize
-│  │  ├─ query-api/        # chi HTTP server (oapi-codegen strict server)
+│  │  ├─ query-api/        # composition root: wires and mounts the modules
 │  │  ├─ alerting-worker/  # asynq scheduler + workers, franz-go consumer, notifiers
 │  │  └─ platform/         # combined binary for small self-host (`platform all`)
 │  └─ internal/
 │     ├─ collector/        # custom OTel receivers/processors (auth, quota, scrub)
 │     ├─ pipeline/         # stream-processor stages
 │     ├─ insights/         # InsightQuery → ClickHouse SQL (query-api + alerting-worker)
-│     ├─ api/gen/          # oapi-codegen output (generated)
+│     ├─ api/gen/          # shared OpenAPI models (generated)
+│     ├─ modules/          # query-api modules: domain, service, ports, adapters, module.go
 │     ├─ store/pg/         # sqlc + pgx (generated queries)
 │     ├─ store/ch/         # clickhouse-go wrappers, batch writer
 │     ├─ kafka/            # franz-go producer/consumer helpers

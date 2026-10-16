@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
-	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/modules/identity/domain"
 	"github.com/Mutiur03/pulse/internal/orgs"
 )
 
@@ -32,7 +32,7 @@ func orgAccess(w http.ResponseWriter, r *http.Request, org int64, owner bool) (*
 	return p, true
 }
 
-func (s *Server) ListMembers(w http.ResponseWriter, r *http.Request, org gen.OrgPath) {
+func (s *Handlers) ListMembers(w http.ResponseWriter, r *http.Request, org gen.OrgPath) {
 	if _, ok := orgAccess(w, r, org, false); !ok {
 		return
 	}
@@ -48,7 +48,7 @@ func (s *Server) ListMembers(w http.ResponseWriter, r *http.Request, org gen.Org
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *Server) RemoveMember(w http.ResponseWriter, r *http.Request, org gen.OrgPath, user int64) {
+func (s *Handlers) RemoveMember(w http.ResponseWriter, r *http.Request, org gen.OrgPath, user int64) {
 	if _, ok := orgAccess(w, r, org, true); !ok {
 		return
 	}
@@ -70,7 +70,7 @@ func invite2gen(i orgs.Invite) gen.Invite {
 	return gen.Invite{Id: i.ID, OrgId: i.OrgID, Email: i.Email, Role: gen.InviteRole(i.Role), CreatedAt: i.CreatedAt, ExpiresAt: i.ExpiresAt}
 }
 
-func (s *Server) ListInvites(w http.ResponseWriter, r *http.Request, org gen.OrgPath) {
+func (s *Handlers) ListInvites(w http.ResponseWriter, r *http.Request, org gen.OrgPath) {
 	if _, ok := orgAccess(w, r, org, true); !ok {
 		return
 	}
@@ -86,7 +86,7 @@ func (s *Server) ListInvites(w http.ResponseWriter, r *http.Request, org gen.Org
 	writeJSON(w, http.StatusOK, out)
 }
 
-func (s *Server) CreateInvite(w http.ResponseWriter, r *http.Request, org gen.OrgPath) {
+func (s *Handlers) CreateInvite(w http.ResponseWriter, r *http.Request, org gen.OrgPath) {
 	p, ok := orgAccess(w, r, org, true)
 	if !ok {
 		return
@@ -100,7 +100,7 @@ func (s *Server) CreateInvite(w http.ResponseWriter, r *http.Request, org gen.Or
 		writeErr(w, http.StatusBadRequest, "enter a valid email address")
 		return
 	}
-	if body.Role != gen.InviteInputRoleOwner && body.Role != gen.InviteInputRoleMember {
+	if !domain.ValidRole(string(body.Role)) {
 		writeErr(w, http.StatusBadRequest, "role must be owner or member")
 		return
 	}
@@ -118,14 +118,12 @@ func (s *Server) CreateInvite(w http.ResponseWriter, r *http.Request, org gen.Or
 			orgName = o.Name
 		}
 	}
-	s.send(mail.Message{To: email, Subject: p.User.Name + " invited you to " + orgName + " on Pulse",
-		Text: p.User.Name + " (" + p.User.Email + ") invited you to join " + orgName + " on Pulse as " + inv.Role + ".\n\n" +
-			"Accept the invite within 7 days:\n\n" + s.link("/invite", token) + "\n"})
+	s.send(domain.InviteMail(p.User, email, orgName, inv.Role, s.link("/invite", token)))
 	s.record(r, audit.Entry{OrgID: org, Action: audit.InviteCreate, Target: email, Details: map[string]any{"role": inv.Role}})
 	writeJSON(w, http.StatusCreated, invite2gen(inv))
 }
 
-func (s *Server) RevokeInvite(w http.ResponseWriter, r *http.Request, org gen.OrgPath, id int64) {
+func (s *Handlers) RevokeInvite(w http.ResponseWriter, r *http.Request, org gen.OrgPath, id int64) {
 	if _, ok := orgAccess(w, r, org, true); !ok {
 		return
 	}
@@ -141,12 +139,12 @@ func (s *Server) RevokeInvite(w http.ResponseWriter, r *http.Request, org gen.Or
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) LookupInvite(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) LookupInvite(w http.ResponseWriter, r *http.Request) {
 	var body gen.TokenRequest
 	if !decode(w, r, &body) {
 		return
 	}
-	if body.Token == "" || len(body.Token) > 100 {
+	if !domain.ValidToken(body.Token) {
 		writeErr(w, http.StatusNotFound, "invite not found")
 		return
 	}
@@ -161,7 +159,7 @@ func (s *Server) LookupInvite(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.InviteInfo{OrgId: i.OrgID, OrgName: i.OrgName, Email: i.Email, Role: gen.InviteInfoRole(i.Role), Inviter: i.Inviter})
 }
 
-func (s *Server) AcceptInvite(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	if p == nil {
 		writeErr(w, http.StatusUnauthorized, "not logged in")
@@ -171,7 +169,7 @@ func (s *Server) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	if body.Token == "" || len(body.Token) > 100 {
+	if !domain.ValidToken(body.Token) {
 		writeErr(w, http.StatusNotFound, "invite not found")
 		return
 	}

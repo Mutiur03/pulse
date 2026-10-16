@@ -78,9 +78,10 @@ spec does not list (401, 429, 503, …) are returned as `apikit.Error` and
 written by the shared error handler in the existing JSON format, so
 responses stay byte-compatible. Multipart and streaming operations may use
 the per-tag chi-server interface instead. Shared models stay in `internal/api/gen`.
-Operations whose module has not moved yet are served by
-`internal/api/legacy`, a chi server generated with `exclude-tags` for the
-migrated modules, until it is empty and removed. Per-module generator
+During the migration, operations whose module had not moved yet were served
+by a legacy chi server generated with `exclude-tags`; it has been removed.
+The identity module uses the chi-server interface only, because its
+handlers set cookies and `Retry-After` headers. Per-module generator
 configs live in `schemas/openapi/modules/`.
 
 `internal/apikit` holds the HTTP helpers every module adapter shares:
@@ -107,4 +108,15 @@ One module per pull request, behaviour unchanged, E2E green: move the
 domain and repository code into the module, add the service layer and the
 strict handlers, generate the module's interface, exclude its tag from the
 legacy server and delete the old handlers. The outbox for issue events comes
-with the issues module.
+with the issues module: `issues.Record` writes the event to
+`issue_outbox` in the same transaction, and a relay in stream-processor
+publishes pending rows to Kafka.
+
+## Shared kernel
+
+Some packages stay outside `internal/modules` because the pipeline services
+use them too: `internal/alerts` (rule engine, shared with alerting-worker),
+`internal/governance` (scrubbing and retention, used by ingest),
+`internal/projects`, `internal/keys`, `internal/auth`, `internal/orgs`,
+`internal/audit`, `internal/mail` and `store/ch`. Modules reach them through
+their ports. `internal/api` keeps only HTTP middleware and the shared models.

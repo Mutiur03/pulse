@@ -60,7 +60,7 @@ func check(from, to string) string {
 	toMod, toRest, toIsMod := split(to)
 	fromMod, fromRest, fromIsMod := split(from)
 	if fromIsMod && to == root+"/internal/api" {
-		return "modules must not import the query-api composition root"
+		return "modules must not import the query-api middleware"
 	}
 	if !toIsMod {
 		return ""

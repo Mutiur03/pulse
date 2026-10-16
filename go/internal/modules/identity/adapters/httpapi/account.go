@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 import (
 	"encoding/json"
@@ -9,6 +9,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/modules/identity/domain"
 	"github.com/Mutiur03/pulse/internal/orgs"
 )
 
@@ -26,7 +27,7 @@ func meOf(p *auth.Principal) gen.Me {
 	return out
 }
 
-func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var body gen.LoginRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&body); err != nil || body.Email == "" || body.Password == "" {
 		writeErr(w, http.StatusBadRequest, "email and password are required")
@@ -60,14 +61,14 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 	l.LoginFail.Reset(ctx, body.Email, ip)
 	l.LoginEmail.Reset(ctx, body.Email)
 	s.record(r, audit.Entry{ActorID: u.ID, ActorEmail: u.Email, Action: audit.LoginSuccess, IP: ip,
-		Details: map[string]any{"user_agent": truncate(r.UserAgent(), 200)}})
+		Details: map[string]any{"user_agent": domain.Truncate(r.UserAgent(), 200)}})
 	s.endOldSession(r)
 	s.startSession(w, r, token, http.StatusOK)
 }
 
 // endOldSession deletes the session the browser had before logging in, so
 // a new login always gets a fresh token (session fixation).
-func (s *Server) endOldSession(r *http.Request) {
+func (s *Handlers) endOldSession(r *http.Request) {
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" {
 		if err := s.Accounts.Logout(r.Context(), c.Value); err != nil {
 			slog.Error("ending previous session", "err", err)
@@ -75,14 +76,7 @@ func (s *Server) endOldSession(r *http.Request) {
 	}
 }
 
-func truncate(s string, n int) string {
-	if len(s) > n {
-		return s[:n]
-	}
-	return s
-}
-
-func (s *Server) startSession(w http.ResponseWriter, r *http.Request, token string, code int) {
+func (s *Handlers) startSession(w http.ResponseWriter, r *http.Request, token string, code int) {
 	p, err := s.Accounts.Principal(r.Context(), token)
 	if err != nil {
 		internal(w, err)
@@ -92,7 +86,7 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, token stri
 	writeJSON(w, code, meOf(p))
 }
 
-func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Signup(w http.ResponseWriter, r *http.Request) {
 	var body gen.SignupRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body")
@@ -133,7 +127,7 @@ func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 	s.startSession(w, r, token, http.StatusCreated)
 }
 
-func (s *Server) Logout(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 	if c, err := r.Cookie(auth.CookieName); err == nil {
 		if err := s.Accounts.Logout(r.Context(), c.Value); err != nil {
 			internal(w, err)
@@ -144,7 +138,7 @@ func (s *Server) Logout(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	if p == nil {
 		writeErr(w, http.StatusUnauthorized, "not logged in")

@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 import (
 	"context"
@@ -12,38 +12,13 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/modules/identity/domain"
 	"github.com/Mutiur03/pulse/internal/orgs"
 )
 
-// AuthLimits are the per-address and per-account limits on the public auth
-// endpoints. Any of them may be nil.
-type AuthLimits struct {
-	// LoginFail locks an email from one address after repeated failures.
-	LoginFail *auth.Throttle
-	// LoginEmail locks an email after failures from any addresses, so
-	// rotating addresses does not give unlimited guesses.
-	LoginEmail *auth.Throttle
-	// LoginIP, SignupIP and ResetIP count every attempt per address.
-	LoginIP  *auth.Throttle
-	SignupIP *auth.Throttle
-	ResetIP  *auth.Throttle
-	// ResetEmail limits reset emails per address and email.
-	ResetEmail *auth.Throttle
-}
-
-// SessionRevoker ends all sessions of a user.
-type SessionRevoker interface {
-	LogoutAll(ctx context.Context, userID int64) (int64, error)
-}
-
-// RoleStore changes organization roles.
-type RoleStore interface {
-	SetRole(ctx context.Context, org, user int64, role string) error
-}
-
 // ip is the client address, trusting X-Forwarded-For only from configured
 // proxies (the web app).
-func (s *Server) ip(r *http.Request) string {
+func (s *Handlers) ip(r *http.Request) string {
 	return s.ClientIP.IP(r)
 }
 
@@ -54,7 +29,7 @@ func tooMany(w http.ResponseWriter, wait time.Duration, msg string) {
 
 // record writes an audit entry, filling in the actor and address. Failures
 // are logged and do not fail the request.
-func (s *Server) record(r *http.Request, e audit.Entry) {
+func (s *Handlers) record(r *http.Request, e audit.Entry) {
 	if s.Audit == nil {
 		return
 	}
@@ -80,7 +55,7 @@ func (s *Server) record(r *http.Request, e audit.Entry) {
 	}
 }
 
-func (s *Server) LogoutAll(w http.ResponseWriter, r *http.Request) {
+func (s *Handlers) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	if p == nil {
 		writeErr(w, http.StatusUnauthorized, "not logged in")
@@ -100,7 +75,7 @@ func (s *Server) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, gen.LogoutAllResult{SessionsEnded: n})
 }
 
-func (s *Server) SetMemberRole(w http.ResponseWriter, r *http.Request, org gen.OrgPath, user int64) {
+func (s *Handlers) SetMemberRole(w http.ResponseWriter, r *http.Request, org gen.OrgPath, user int64) {
 	if _, ok := orgAccess(w, r, org, true); !ok {
 		return
 	}
@@ -108,7 +83,7 @@ func (s *Server) SetMemberRole(w http.ResponseWriter, r *http.Request, org gen.O
 	if !decode(w, r, &body) {
 		return
 	}
-	if body.Role != gen.RoleInputRoleOwner && body.Role != gen.RoleInputRoleMember {
+	if !domain.ValidRole(string(body.Role)) {
 		writeErr(w, http.StatusBadRequest, "role must be owner or member")
 		return
 	}

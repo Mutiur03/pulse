@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 import (
 	"context"
@@ -7,9 +7,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Mutiur03/pulse/internal/api/legacy"
-
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/modules/identity/adapters/httpapi/oapi"
+	"github.com/Mutiur03/pulse/internal/modules/identity/ports"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
@@ -75,8 +75,8 @@ func (f *fakeAccounts) VerifyEmail(_ context.Context, token string) error {
 	return nil
 }
 
-func post(s *Server, path, body, ip string) *httptest.ResponseRecorder {
-	h := legacy.HandlerFromMux(s, chi.NewRouter())
+func post(s *Handlers, path, body, ip string) *httptest.ResponseRecorder {
+	h := oapi.HandlerFromMux(s, chi.NewRouter())
 	req := httptest.NewRequest("POST", path, strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = ip + ":5555"
@@ -86,7 +86,7 @@ func post(s *Server, path, body, ip string) *httptest.ResponseRecorder {
 }
 
 func TestSignup(t *testing.T) {
-	s := &Server{Accounts: &fakeAccounts{users: map[string]string{"taken@example.com": "x"}}}
+	s := &Handlers{Accounts: &fakeAccounts{users: map[string]string{"taken@example.com": "x"}}}
 	cases := []struct {
 		body string
 		want int
@@ -115,7 +115,7 @@ func TestSignup(t *testing.T) {
 func TestLoginThrottle(t *testing.T) {
 	mr := miniredis.RunT(t)
 	acc := &fakeAccounts{users: map[string]string{"a@example.com": "right password"}}
-	s := &Server{Accounts: acc, Limits: AuthLimits{LoginFail: &auth.Throttle{
+	s := &Handlers{Accounts: acc, Limits: ports.AuthLimits{LoginFail: &auth.Throttle{
 		Redis: redis.NewClient(&redis.Options{Addr: mr.Addr()}), Max: 5, Window: 15 * time.Minute}}}
 	bad := `{"email":"a@example.com","password":"wrong"}`
 	good := `{"email":"a@example.com","password":"right password"}`
@@ -154,7 +154,7 @@ func TestLoginThrottle(t *testing.T) {
 
 func TestLoginThrottleRedisDown(t *testing.T) {
 	acc := &fakeAccounts{users: map[string]string{"a@example.com": "right password"}}
-	s := &Server{Accounts: acc, Limits: AuthLimits{LoginFail: &auth.Throttle{
+	s := &Handlers{Accounts: acc, Limits: ports.AuthLimits{LoginFail: &auth.Throttle{
 		Redis: redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1}), Max: 1, Window: time.Minute}}}
 	post(s, "/v1/auth/login", `{"email":"a@example.com","password":"x"}`, "1.1.1.1")
 	if rec := post(s, "/v1/auth/login", `{"email":"a@example.com","password":"right password"}`, "1.1.1.1"); rec.Code != 200 {

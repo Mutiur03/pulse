@@ -11,13 +11,13 @@ import (
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/api"
-	"github.com/Mutiur03/pulse/internal/api/legacy"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/modules/identity"
 	"github.com/Mutiur03/pulse/internal/modules/issues"
 	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/Mutiur03/pulse/internal/monitor"
@@ -108,10 +108,10 @@ func run(ctx context.Context, cfg *config.Config) error {
 		d.sym = &symbolicate.Symbolicator{Artifacts: sourcemaps.NewStore(d.db), Objects: d.artifacts}
 	}
 
-	srv, accounts := newServer(cfg, d)
+	id, accounts := newIdentity(cfg, d)
 	r := newRouter(cfg, accounts)
-	mountModules(r, cfg, d, srv)
-	handler := legacy.HandlerFromMux(srv, r)
+	mountModules(r, cfg, d, id)
+	var handler http.Handler = r
 
 	// Metrics are served on their own port, not the public one.
 	monitor.Service("query-api")
@@ -119,8 +119,8 @@ func run(ctx context.Context, cfg *config.Config) error {
 	return serve(ctx, fmt.Sprintf(":%d", cfg.QueryAPIPort), handler)
 }
 
-// newServer builds the API handlers and stores on top of d.
-func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
+// newIdentity builds the identity module's dependencies on top of d.
+func newIdentity(cfg *config.Config, d deps) (identity.Deps, *auth.Store) {
 	db, rdb, proxies := d.db, d.redis, d.proxies
 	idle := auth.DefaultIdle
 	if h := config.NonNegInt("SESSION_IDLE_HOURS", 0); h > 0 {
@@ -132,9 +132,9 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 	limit := func(prefix, env string, def int, window time.Duration) *auth.Throttle {
 		return &auth.Throttle{Redis: rdb, Max: config.NonNegInt(env, def), Window: window, Prefix: prefix}
 	}
-	srv := &api.Server{
+	id := identity.Deps{
 		Accounts: accounts,
-		Limits: api.AuthLimits{
+		Limits: identity.Limits{
 			// Five failed logins per email and address lock it for 15 minutes,
 			// twenty from any addresses lock the email.
 			LoginFail:  limit("login:fail", "LOGIN_FAIL_LIMIT", 5, 15*time.Minute),
@@ -158,7 +158,7 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		SecureCookie: config.String("COOKIE_SECURE", "") != "false",
 	}
 
-	return srv, accounts
+	return id, accounts
 }
 
 // newRouter returns the middleware stack every API request passes through.

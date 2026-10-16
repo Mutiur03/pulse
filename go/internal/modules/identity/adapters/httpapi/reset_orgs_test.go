@@ -1,4 +1,4 @@
-package api
+package httpapi
 
 import (
 	"context"
@@ -8,6 +8,7 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/modules/identity/ports"
 	"github.com/Mutiur03/pulse/internal/orgs"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
@@ -43,10 +44,10 @@ func expectNoMail(t *testing.T, c chanMail) {
 func TestPasswordResetRequest(t *testing.T) {
 	mr := miniredis.RunT(t)
 	box := make(chanMail, 4)
-	s := &Server{
+	s := &Handlers{
 		Accounts: &fakeAccounts{users: map[string]string{"a@example.com": "pw"}},
 		Mail:     box, AppURL: "https://pulse.example.com/",
-		Limits: AuthLimits{ResetEmail: &auth.Throttle{Redis: redis.NewClient(&redis.Options{Addr: mr.Addr()}), Max: 3, Window: time.Hour, Prefix: "reset:req"}},
+		Limits: ports.AuthLimits{ResetEmail: &auth.Throttle{Redis: redis.NewClient(&redis.Options{Addr: mr.Addr()}), Max: 3, Window: time.Hour, Prefix: "reset:req"}},
 	}
 	rec := post(s, "/v1/auth/password-reset/request", `{"email":"a@example.com"}`, "1.1.1.1")
 	if rec.Code != 204 {
@@ -72,7 +73,7 @@ func TestPasswordResetRequest(t *testing.T) {
 }
 
 func TestPasswordResetConfirmAndVerify(t *testing.T) {
-	s := &Server{Accounts: &fakeAccounts{users: map[string]string{}}}
+	s := &Handlers{Accounts: &fakeAccounts{users: map[string]string{}}}
 	cases := []struct {
 		path, body string
 		want       int
@@ -96,7 +97,7 @@ func TestPasswordResetConfirmAndVerify(t *testing.T) {
 
 func TestSignupSendsVerification(t *testing.T) {
 	box := make(chanMail, 1)
-	s := &Server{Accounts: &fakeAccounts{users: map[string]string{}}, Mail: box}
+	s := &Handlers{Accounts: &fakeAccounts{users: map[string]string{}}, Mail: box}
 	if rec := post(s, "/v1/auth/signup", `{"email":"v@example.com","password":"long enough pw","name":"V"}`, "1.1.1.1"); rec.Code != 201 {
 		t.Fatal(rec.Code)
 	}
@@ -166,7 +167,7 @@ func (f *fakeOrgs) Accept(_ context.Context, token string, _ int64, email string
 func TestOrgMembersAndInvites(t *testing.T) {
 	fo := &fakeOrgs{}
 	box := make(chanMail, 2)
-	s := &Server{Orgs: fo, Mail: box}
+	s := &Handlers{Orgs: fo, Mail: box}
 	owner := &auth.Principal{User: auth.User{ID: 1, Name: "O", Email: "o@example.com"},
 		Orgs: []auth.Org{{ID: 7, Name: "Acme", Role: "owner"}, {ID: 8, Name: "Other", Role: "member"}}}
 	cases := []struct {
@@ -205,7 +206,7 @@ func TestOrgMembersAndInvites(t *testing.T) {
 }
 
 func TestInviteLookupAndAccept(t *testing.T) {
-	s := &Server{Orgs: &fakeOrgs{}, Accounts: &fakeAccounts{users: map[string]string{}}}
+	s := &Handlers{Orgs: &fakeOrgs{}, Accounts: &fakeAccounts{users: map[string]string{}}}
 	if rec := post(s, "/v1/invites/lookup", `{"token":"invite-token"}`, "1.1.1.1"); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"org_name":"Acme"`) {
 		t.Errorf("lookup: %d %s", rec.Code, rec.Body)
 	}

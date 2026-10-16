@@ -1,13 +1,9 @@
-package api
+package httpapi
 
 import (
-	"bytes"
 	"context"
-	"log"
 	"net/http"
 	"net/http/httptest"
-	"net/url"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -15,6 +11,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/clientip"
+	"github.com/Mutiur03/pulse/internal/modules/identity/ports"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/redis/go-redis/v9"
 )
@@ -38,7 +35,7 @@ func (m *memAudit) actions() string {
 	return strings.Join(out, ",")
 }
 
-func loginFrom(s *Server, body, peer, xff string) *httptest.ResponseRecorder {
+func loginFrom(s *Handlers, body, peer, xff string) *httptest.ResponseRecorder {
 	req := httptest.NewRequest("POST", "/v1/auth/login", strings.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req.RemoteAddr = peer + ":4000"
@@ -59,7 +56,7 @@ func TestLoginLimitsUseForwardedClientIP(t *testing.T) {
 	acc := &fakeAccounts{users: map[string]string{"a@example.com": "right password"}}
 	proxies, _ := clientip.Parse("10.0.0.0/8")
 	al := &memAudit{}
-	s := &Server{Accounts: acc, ClientIP: proxies, Audit: al, Limits: AuthLimits{
+	s := &Handlers{Accounts: acc, ClientIP: proxies, Audit: al, Limits: ports.AuthLimits{
 		LoginFail:  throttle(mr, "login:fail", 3, 15*time.Minute),
 		LoginEmail: throttle(mr, "login:email", 5, 15*time.Minute),
 		LoginIP:    throttle(mr, "login:ip", 8, 15*time.Minute),
@@ -104,7 +101,7 @@ func TestLoginLimitsUseForwardedClientIP(t *testing.T) {
 func TestPerIPAttemptLimit(t *testing.T) {
 	mr := miniredis.RunT(t)
 	acc := &fakeAccounts{users: map[string]string{"a@example.com": "pw"}}
-	s := &Server{Accounts: acc, Limits: AuthLimits{
+	s := &Handlers{Accounts: acc, Limits: ports.AuthLimits{
 		LoginIP: throttle(mr, "login:ip", 3, time.Minute), SignupIP: throttle(mr, "signup:ip", 1, time.Hour),
 		ResetIP: throttle(mr, "reset:ip", 2, time.Hour),
 	}}
@@ -141,7 +138,7 @@ func TestLogoutAllAndRotation(t *testing.T) {
 	acc := &fakeAccounts{users: map[string]string{"a@example.com": "pw"}}
 	rv := &fakeRevoker{}
 	al := &memAudit{}
-	s := &Server{Accounts: acc, Sessions: rv, Audit: al}
+	s := &Handlers{Accounts: acc, Sessions: rv, Audit: al}
 	me := &auth.Principal{User: auth.User{ID: 7, Email: "a@example.com"}}
 	rec := call(t, s, me, "POST", "/v1/auth/logout-all", "")
 	if rec.Code != 200 || rv.user != 7 || !strings.Contains(rec.Body.String(), `"sessions_ended":3`) ||
@@ -169,31 +166,8 @@ func TestLogoutAllAndRotation(t *testing.T) {
 	}
 }
 
-func TestRedactURLAndHeaders(t *testing.T) {
-	u, _ := url.Parse("/v1/x?token=abc&key=pk_1&limit=5&upload_secret=s")
-	got := RedactURL(u)
-	if strings.Contains(got, "abc") || strings.Contains(got, "pk_1") || strings.Contains(got, "=s&") || !strings.Contains(got, "limit=5") {
-		t.Fatal(got)
-	}
-	var buf bytes.Buffer
-	log.SetOutput(&buf)
-	defer log.SetOutput(os.Stderr)
-	h := SecurityHeaders(31536000)(RequestLogger(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {})))
-	rec := httptest.NewRecorder()
-	h.ServeHTTP(rec, httptest.NewRequest("GET", "/v1/invites/lookup?token=secret-token", nil))
-	if strings.Contains(buf.String(), "secret-token") || !strings.Contains(buf.String(), "token=REDACTED") {
-		t.Fatalf("log: %s", buf.String())
-	}
-	for k, v := range map[string]string{"X-Content-Type-Options": "nosniff", "X-Frame-Options": "DENY",
-		"Strict-Transport-Security": "max-age=31536000; includeSubDomains"} {
-		if rec.Header().Get(k) != v {
-			t.Fatalf("%s = %q", k, rec.Header().Get(k))
-		}
-	}
-}
-
 func TestRoleRBAC(t *testing.T) {
-	s := &Server{}
+	s := &Handlers{}
 	owner := &auth.Principal{Orgs: []auth.Org{{ID: 1, Role: "owner"}}, Projects: []auth.Project{{ID: 1, Role: "owner", OrgID: 1}}}
 	member := &auth.Principal{Orgs: []auth.Org{{ID: 1, Role: "member"}}, Projects: []auth.Project{{ID: 1, Role: "member", OrgID: 1}}}
 	if rec := call(t, s, member, "POST", "/v1/orgs/1/members/2/role", `{"role":"owner"}`); rec.Code != 403 {

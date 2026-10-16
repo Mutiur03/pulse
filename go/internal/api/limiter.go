@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/httpx"
 )
 
 // QueryLimiter caps how many requests of one organization run at the same
@@ -109,7 +110,7 @@ func (l *QueryLimiter) Middleware(next http.Handler) http.Handler {
 		case c <- struct{}{}:
 		case <-t.C:
 			w.Header().Set("Retry-After", "2")
-			writeErr(w, http.StatusTooManyRequests, "Too many queries are running for your organization. Try again in a moment.")
+			httpx.WriteError(w, http.StatusTooManyRequests, "Too many queries are running for your organization. Try again in a moment.")
 			return
 		case <-r.Context().Done():
 			return
