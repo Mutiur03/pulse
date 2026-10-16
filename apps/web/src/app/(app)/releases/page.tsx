@@ -3,7 +3,7 @@ import Link from 'next/link';
 import { api, currentProjectId } from '@/lib/api';
 import { ago, time } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
-import { Badge, Card, CardHeader, Empty, ErrorNote, PageHeader, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Card, CardHeader, Empty, ErrorNote, Loading, PageHeader, Spinner, Td, Th } from '@/components/ui';
 
 function size(bytes: number): string {
   if (bytes < 1024) return `${bytes} B`;
@@ -27,10 +27,14 @@ export default function ReleasesPage() {
     <>
       <PageHeader title="Releases" description="Versions your apps report, with the source maps uploaded for each." />
       <ErrorNote error={list.error ?? detail.error} />
-      {list.loading && !list.data && <Spinner />}
+      {list.loading && !list.data && (
+        <Card>
+          <Loading rows={3} />
+        </Card>
+      )}
       {list.data && list.data.releases.length === 0 && (
-        <Empty>
-          No releases yet. Set <code className="font-mono">release</code> in the SDK and upload source maps with pulse-cli or
+        <Empty title="No releases yet">
+          Set <code className="font-mono">release</code> in the SDK and upload source maps with pulse-cli or
           @pulse/vite-plugin, using a token from{' '}
           <Link href="/settings" className="text-primary hover:underline">
             Settings

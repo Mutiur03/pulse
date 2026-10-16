@@ -268,7 +268,13 @@ export default function LogsPage() {
           </Card>
           <Card className="overflow-hidden">
             {logs.length === 0 && !loading ? (
-              <Empty>{q ? 'No logs match this search.' : 'No logs yet. Send OpenTelemetry logs to /v1/logs.'}</Empty>
+              q ? (
+                <Empty title="No logs match this search">Try a shorter query or a longer time range.</Empty>
+              ) : (
+                <Empty title="No logs yet" action={{ label: 'Set up data collection', href: '/setup' }}>
+                  Point an OpenTelemetry logs exporter at the ingest gateway (/v1/logs).
+                </Empty>
+              )
             ) : (
               <table className="w-full text-sm" data-testid="logs-table">
                 <tbody className="divide-y divide-border">

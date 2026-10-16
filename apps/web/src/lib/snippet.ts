@@ -38,3 +38,74 @@ pulse-cli sourcemaps inject dist/
 pulse-cli sourcemaps upload --release web@1.0.0 --url-prefix ~/assets \\
   --url ${apiURL()} --project ${project} --token ${token} dist/`;
 }
+
+/** Backend setup per language. Every SDK is a stock OpenTelemetry SDK
+ * pointed at the ingest gateway with the project key as a header. */
+export const backendPlatforms = ['node', 'python', 'go', 'other'] as const;
+export type BackendPlatform = (typeof backendPlatforms)[number];
+
+export const platformLabels: Record<'browser' | BackendPlatform, string> = {
+  browser: 'Browser',
+  node: 'Node.js',
+  python: 'Python',
+  go: 'Go',
+  other: 'Any OpenTelemetry SDK',
+};
+
+export function installCommand(platform: 'browser' | BackendPlatform): string | undefined {
+  switch (platform) {
+    case 'browser':
+      return 'npm install @pulse/browser';
+    case 'node':
+      return 'npm install @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-trace-otlp-proto';
+    case 'python':
+      return 'pip install opentelemetry-distro opentelemetry-exporter-otlp\nopentelemetry-bootstrap -a install';
+    case 'go':
+      return 'go get go.opentelemetry.io/otel go.opentelemetry.io/otel/sdk go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracehttp go.opentelemetry.io/contrib/instrumentation/net/http/otelhttp';
+  }
+  return undefined;
+}
+
+export function platformSnippet(platform: 'browser' | BackendPlatform, key = 'pk_…'): string {
+  const env = backendSnippet(key);
+  switch (platform) {
+    case 'browser':
+      return browserSnippet(key);
+    case 'node':
+      return `// tracing.js: load first, e.g. node --require ./tracing.js server.js
+const { NodeSDK } = require('@opentelemetry/sdk-node');
+const { getNodeAutoInstrumentations } = require('@opentelemetry/auto-instrumentations-node');
+const { OTLPTraceExporter } = require('@opentelemetry/exporter-trace-otlp-proto');
+
+new NodeSDK({
+  traceExporter: new OTLPTraceExporter(),
+  instrumentations: [getNodeAutoInstrumentations()],
+}).start();
+
+# Environment (shell):
+${env}`;
+    case 'python':
+      return `# Environment (shell):
+${env}
+
+# Run your app under the OpenTelemetry agent:
+opentelemetry-instrument python app.py`;
+    case 'go':
+      return `// Uses OTEL_EXPORTER_OTLP_* from the environment.
+exp, err := otlptracehttp.New(ctx)
+if err != nil {
+\tlog.Fatal(err)
+}
+tp := sdktrace.NewTracerProvider(sdktrace.WithBatcher(exp))
+defer tp.Shutdown(ctx)
+otel.SetTracerProvider(tp)
+otel.SetTextMapPropagator(propagation.TraceContext{})
+
+http.ListenAndServe(":8000", otelhttp.NewHandler(mux, "server"))
+
+# Environment (shell):
+${env}`;
+  }
+  return `# Environment for any OpenTelemetry SDK or Collector:
+${env}`;
+}

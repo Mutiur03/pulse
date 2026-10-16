@@ -5,7 +5,7 @@ import { api } from '@/lib/api';
 import { ago } from '@/lib/format';
 import { displayName } from '@/lib/person';
 import { useAsync, useQueryState } from '@/lib/hooks';
-import { Badge, Card, Empty, ErrorNote, Input, PageHeader, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Card, Empty, ErrorNote, Input, Loading, PageHeader, Td, Th } from '@/components/ui';
 
 export default function PersonsPage() {
   const [q, setQ] = useQueryState(['search']);
@@ -27,11 +27,21 @@ export default function PersonsPage() {
         <Input aria-label="Search persons" placeholder="Search by id, email or any trait" value={search ?? q.search ?? ''} onChange={(e) => setSearch(e.target.value)} className="w-96" />
       </form>
       <ErrorNote error={list.error} />
-      {list.loading && !list.data && <Spinner />}
+      {list.loading && !list.data && (
+        <Card>
+          <Loading />
+        </Card>
+      )}
       {list.data && (
         <Card>
           {list.data.persons.length === 0 ? (
-            <Empty>{q.search ? 'No one matches this search.' : 'No persons yet. Send events with the browser SDK to see people here.'}</Empty>
+            q.search ? (
+              <Empty title="No one matches this search">Try part of an id, email or name.</Empty>
+            ) : (
+              <Empty title="No persons yet" action={{ label: 'Set up data collection', href: '/setup' }}>
+                People appear when the browser SDK sends events. Call identify() to link them to your user ids.
+              </Empty>
+            )
           ) : (
             <table className="w-full text-sm" data-testid="persons-table">
               <thead className="border-b border-border">

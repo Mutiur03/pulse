@@ -4,7 +4,7 @@ import { api } from '@/lib/api';
 import { fromRange } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
 import { TimeRange } from '@/components/time-range';
-import { Card, CardHeader, Empty, ErrorNote, Input, PageHeader, Select, Spinner } from '@/components/ui';
+import { Card, CardHeader, Empty, ErrorNote, Input, Loading, PageHeader, Select, Spinner } from '@/components/ui';
 
 const aggs = ['', 'avg', 'sum', 'min', 'max', 'count', 'rate', 'p50', 'p90', 'p95', 'p99'] as const;
 const colors = ['#a78bfa', '#38bdf8', '#34d399', '#fbbf24', '#f87171', '#f472b6', '#94a3b8', '#2dd4bf'];
@@ -110,9 +110,17 @@ export default function MetricsPage() {
         <TimeRange value={range} onChange={(v) => setQ({ range: v })} />
       </div>
       <ErrorNote error={names.error ?? result.error} />
-      {names.loading && !names.data && <Spinner />}
+      {names.loading && !names.data && (
+        <Card>
+          <Loading rows={3} />
+        </Card>
+      )}
       {names.data?.length === 0 && (
-        <Empty>No metrics yet. Point an OTLP metrics exporter at the ingest gateway (:4317 for gRPC, :8080/v1/metrics for HTTP).</Empty>
+        <Card>
+          <Empty title="No metrics yet" action={{ label: 'Set up data collection', href: '/setup' }}>
+            Point an OTLP metrics exporter at the ingest gateway (:4317 for gRPC, :8080/v1/metrics for HTTP).
+          </Empty>
+        </Card>
       )}
       {name && (
         <Card>

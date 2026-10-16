@@ -4,7 +4,7 @@ import { api, currentProjectId } from '@/lib/api';
 import { ago } from '@/lib/format';
 import { useAsync } from '@/lib/hooks';
 import { stateLabel, stateTone, value } from '@/lib/alerts';
-import { Badge, Card, Empty, ErrorNote, PageHeader, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Card, Empty, ErrorNote, Loading, PageHeader, Spinner, Td, Th } from '@/components/ui';
 
 export default function AlertsPage() {
   const rules = useAsync(async () => api.listAlerts(await currentProjectId()), []);
@@ -68,7 +68,12 @@ export default function AlertsPage() {
             ))}
           </tbody>
         </table>
-        {rules.data && list.length === 0 && <Empty>No alert rules yet. Create one to get notified about errors, slow routes or traffic drops.</Empty>}
+        {rules.loading && !rules.data && <Loading rows={3} />}
+        {rules.data && list.length === 0 && (
+          <Empty title="No alert rules yet" action={{ label: 'Create an alert', href: '/alerts/new' }}>
+            Get notified about new errors, slow routes or traffic drops.
+          </Empty>
+        )}
       </Card>
     </>
   );

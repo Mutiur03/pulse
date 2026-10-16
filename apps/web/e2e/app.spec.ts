@@ -160,6 +160,12 @@ test('sign up, create a project and manage its keys', async ({ page }) => {
   await expect(key).toHaveText(/^pk_[0-9a-f]{32}$/);
   const value = await key.innerText();
   await expect(page.getByTestId('new-project-snippet')).toContainText(value);
+  // Onboarding: per-platform instructions carry the key, and the page waits
+  // for the first event of the new (empty) project.
+  await page.getByTestId('platform-python').click();
+  await expect(page.getByTestId('platform-snippet')).toContainText(value);
+  await page.getByTestId('platform-browser').click();
+  await expect(page.getByTestId('first-event-waiting')).toBeVisible();
   await shot(page, '11-project-key');
 
   await page.goto('/settings');

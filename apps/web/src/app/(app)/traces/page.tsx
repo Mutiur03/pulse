@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { fromRange, ms, time } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
-import { Badge, Card, Empty, ErrorNote, Input, PageHeader, Select, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Card, Empty, ErrorNote, Input, Loading, PageHeader, Select, Spinner, Td, Th } from '@/components/ui';
 import { TimeRange } from '@/components/time-range';
 
 export default function TracesPage() {
@@ -103,7 +103,16 @@ export default function TracesPage() {
             ))}
           </tbody>
         </table>
-        {!traces.loading && list.length === 0 && <Empty>No traces match these filters.</Empty>}
+        {traces.loading && !traces.data && <Loading />}
+        {!traces.loading &&
+          list.length === 0 &&
+          (Object.keys(q).some((k) => k !== 'range') ? (
+            <Empty title="No traces match these filters">Clear a filter or pick a longer time range.</Empty>
+          ) : (
+            <Empty title="No traces in this time range" action={{ label: 'Set up data collection', href: '/setup' }}>
+              Traces appear when a backend or browser SDK sends spans.
+            </Empty>
+          ))}
       </Card>
     </>
   );

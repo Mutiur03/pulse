@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { ago } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
-import { Badge, Card, Empty, ErrorNote, Input, PageHeader, Select, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Card, Empty, ErrorNote, Input, Loading, PageHeader, Select, Spinner, Td, Th } from '@/components/ui';
 import { Sparkline } from '@/components/sparkline';
 
 const statuses: (IssueStatus | 'all')[] = ['unresolved', 'resolved', 'ignored', 'all'];
@@ -96,7 +96,12 @@ export default function IssuesPage() {
             ))}
           </tbody>
         </table>
-        {!issues.loading && list.length === 0 && <Empty>No {status === 'all' ? '' : status} issues.</Empty>}
+        {issues.loading && !issues.data && <Loading />}
+        {!issues.loading && list.length === 0 && (
+          <Empty title={`No ${status === 'all' ? '' : `${status} `}issues`}>
+            {status === 'unresolved' ? 'Nothing is broken right now. Errors from your SDKs are grouped into issues here.' : 'Try another status or a longer time range.'}
+          </Empty>
+        )}
       </Card>
     </>
   );

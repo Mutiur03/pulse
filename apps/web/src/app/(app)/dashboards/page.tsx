@@ -5,7 +5,7 @@ import { useState } from 'react';
 import { api, currentProjectId, handleAuthError } from '@/lib/api';
 import { ago } from '@/lib/format';
 import { useAsync } from '@/lib/hooks';
-import { Badge, Button, Card, CardHeader, Empty, ErrorNote, Input, PageHeader, Spinner } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Empty, ErrorNote, Input, Loading, PageHeader } from '@/components/ui';
 
 export default function DashboardsPage() {
   const router = useRouter();
@@ -43,12 +43,18 @@ export default function DashboardsPage() {
         <ErrorNote error={error} />
       </Card>
       <ErrorNote error={list.error} />
-      {list.loading && !list.data && <Spinner />}
+      {list.loading && !list.data && (
+        <Card>
+          <Loading rows={3} />
+        </Card>
+      )}
       {list.data && (
         <Card>
           <CardHeader title="Your dashboards" description="Shared dashboards and your private ones" />
           {list.data.length === 0 ? (
-            <Empty>No dashboards yet. Create one above, or save a query from Insights.</Empty>
+            <Empty title="No dashboards yet" action={{ label: 'Open Insights', href: '/insights' }}>
+              Create one above, or save a chart from Insights.
+            </Empty>
           ) : (
             <ul className="divide-y divide-border" data-testid="dashboard-list">
               {list.data.map((d) => (

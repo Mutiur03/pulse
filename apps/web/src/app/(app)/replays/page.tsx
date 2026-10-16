@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { duration, fromRange, time } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
-import { Badge, Card, Empty, ErrorNote, Input, PageHeader, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Card, Empty, ErrorNote, Input, Loading, PageHeader, Spinner, Td, Th } from '@/components/ui';
 import { TimeRange } from '@/components/time-range';
 
 export default function ReplaysPage() {
@@ -83,7 +83,12 @@ export default function ReplaysPage() {
             ))}
           </tbody>
         </table>
-        {!replays.loading && list.length === 0 && <Empty>No recorded sessions match. Enable replay in the SDK with init({'{'} replay: {'{'} sampleRate: 1 {'}'} {'}'}).</Empty>}
+        {replays.loading && !replays.data && <Loading />}
+        {!replays.loading && list.length === 0 && (
+          <Empty title="No recorded sessions" action={{ label: 'Set up data collection', href: '/setup' }}>
+            Enable replay in the browser SDK with init({'{'} replay: {'{'} sampleRate: 1 {'}'} {'}'}).
+          </Empty>
+        )}
       </Card>
     </>
   );

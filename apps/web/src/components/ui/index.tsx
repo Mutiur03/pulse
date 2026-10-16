@@ -89,8 +89,55 @@ export function PageHeader({ title, description, actions }: { title: string; des
   );
 }
 
-export function Empty({ children }: { children: React.ReactNode }) {
-  return <div className="px-4 py-12 text-center text-sm text-muted">{children}</div>;
+/**
+ * The empty state of a list or chart: an optional title, an explanation and
+ * an optional next step (a link or a button).
+ */
+export function Empty({
+  title,
+  children,
+  action,
+}: {
+  title?: string;
+  children?: React.ReactNode;
+  action?: { label: string; href?: string; onClick?: () => void };
+}) {
+  return (
+    <div className="flex flex-col items-center gap-2 px-4 py-12 text-center" data-testid="empty-state">
+      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-accent/60 text-muted" aria-hidden>
+        <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M3 7h18M3 12h18M3 17h10" />
+        </svg>
+      </div>
+      {title && <div className="text-sm font-medium text-zinc-200">{title}</div>}
+      {children && <div className="max-w-lg text-sm text-muted">{children}</div>}
+      {action &&
+        (action.href ? (
+          <a href={action.href} className="mt-1 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90">
+            {action.label}
+          </a>
+        ) : (
+          <Button size="sm" onClick={action.onClick} className="mt-1">
+            {action.label}
+          </Button>
+        ))}
+    </div>
+  );
+}
+
+/** Placeholder rows while a list loads for the first time. */
+export function Loading({ rows = 5, label = 'Loading' }: { rows?: number; label?: string }) {
+  return (
+    <div className="divide-y divide-border" role="status" aria-label={label} data-testid="loading">
+      {Array.from({ length: rows }, (_, i) => (
+        <div key={i} className="flex items-center gap-4 px-4 py-3">
+          <div className="h-3 w-1/3 animate-pulse rounded bg-accent" />
+          <div className="h-3 w-1/5 animate-pulse rounded bg-accent/70" />
+          <div className="ml-auto h-3 w-16 animate-pulse rounded bg-accent/70" />
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // Titles for errors of queries stopped by the API's cost limits; the

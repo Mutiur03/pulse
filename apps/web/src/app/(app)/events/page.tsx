@@ -4,7 +4,7 @@ import { Fragment, useState } from 'react';
 import { api } from '@/lib/api';
 import { fromRange, time } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
-import { Badge, Button, Card, Empty, ErrorNote, Input, PageHeader, Select, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Button, Card, Empty, ErrorNote, Input, Loading, PageHeader, Select, Spinner, Td, Th } from '@/components/ui';
 import { TimeRange } from '@/components/time-range';
 
 export default function EventsPage() {
@@ -142,7 +142,12 @@ export default function EventsPage() {
             ))}
           </tbody>
         </table>
-        {!events.loading && list.length === 0 && <Empty>No events match.</Empty>}
+        {events.loading && !events.data && <Loading />}
+        {!events.loading && list.length === 0 && (
+          <Empty title="No events match" action={{ label: 'Set up data collection', href: '/setup' }}>
+            Events appear when the browser SDK captures page views or custom events. Try a longer time range or clear the filters.
+          </Empty>
+        )}
       </Card>
     </>
   );
