@@ -16,7 +16,6 @@ import (
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/config"
-	"github.com/Mutiur03/pulse/internal/governance"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/mail"
@@ -124,7 +123,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 
 // newServer builds the API handlers and stores on top of d.
 func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
-	db, rdb, chClient, proxies := d.db, d.redis, d.ch, d.proxies
+	db, rdb, proxies := d.db, d.redis, d.proxies
 	idle := auth.DefaultIdle
 	if h := config.NonNegInt("SESSION_IDLE_HOURS", 0); h > 0 {
 		idle = time.Duration(h) * time.Hour
@@ -157,13 +156,10 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		Roles:    orgStore,
 		Origins:  &projects.Origins{DB: db, Keys: keyStore},
 		Audit:    auditStore,
-		AuditLog: auditStore,
 		Orgs:     orgStore,
 		// Without SMTP_ADDR emails are written to the log.
-		Mail:       mail.New(cfg.SMTP),
-		AppURL:     cfg.AppURL,
-		Governance: &governance.Store{DB: db},
-		Persons:    chClient,
+		Mail:   mail.New(cfg.SMTP),
+		AppURL: cfg.AppURL,
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: config.String("COOKIE_SECURE", "") != "false",
 	}

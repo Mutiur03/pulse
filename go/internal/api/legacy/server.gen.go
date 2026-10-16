@@ -51,9 +51,6 @@ type ServerInterface interface {
 	// Describe an invite from its token
 	// (POST /v1/invites/lookup)
 	LookupInvite(w http.ResponseWriter, r *http.Request)
-	// Security audit log of the organization
-	// (GET /v1/orgs/{org_id}/audit-log)
-	ListAuditLog(w http.ResponseWriter, r *http.Request, orgId OrgPath, params ListAuditLogParams)
 	// Pending invites
 	// (GET /v1/orgs/{org_id}/invites)
 	ListInvites(w http.ResponseWriter, r *http.Request, orgId OrgPath)
@@ -87,24 +84,6 @@ type ServerInterface interface {
 	// Replace the allowed browser origins
 	// (POST /v1/projects/{project_id}/allowed-origins)
 	SetAllowedOrigins(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
-	// The project's PII scrubbing rules and retention periods
-	// (GET /v1/projects/{project_id}/data-settings)
-	GetDataSettings(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
-	// Save scrubbing rules and retention periods
-	// (PUT /v1/projects/{project_id}/data-settings)
-	UpdateDataSettings(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
-	// Show what scrubbing rules do to a sample text
-	// (POST /v1/projects/{project_id}/data-settings/preview)
-	PreviewScrubbing(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
-	// Deletion requests of the project, newest first
-	// (GET /v1/projects/{project_id}/deletion-requests)
-	ListDeletionRequests(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
-	// Request deletion of all data of one person
-	// (POST /v1/projects/{project_id}/deletion-requests)
-	CreateDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
-	// One deletion request and its outcome
-	// (GET /v1/projects/{project_id}/deletion-requests/{request_id})
-	GetDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectPath, requestId int64)
 	// List the project's ingest keys
 	// (GET /v1/projects/{project_id}/keys)
 	ListKeys(w http.ResponseWriter, r *http.Request, projectId ProjectPath)
@@ -195,12 +174,6 @@ func (_ Unimplemented) LookupInvite(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Security audit log of the organization
-// (GET /v1/orgs/{org_id}/audit-log)
-func (_ Unimplemented) ListAuditLog(w http.ResponseWriter, r *http.Request, orgId OrgPath, params ListAuditLogParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
 // Pending invites
 // (GET /v1/orgs/{org_id}/invites)
 func (_ Unimplemented) ListInvites(w http.ResponseWriter, r *http.Request, orgId OrgPath) {
@@ -264,42 +237,6 @@ func (_ Unimplemented) GetAllowedOrigins(w http.ResponseWriter, r *http.Request,
 // Replace the allowed browser origins
 // (POST /v1/projects/{project_id}/allowed-origins)
 func (_ Unimplemented) SetAllowedOrigins(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// The project's PII scrubbing rules and retention periods
-// (GET /v1/projects/{project_id}/data-settings)
-func (_ Unimplemented) GetDataSettings(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Save scrubbing rules and retention periods
-// (PUT /v1/projects/{project_id}/data-settings)
-func (_ Unimplemented) UpdateDataSettings(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Show what scrubbing rules do to a sample text
-// (POST /v1/projects/{project_id}/data-settings/preview)
-func (_ Unimplemented) PreviewScrubbing(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Deletion requests of the project, newest first
-// (GET /v1/projects/{project_id}/deletion-requests)
-func (_ Unimplemented) ListDeletionRequests(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Request deletion of all data of one person
-// (POST /v1/projects/{project_id}/deletion-requests)
-func (_ Unimplemented) CreateDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectPath) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// One deletion request and its outcome
-// (GET /v1/projects/{project_id}/deletion-requests/{request_id})
-func (_ Unimplemented) GetDeletionRequest(w http.ResponseWriter, r *http.Request, projectId ProjectPath, requestId int64) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -525,56 +462,6 @@ func (siw *ServerInterfaceWrapper) LookupInvite(w http.ResponseWriter, r *http.R
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.LookupInvite(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListAuditLog operation middleware
-func (siw *ServerInterfaceWrapper) ListAuditLog(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "org_id" -------------
-	var orgId OrgPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "org_id", chi.URLParam(r, "org_id"), &orgId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "org_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListAuditLogParams
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "before" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "before", r.URL.Query(), &params.Before)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "before", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListAuditLog(w, r, orgId, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -930,201 +817,6 @@ func (siw *ServerInterfaceWrapper) SetAllowedOrigins(w http.ResponseWriter, r *h
 	handler.ServeHTTP(w, r)
 }
 
-// GetDataSettings operation middleware
-func (siw *ServerInterfaceWrapper) GetDataSettings(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetDataSettings(w, r, projectId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// UpdateDataSettings operation middleware
-func (siw *ServerInterfaceWrapper) UpdateDataSettings(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.UpdateDataSettings(w, r, projectId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// PreviewScrubbing operation middleware
-func (siw *ServerInterfaceWrapper) PreviewScrubbing(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.PreviewScrubbing(w, r, projectId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListDeletionRequests operation middleware
-func (siw *ServerInterfaceWrapper) ListDeletionRequests(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListDeletionRequests(w, r, projectId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// CreateDeletionRequest operation middleware
-func (siw *ServerInterfaceWrapper) CreateDeletionRequest(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.CreateDeletionRequest(w, r, projectId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetDeletionRequest operation middleware
-func (siw *ServerInterfaceWrapper) GetDeletionRequest(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	// ------------- Path parameter "project_id" -------------
-	var projectId ProjectPath
-
-	err = runtime.BindStyledParameterWithOptions("simple", "project_id", chi.URLParam(r, "project_id"), &projectId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Path parameter "request_id" -------------
-	var requestId int64
-
-	err = runtime.BindStyledParameterWithOptions("simple", "request_id", chi.URLParam(r, "request_id"), &requestId, runtime.BindStyledParameterOptions{ParamLocation: runtime.ParamLocationPath, Explode: false, Required: true})
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "request_id", Err: err})
-		return
-	}
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetDeletionRequest(w, r, projectId, requestId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
 // ListKeys operation middleware
 func (siw *ServerInterfaceWrapper) ListKeys(w http.ResponseWriter, r *http.Request) {
 
@@ -1408,9 +1100,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/v1/invites/lookup", wrapper.LookupInvite)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/orgs/{org_id}/audit-log", wrapper.ListAuditLog)
-	})
-	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/orgs/{org_id}/invites", wrapper.ListInvites)
 	})
 	r.Group(func(r chi.Router) {
@@ -1442,24 +1131,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/projects/{project_id}/allowed-origins", wrapper.SetAllowedOrigins)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/projects/{project_id}/data-settings", wrapper.GetDataSettings)
-	})
-	r.Group(func(r chi.Router) {
-		r.Put(options.BaseURL+"/v1/projects/{project_id}/data-settings", wrapper.UpdateDataSettings)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v1/projects/{project_id}/data-settings/preview", wrapper.PreviewScrubbing)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/projects/{project_id}/deletion-requests", wrapper.ListDeletionRequests)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v1/projects/{project_id}/deletion-requests", wrapper.CreateDeletionRequest)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/projects/{project_id}/deletion-requests/{request_id}", wrapper.GetDeletionRequest)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects/{project_id}/keys", wrapper.ListKeys)

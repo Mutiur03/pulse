@@ -83,3 +83,20 @@ func (a Auditor) Record(ctx context.Context, e audit.Entry) {
 		slog.Error("audit log write failed", "action", e.Action, "err", err)
 	}
 }
+
+// OrgAccess checks the logged-in user belongs to org: 404 when not, 403
+// when owner is set and they are not an owner.
+func OrgAccess(ctx context.Context, org int64, owner bool) (*auth.Principal, error) {
+	p := auth.FromContext(ctx)
+	role := ""
+	if p != nil {
+		role = p.OrgRole(org)
+	}
+	if role == "" {
+		return nil, Err(http.StatusNotFound, "organization not found")
+	}
+	if owner && role != "owner" {
+		return nil, Err(http.StatusForbidden, "only organization owners can do this")
+	}
+	return p, nil
+}

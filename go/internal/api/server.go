@@ -73,16 +73,11 @@ type Server struct {
 	Roles    RoleStore
 	Origins  OriginStore
 	Audit    audit.Recorder
-	AuditLog AuditReader
 	Orgs     OrgStore
 	// Mail sends reset, invite and verification emails; nil drops them.
 	Mail mail.Sender
 	// AppURL is the web app's public base URL used in email links.
-	AppURL string
-	// Governance keeps data settings and deletion requests; nil disables
-	// them. Persons links a deletion to every id of the person.
-	Governance   GovernanceStore
-	Persons      PersonLinker
+	AppURL       string
 	SecureCookie bool
 	Now          func() time.Time
 }
@@ -94,8 +89,6 @@ func writeJSON(w http.ResponseWriter, code int, v interface{}) { httpx.WriteJSON
 func writeErr(w http.ResponseWriter, code int, msg string) { httpx.WriteError(w, code, msg) }
 
 func internal(w http.ResponseWriter, err error) { apikit.WriteError(w, err) }
-
-func limit(l *int, def, max int) int { return apikit.Limit(l, def, max) }
 
 func (s *Server) GetHealth(w http.ResponseWriter, _ *http.Request) {
 	writeJSON(w, http.StatusOK, gen.Health{Status: "healthy", Service: "query-api"})

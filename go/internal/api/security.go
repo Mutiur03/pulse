@@ -43,10 +43,6 @@ type RoleStore interface {
 }
 
 // AuditReader lists an organization's audit log.
-type AuditReader interface {
-	List(ctx context.Context, org int64, limit int, before int64) ([]audit.Entry, error)
-}
-
 // OriginStore reads and replaces a project's allowed browser origins and
 // drops its keys from the ingest cache so changes apply at once.
 type OriginStore interface {
@@ -142,43 +138,6 @@ func (s *Server) SetMemberRole(w http.ResponseWriter, r *http.Request, org gen.O
 			Details: map[string]any{"role": string(body.Role)}})
 		w.WriteHeader(http.StatusNoContent)
 	}
-}
-
-func (s *Server) ListAuditLog(w http.ResponseWriter, r *http.Request, org gen.OrgPath, params gen.ListAuditLogParams) {
-	if _, ok := orgAccess(w, r, org, true); !ok {
-		return
-	}
-	if s.AuditLog == nil {
-		writeJSON(w, http.StatusOK, []gen.AuditEntry{})
-		return
-	}
-	var before int64
-	if params.Before != nil {
-		before = *params.Before
-	}
-	list, err := s.AuditLog.List(r.Context(), org, limit(params.Limit, 50, 200), before)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	out := make([]gen.AuditEntry, 0, len(list))
-	for _, e := range list {
-		g := gen.AuditEntry{Id: e.ID, CreatedAt: e.CreatedAt, Action: e.Action, ActorEmail: e.ActorEmail, Target: e.Target,
-			Ip: e.IP, Details: e.Details}
-		if g.Details == nil {
-			g.Details = map[string]interface{}{}
-		}
-		if e.ActorID != 0 {
-			id := e.ActorID
-			g.ActorId = &id
-		}
-		if e.ProjectID != 0 {
-			id := e.ProjectID
-			g.ProjectId = &id
-		}
-		out = append(out, g)
-	}
-	writeJSON(w, http.StatusOK, out)
 }
 
 func (s *Server) GetAllowedOrigins(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath) {

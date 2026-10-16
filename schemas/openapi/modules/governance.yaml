@@ -1,0 +1,10 @@
+package: oapi
+output: ../../go/internal/modules/governance/adapters/httpapi/oapi/server.gen.go
+generate:
+  chi-server: true
+  strict-server: true
+output-options:
+  include-tags: [governance]
+additional-imports:
+  - package: github.com/Mutiur03/pulse/internal/api/gen
+    alias: .

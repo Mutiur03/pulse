@@ -1,15 +1,45 @@
-package api
+package governance_test
 
 import (
 	"context"
 	"encoding/json"
+	"net/http/httptest"
 	"strings"
 	"testing"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/governance"
+	governancemod "github.com/Mutiur03/pulse/internal/modules/governance"
 )
+
+func call(t *testing.T, m *governancemod.Module, p *auth.Principal, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := chi.NewRouter()
+	m.Register(r)
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if p != nil {
+		req = req.WithContext(auth.WithPrincipal(req.Context(), p))
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+type memAudit struct{ entries []audit.Entry }
+
+func (m *memAudit) Record(_ context.Context, e audit.Entry) error {
+	m.entries = append(m.entries, e)
+	return nil
+}
+
+func (m *memAudit) List(context.Context, int64, int, int64) ([]audit.Entry, error) {
+	return m.entries, nil
+}
 
 type fakeGovernance struct {
 	saved    *governance.Settings
@@ -63,7 +93,7 @@ func (fakeLinker) LinkedIDs(_ context.Context, _ uint64, ids []string) ([]string
 
 func TestDataGovernanceEndpoints(t *testing.T) {
 	g, rec := &fakeGovernance{}, &memAudit{}
-	s := &Server{Governance: g, Persons: fakeLinker{}, Audit: rec}
+	s := governancemod.New(governancemod.Deps{Store: g, Persons: fakeLinker{}, Audit: rec})
 	owner := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "owner"}}}
 	member := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "member"}}}
 
@@ -128,5 +158,24 @@ func TestDataGovernanceEndpoints(t *testing.T) {
 	}
 	if r = call(t, s, &auth.Principal{}, "GET", "/v1/projects/1/data-settings", ""); r.Code != 404 {
 		t.Fatalf("outsider %d", r.Code)
+	}
+}
+
+func TestAuditLog(t *testing.T) {
+	al := &memAudit{entries: []audit.Entry{{ID: 1, Action: "key.create", ActorEmail: "o@example.com"}}}
+	s := governancemod.New(governancemod.Deps{AuditLog: al})
+	owner := &auth.Principal{Orgs: []auth.Org{{ID: 1, Role: "owner"}}}
+	member := &auth.Principal{Orgs: []auth.Org{{ID: 1, Role: "member"}}}
+	if rec := call(t, s, member, "GET", "/v1/orgs/1/audit-log", ""); rec.Code != 403 {
+		t.Fatalf("member reads audit log: %d", rec.Code)
+	}
+	if rec := call(t, s, owner, "GET", "/v1/orgs/2/audit-log", ""); rec.Code != 404 {
+		t.Fatalf("other org: %d", rec.Code)
+	}
+	if rec := call(t, s, owner, "GET", "/v1/orgs/1/audit-log", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), "key.create") {
+		t.Fatalf("owner audit log: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, governancemod.New(governancemod.Deps{}), owner, "GET", "/v1/orgs/1/audit-log", ""); rec.Code != 200 || strings.TrimSpace(rec.Body.String()) != "[]" {
+		t.Fatalf("no audit log: %d %s", rec.Code, rec.Body)
 	}
 }

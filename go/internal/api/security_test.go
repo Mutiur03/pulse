@@ -193,16 +193,9 @@ func TestRedactURLAndHeaders(t *testing.T) {
 }
 
 func TestAuditAndOriginsRBAC(t *testing.T) {
-	al := &memAudit{entries: []audit.Entry{{ID: 1, Action: "key.create", ActorEmail: "o@example.com"}}}
-	s := &Server{AuditLog: al}
+	s := &Server{}
 	owner := &auth.Principal{Orgs: []auth.Org{{ID: 1, Role: "owner"}}, Projects: []auth.Project{{ID: 1, Role: "owner", OrgID: 1}}}
 	member := &auth.Principal{Orgs: []auth.Org{{ID: 1, Role: "member"}}, Projects: []auth.Project{{ID: 1, Role: "member", OrgID: 1}}}
-	if rec := call(t, s, member, "GET", "/v1/orgs/1/audit-log", ""); rec.Code != 403 {
-		t.Fatalf("member reads audit log: %d", rec.Code)
-	}
-	if rec := call(t, s, owner, "GET", "/v1/orgs/1/audit-log", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), "key.create") {
-		t.Fatalf("owner audit log: %d %s", rec.Code, rec.Body)
-	}
 	if rec := call(t, s, member, "POST", "/v1/projects/1/allowed-origins", `{"origins":["https://a.example"]}`); rec.Code != 403 {
 		t.Fatalf("member sets origins: %d", rec.Code)
 	}

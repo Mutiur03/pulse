@@ -3,9 +3,12 @@ package main
 import (
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api"
+	"github.com/Mutiur03/pulse/internal/audit"
+	"github.com/Mutiur03/pulse/internal/governance"
 	alertsmod "github.com/Mutiur03/pulse/internal/modules/alerts"
 	"github.com/Mutiur03/pulse/internal/modules/analytics"
 	"github.com/Mutiur03/pulse/internal/modules/dashboards"
+	governancemod "github.com/Mutiur03/pulse/internal/modules/governance"
 	"github.com/Mutiur03/pulse/internal/modules/issues"
 	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/Mutiur03/pulse/internal/modules/telemetry"
@@ -42,6 +45,10 @@ func mountModules(r chi.Router, cfg *config.Config, d deps, srv *api.Server) {
 		Store: &alerts.Store{DB: d.db}, Metrics: d.ch, OutboundCheck: d.outbound.CheckURL,
 		Sender: &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL, Policy: d.outbound},
 		AppURL: srv.AppURL, Audit: srv.Audit, ClientIP: d.proxies,
+	}).Register(r)
+	governancemod.New(governancemod.Deps{
+		Store: &governance.Store{DB: d.db}, Persons: d.ch, AuditLog: &audit.Store{DB: d.db},
+		Audit: srv.Audit, ClientIP: d.proxies,
 	}).Register(r)
 	issues.New(issues.Deps{Repository: d.issues, Occurrences: d.ch, Symbolicator: d.sym}).Register(r)
 	analytics.New(analytics.Deps{Events: d.ch, Trends: d.ch, People: d.ch}).Register(r)
