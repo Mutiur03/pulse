@@ -164,8 +164,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		// Without SMTP_ADDR emails are written to the log.
 		Mail:       mail.New(cfg.SMTP),
 		AppURL:     cfg.AppURL,
-		Insights:   chClient,
-		Analytics:  chClient,
 		Governance: &governance.Store{DB: db},
 		Persons:    chClient,
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.

@@ -9,5 +9,3 @@ import (
 func strPtr(s string) *string { return apikit.StrPtr(s) }
 
 func errorOccurrence(e ch.ErrorRecord) gen.ErrorOccurrence { return apikit.ErrorOccurrence(e) }
-
-func productEvent(e ch.EventRecord) gen.ProductEvent { return apikit.ProductEvent(e) }

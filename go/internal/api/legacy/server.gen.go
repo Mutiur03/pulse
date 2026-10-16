@@ -45,24 +45,6 @@ type ServerInterface interface {
 	// Send the verification email again
 	// (POST /v1/auth/verify-email/resend)
 	ResendVerification(w http.ResponseWriter, r *http.Request)
-	// Explore product events
-	// (GET /v1/events)
-	ListEvents(w http.ResponseWriter, r *http.Request, params ListEventsParams)
-	// Event names with counts
-	// (GET /v1/events/names)
-	ListEventNames(w http.ResponseWriter, r *http.Request, params ListEventNamesParams)
-	// Run a funnel
-	// (POST /v1/funnels/query)
-	QueryFunnel(w http.ResponseWriter, r *http.Request, params QueryFunnelParams)
-	// User paths
-	// (POST /v1/insights/paths)
-	QueryPaths(w http.ResponseWriter, r *http.Request, params QueryPathsParams)
-	// Retention cohorts
-	// (POST /v1/insights/retention)
-	QueryRetention(w http.ResponseWriter, r *http.Request, params QueryRetentionParams)
-	// Chart events over time
-	// (POST /v1/insights/trends)
-	QueryTrend(w http.ResponseWriter, r *http.Request, params QueryTrendParams)
 	// Accept an invite as the logged-in user
 	// (POST /v1/invites/accept)
 	AcceptInvite(w http.ResponseWriter, r *http.Request)
@@ -99,12 +81,6 @@ type ServerInterface interface {
 	// Change a member's role
 	// (POST /v1/orgs/{org_id}/members/{user_id}/role)
 	SetMemberRole(w http.ResponseWriter, r *http.Request, orgId OrgPath, userId int64)
-	// List persons
-	// (GET /v1/persons)
-	ListPersons(w http.ResponseWriter, r *http.Request, params ListPersonsParams)
-	// A person with their sessions and recent events
-	// (GET /v1/persons/profile)
-	GetPerson(w http.ResponseWriter, r *http.Request, params GetPersonParams)
 	// Projects the user is a member of
 	// (GET /v1/projects)
 	ListProjects(w http.ResponseWriter, r *http.Request)
@@ -249,42 +225,6 @@ func (_ Unimplemented) ResendVerification(w http.ResponseWriter, r *http.Request
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
-// Explore product events
-// (GET /v1/events)
-func (_ Unimplemented) ListEvents(w http.ResponseWriter, r *http.Request, params ListEventsParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Event names with counts
-// (GET /v1/events/names)
-func (_ Unimplemented) ListEventNames(w http.ResponseWriter, r *http.Request, params ListEventNamesParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Run a funnel
-// (POST /v1/funnels/query)
-func (_ Unimplemented) QueryFunnel(w http.ResponseWriter, r *http.Request, params QueryFunnelParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// User paths
-// (POST /v1/insights/paths)
-func (_ Unimplemented) QueryPaths(w http.ResponseWriter, r *http.Request, params QueryPathsParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Retention cohorts
-// (POST /v1/insights/retention)
-func (_ Unimplemented) QueryRetention(w http.ResponseWriter, r *http.Request, params QueryRetentionParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// Chart events over time
-// (POST /v1/insights/trends)
-func (_ Unimplemented) QueryTrend(w http.ResponseWriter, r *http.Request, params QueryTrendParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
 // Accept an invite as the logged-in user
 // (POST /v1/invites/accept)
 func (_ Unimplemented) AcceptInvite(w http.ResponseWriter, r *http.Request) {
@@ -354,18 +294,6 @@ func (_ Unimplemented) RemoveMember(w http.ResponseWriter, r *http.Request, orgI
 // Change a member's role
 // (POST /v1/orgs/{org_id}/members/{user_id}/role)
 func (_ Unimplemented) SetMemberRole(w http.ResponseWriter, r *http.Request, orgId OrgPath, userId int64) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// List persons
-// (GET /v1/persons)
-func (_ Unimplemented) ListPersons(w http.ResponseWriter, r *http.Request, params ListPersonsParams) {
-	w.WriteHeader(http.StatusNotImplemented)
-}
-
-// A person with their sessions and recent events
-// (GET /v1/persons/profile)
-func (_ Unimplemented) GetPerson(w http.ResponseWriter, r *http.Request, params GetPersonParams) {
 	w.WriteHeader(http.StatusNotImplemented)
 }
 
@@ -689,268 +617,6 @@ func (siw *ServerInterfaceWrapper) ResendVerification(w http.ResponseWriter, r *
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.ResendVerification(w, r)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListEvents operation middleware
-func (siw *ServerInterfaceWrapper) ListEvents(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListEventsParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "event" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "event", r.URL.Query(), &params.Event)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "event", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "distinct_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "distinct_id", r.URL.Query(), &params.DistinctId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "distinct_id", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "session_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "session_id", r.URL.Query(), &params.SessionId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "session_id", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "from" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "from", r.URL.Query(), &params.From)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "to" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "to", r.URL.Query(), &params.To)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListEvents(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListEventNames operation middleware
-func (siw *ServerInterfaceWrapper) ListEventNames(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListEventNamesParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "from" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "from", r.URL.Query(), &params.From)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "to" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "to", r.URL.Query(), &params.To)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListEventNames(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// QueryFunnel operation middleware
-func (siw *ServerInterfaceWrapper) QueryFunnel(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params QueryFunnelParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.QueryFunnel(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// QueryPaths operation middleware
-func (siw *ServerInterfaceWrapper) QueryPaths(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params QueryPathsParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.QueryPaths(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// QueryRetention operation middleware
-func (siw *ServerInterfaceWrapper) QueryRetention(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params QueryRetentionParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.QueryRetention(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// QueryTrend operation middleware
-func (siw *ServerInterfaceWrapper) QueryTrend(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params QueryTrendParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.QueryTrend(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -1410,135 +1076,6 @@ func (siw *ServerInterfaceWrapper) SetMemberRole(w http.ResponseWriter, r *http.
 
 	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		siw.Handler.SetMemberRole(w, r, orgId, userId)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// ListPersons operation middleware
-func (siw *ServerInterfaceWrapper) ListPersons(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params ListPersonsParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "search" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "search", r.URL.Query(), &params.Search)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "search", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "from" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "from", r.URL.Query(), &params.From)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "to" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "to", r.URL.Query(), &params.To)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "limit" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "limit", r.URL.Query(), &params.Limit)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "limit", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.ListPersons(w, r, params)
-	}))
-
-	for _, middleware := range siw.HandlerMiddlewares {
-		handler = middleware(handler)
-	}
-
-	handler.ServeHTTP(w, r)
-}
-
-// GetPerson operation middleware
-func (siw *ServerInterfaceWrapper) GetPerson(w http.ResponseWriter, r *http.Request) {
-
-	var err error
-
-	ctx := r.Context()
-
-	ctx = context.WithValue(ctx, SessionScopes, []string{})
-
-	r = r.WithContext(ctx)
-
-	// Parameter object where we will unmarshal all parameters from the context
-	var params GetPersonParams
-
-	// ------------- Optional query parameter "project_id" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "project_id", r.URL.Query(), &params.ProjectId)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "project_id", Err: err})
-		return
-	}
-
-	// ------------- Required query parameter "id" -------------
-
-	if paramValue := r.URL.Query().Get("id"); paramValue != "" {
-
-	} else {
-		siw.ErrorHandlerFunc(w, r, &RequiredParamError{ParamName: "id"})
-		return
-	}
-
-	err = runtime.BindQueryParameter("form", true, true, "id", r.URL.Query(), &params.Id)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "id", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "from" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "from", r.URL.Query(), &params.From)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "from", Err: err})
-		return
-	}
-
-	// ------------- Optional query parameter "to" -------------
-
-	err = runtime.BindQueryParameter("form", true, false, "to", r.URL.Query(), &params.To)
-	if err != nil {
-		siw.ErrorHandlerFunc(w, r, &InvalidParamFormatError{ParamName: "to", Err: err})
-		return
-	}
-
-	handler := http.Handler(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		siw.Handler.GetPerson(w, r, params)
 	}))
 
 	for _, middleware := range siw.HandlerMiddlewares {
@@ -2548,24 +2085,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 		r.Post(options.BaseURL+"/v1/auth/verify-email/resend", wrapper.ResendVerification)
 	})
 	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/events", wrapper.ListEvents)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/events/names", wrapper.ListEventNames)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v1/funnels/query", wrapper.QueryFunnel)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v1/insights/paths", wrapper.QueryPaths)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v1/insights/retention", wrapper.QueryRetention)
-	})
-	r.Group(func(r chi.Router) {
-		r.Post(options.BaseURL+"/v1/insights/trends", wrapper.QueryTrend)
-	})
-	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/invites/accept", wrapper.AcceptInvite)
 	})
 	r.Group(func(r chi.Router) {
@@ -2600,12 +2119,6 @@ func HandlerWithOptions(si ServerInterface, options ChiServerOptions) http.Handl
 	})
 	r.Group(func(r chi.Router) {
 		r.Post(options.BaseURL+"/v1/orgs/{org_id}/members/{user_id}/role", wrapper.SetMemberRole)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/persons", wrapper.ListPersons)
-	})
-	r.Group(func(r chi.Router) {
-		r.Get(options.BaseURL+"/v1/persons/profile", wrapper.GetPerson)
 	})
 	r.Group(func(r chi.Router) {
 		r.Get(options.BaseURL+"/v1/projects", wrapper.ListProjects)

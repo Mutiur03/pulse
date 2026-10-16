@@ -28,16 +28,8 @@ import (
 // TraceReader and IssueStore are the storage dependencies, as interfaces so
 // handlers can be tested without databases.
 type TraceReader interface {
-	SpansByTrace(ctx context.Context, project uint64, traceID string) ([]ch.SpanRecord, error)
-	ErrorsByTrace(ctx context.Context, project uint64, traceID string) ([]ch.ErrorRecord, error)
-	EventsByTrace(ctx context.Context, project uint64, traceID string) ([]ch.EventRecord, error)
 	ErrorsByIssue(ctx context.Context, project, issueID uint64, limit int) ([]ch.ErrorRecord, error)
-	ListTraces(ctx context.Context, f ch.TraceFilter) ([]ch.TraceSummaryRow, error)
-	Services(ctx context.Context, project uint64, from, to time.Time) ([]string, error)
-	ListEvents(ctx context.Context, f ch.EventFilter) ([]ch.ExploredEvent, error)
-	EventNames(ctx context.Context, project uint64, from, to time.Time) ([]ch.EventNameCount, error)
 	IssueTrends(ctx context.Context, project uint64, ids []uint64, now time.Time) (map[uint64][]int64, error)
-	RunFunnel(ctx context.Context, f ch.FunnelQuery) (ch.FunnelData, error)
 }
 
 // Accounts logs users in and out.
@@ -120,10 +112,6 @@ type Server struct {
 	}
 	// Symbolicator resolves minified stack frames; nil skips it.
 	Symbolicator *symbolicate.Symbolicator
-	// Insights runs trend and trace stats queries; nil disables it.
-	Insights InsightReader
-	// Analytics serves persons, retention and paths; nil disables them.
-	Analytics AnalyticsReader
 	// Governance keeps data settings and deletion requests; nil disables
 	// them. Persons links a deletion to every id of the person.
 	Governance   GovernanceStore
@@ -156,11 +144,6 @@ func project(w http.ResponseWriter, r *http.Request, p *gen.ProjectID) (uint64, 
 		return 0, false
 	}
 	return id, true
-}
-
-// timeRange applies the default of the last 24 hours.
-func (s *Server) timeRange(from, to *time.Time) (time.Time, time.Time) {
-	return apikit.Clock(s.Now).TimeRange(from, to)
 }
 
 func limit(l *int, def, max int) int { return apikit.Limit(l, def, max) }
