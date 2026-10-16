@@ -5,7 +5,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log/slog"
 
 	"github.com/Mutiur03/pulse/internal/grouping"
 	"github.com/Mutiur03/pulse/internal/modules/issues"
@@ -15,21 +14,18 @@ import (
 )
 
 // TopicIssueEvents receives new_issue and regression notifications.
-const TopicIssueEvents = "issue.events"
+const TopicIssueEvents = issues.Topic
 
 type IssueRecorder interface {
 	Record(ctx context.Context, o issues.Occurrence) (issues.Issue, issues.Kind, error)
 }
 
-type Publisher interface {
-	Produce(ctx context.Context, topic string, key, value []byte) error
-}
-
 // GroupErrors fingerprints each raw error, records it against its issue in
-// Postgres, publishes new-issue and regression events, and returns the rows
-// to write to ClickHouse.
-func GroupErrors(ctx context.Context, raw []map[string]interface{}, rec IssueRecorder, pub Publisher) ([]ch.ErrorRow, error) {
-	return GroupErrorsWith(ctx, raw, rec, pub, nil)
+// Postgres and returns the rows to write to ClickHouse. Recording queues
+// new-issue and regression events in the issue outbox in the same
+// transaction; the outbox relay publishes them.
+func GroupErrors(ctx context.Context, raw []map[string]interface{}, rec IssueRecorder) ([]ch.ErrorRow, error) {
+	return GroupErrorsWith(ctx, raw, rec, nil)
 }
 
 // MaxDebugIDs caps how many file to debug id pairs an error may carry.
@@ -49,7 +45,7 @@ func debugIDs(e map[string]interface{}) map[string]string {
 
 // GroupErrorsWith also symbolicates JavaScript stacks with uploaded source
 // maps first, so issues group by original code. sym may be nil.
-func GroupErrorsWith(ctx context.Context, raw []map[string]interface{}, rec IssueRecorder, pub Publisher, sym *symbolicate.Symbolicator) ([]ch.ErrorRow, error) {
+func GroupErrorsWith(ctx context.Context, raw []map[string]interface{}, rec IssueRecorder, sym *symbolicate.Symbolicator) ([]ch.ErrorRow, error) {
 	rows := make([]ch.ErrorRow, 0, len(raw))
 	for _, e := range raw {
 		r := ch.ErrorRow{
@@ -86,7 +82,7 @@ func GroupErrorsWith(ctx context.Context, raw []map[string]interface{}, rec Issu
 			r.Fingerprint = fp // client-supplied override
 		}
 
-		iss, kind, err := rec.Record(ctx, issues.Occurrence{
+		iss, _, err := rec.Record(ctx, issues.Occurrence{
 			ProjectID: int64(r.ProjectID), Fingerprint: r.Fingerprint, Title: r.Title,
 			ExceptionType: r.ExceptionType, Culprit: r.Culprit, Platform: r.Platform, ServiceName: r.ServiceName,
 			TraceID: r.TraceID, SpanID: r.SpanID, Timestamp: r.Timestamp,
@@ -97,16 +93,6 @@ func GroupErrorsWith(ctx context.Context, raw []map[string]interface{}, rec Issu
 		r.IssueID = uint64(iss.ID)
 		rows = append(rows, r)
 
-		if kind != issues.KindNone && pub != nil {
-			ev, _ := json.Marshal(issues.Event{
-				Type: kind, IssueID: iss.ID, ProjectID: iss.ProjectID, Fingerprint: iss.Fingerprint,
-				Title: iss.Title, ServiceName: r.ServiceName, TraceID: r.TraceID, Timestamp: r.Timestamp,
-			})
-			if err := pub.Produce(ctx, TopicIssueEvents, []byte(fmt.Sprint(iss.ID)), ev); err != nil {
-				// The issue itself is stored; a lost notification should not block ingestion.
-				slog.Error("publishing issue event failed", "kind", kind, "issue_id", iss.ID, "err", err)
-			}
-		}
 	}
 	return rows, nil
 }

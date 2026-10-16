@@ -3,9 +3,11 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/Mutiur03/pulse/internal/modules/issues/domain"
 
@@ -44,6 +46,7 @@ func scan(row pgx.Row) (domain.Issue, error) {
 }
 
 // Record adds an occurrence to its issue, creating or reopening it as needed.
+// A new issue or regression also queues its event in the outbox, atomically.
 // It runs in one transaction with a row lock, so concurrent processors agree
 // on whether an occurrence was the first or a regression.
 func (s *Store) Record(ctx context.Context, o domain.Occurrence) (domain.Issue, domain.Kind, error) {
@@ -89,6 +92,15 @@ func (s *Store) Record(ctx context.Context, o domain.Occurrence) (domain.Issue, 
 		RETURNING `+cols, cur.ID, o.Timestamp, string(next), regressed, o.TraceID, o.SpanID))
 	if err != nil {
 		return domain.Issue{}, domain.KindNone, err
+	}
+	if kind != domain.KindNone {
+		ev, err := json.Marshal(domain.NewEvent(updated, kind, o))
+		if err != nil {
+			return domain.Issue{}, domain.KindNone, err
+		}
+		if _, err := tx.Exec(ctx, `INSERT INTO issue_outbox (issue_id, payload) VALUES ($1, $2)`, updated.ID, ev); err != nil {
+			return domain.Issue{}, domain.KindNone, err
+		}
 	}
 	if err := tx.Commit(ctx); err != nil {
 		return domain.Issue{}, domain.KindNone, err
@@ -165,3 +177,60 @@ func (s *Store) Pool() *pgxpool.Pool { return s.db }
 
 // New returns a Store on an existing pool.
 func New(db *pgxpool.Pool) *Store { return &Store{db: db} }
+
+// RelayOutbox sends up to limit unsent outbox events in order with send and
+// marks them sent, all in one transaction with the rows locked, so several
+// relays never send the same row concurrently. A send error stops the batch;
+// the remaining rows stay queued. It returns how many rows were sent.
+func (s *Store) RelayOutbox(ctx context.Context, limit int, send func(ctx context.Context, issueID int64, payload []byte) error) (int, error) {
+	tx, err := s.db.Begin(ctx)
+	if err != nil {
+		return 0, err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	rows, err := tx.Query(ctx, `SELECT id, issue_id, payload FROM issue_outbox WHERE sent_at IS NULL
+		ORDER BY id LIMIT $1 FOR UPDATE SKIP LOCKED`, limit)
+	if err != nil {
+		return 0, err
+	}
+	type row struct {
+		id, issue int64
+		payload   []byte
+	}
+	var batch []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.issue, &r.payload); err != nil {
+			rows.Close()
+			return 0, err
+		}
+		batch = append(batch, r)
+	}
+	rows.Close()
+	if err := rows.Err(); err != nil {
+		return 0, err
+	}
+	var sent []int64
+	var sendErr error
+	for _, r := range batch {
+		if sendErr = send(ctx, r.issue, r.payload); sendErr != nil {
+			break
+		}
+		sent = append(sent, r.id)
+	}
+	if len(sent) > 0 {
+		if _, err := tx.Exec(ctx, `UPDATE issue_outbox SET sent_at = now() WHERE id = ANY($1)`, sent); err != nil {
+			return 0, err
+		}
+		if err := tx.Commit(ctx); err != nil {
+			return 0, err
+		}
+	}
+	return len(sent), sendErr
+}
+
+// PruneOutbox deletes events sent before cutoff.
+func (s *Store) PruneOutbox(ctx context.Context, cutoff time.Time) (int64, error) {
+	tag, err := s.db.Exec(ctx, `DELETE FROM issue_outbox WHERE sent_at IS NOT NULL AND sent_at < $1`, cutoff)
+	return tag.RowsAffected(), err
+}

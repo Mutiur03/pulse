@@ -50,7 +50,7 @@ func TestGroupErrorsSymbolicates(t *testing.T) {
 	sym := &symbolicate.Symbolicator{Artifacts: oneMap{}, Objects: mapFile{}}
 	// The second build renamed the file and its minified identifiers.
 	build2 := strings.NewReplacer("app.min.js", "app.9f8e7d6c.js", "at b ", "at x ", "at c ", "at q ").Replace(minified)
-	rows, err := GroupErrorsWith(ctx, []map[string]interface{}{jsErr("v1", minified), jsErr("v2", build2), jsErr("none", minified)}, &memIssues{byFP: map[string]*issues.Issue{}}, &capture{}, sym)
+	rows, err := GroupErrorsWith(ctx, []map[string]interface{}{jsErr("v1", minified), jsErr("v2", build2), jsErr("none", minified)}, &memIssues{byFP: map[string]*issues.Issue{}}, sym)
 	if err != nil {
 		t.Fatal(err)
 	}

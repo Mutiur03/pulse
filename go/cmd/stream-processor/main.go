@@ -80,11 +80,14 @@ func run(ctx context.Context, cfg *config.Config) error {
 	}
 	defer consumer.Close()
 
+	// Issue events wait in the Postgres outbox until Kafka accepts them.
+	go issues.NewRelay(issueStore, producer).Run(ctx)
+
 	go serveHealth(":8082")
 	monitor.Service("stream-processor")
 	slog.Info("stream processor started")
 
-	p := &pipeline{sink: chClient, issues: issueStore, publisher: producer, sym: sym}
+	p := &pipeline{sink: chClient, issues: issueStore, sym: sym}
 	for ctx.Err() == nil {
 		records, err := consumer.Poll(ctx)
 		if err != nil {
@@ -179,10 +182,9 @@ type sink interface {
 
 // pipeline writes batches, grouping errors into issues first.
 type pipeline struct {
-	sink      sink
-	issues    processor.IssueRecorder
-	publisher processor.Publisher
-	sym       *symbolicate.Symbolicator
+	sink   sink
+	issues processor.IssueRecorder
+	sym    *symbolicate.Symbolicator
 }
 
 // store writes every non-empty part of the batch. Writes retry until they
@@ -206,7 +208,7 @@ func (p *pipeline) store(ctx context.Context, b batch) bool {
 		var rows []ch.ErrorRow
 		if err := retry(ctx, func() error {
 			var gerr error
-			rows, gerr = processor.GroupErrorsWith(ctx, b.errs, p.issues, p.publisher, p.sym)
+			rows, gerr = processor.GroupErrorsWith(ctx, b.errs, p.issues, p.sym)
 			return gerr
 		}); err != nil {
 			slog.Error("failed to group errors", "err", err)

@@ -70,10 +70,6 @@ func (fakeIssues) Record(_ context.Context, o issues.Occurrence) (issues.Issue, 
 	return issues.Issue{ID: 1, Fingerprint: o.Fingerprint}, issues.KindNone, nil
 }
 
-type fakePub struct{}
-
-func (fakePub) Produce(context.Context, string, []byte, []byte) error { return nil }
-
 func TestPipelineStore(t *testing.T) {
 	b := batch{
 		events:  []row{{"event": "$identify", "distinct_id": "u1", "properties": map[string]interface{}{"$anon_distinct_id": "a1"}}},
@@ -83,7 +79,7 @@ func TestPipelineStore(t *testing.T) {
 		metrics: []row{{}},
 	}
 	s := &fakeSink{}
-	p := &pipeline{sink: s, issues: fakeIssues{}, publisher: fakePub{}}
+	p := &pipeline{sink: s, issues: fakeIssues{}}
 	if !p.store(context.Background(), b) {
 		t.Fatal("store failed")
 	}
@@ -98,7 +94,7 @@ func TestPipelineStore(t *testing.T) {
 	// On shutdown writes stop retrying and the batch is not committed.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if (&pipeline{sink: &fakeSink{fail: true}, issues: fakeIssues{}, publisher: fakePub{}}).store(ctx, batch{spans: []row{{}}}) {
+	if (&pipeline{sink: &fakeSink{fail: true}, issues: fakeIssues{}}).store(ctx, batch{spans: []row{{}}}) {
 		t.Fatal("store reported success after failed write")
 	}
 }

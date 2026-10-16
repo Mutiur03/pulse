@@ -105,3 +105,14 @@ type ListFilter struct {
 
 // ErrNotFound means the issue does not exist.
 var ErrNotFound = errors.New("issue not found")
+
+// Topic is the Kafka topic that carries issue events.
+const Topic = "issue.events"
+
+// NewEvent is the event for an occurrence that created or reopened iss.
+func NewEvent(iss Issue, kind Kind, o Occurrence) Event {
+	return Event{
+		Type: kind, IssueID: iss.ID, ProjectID: iss.ProjectID, Fingerprint: iss.Fingerprint,
+		Title: iss.Title, ServiceName: o.ServiceName, TraceID: o.TraceID, Timestamp: o.Timestamp,
+	}
+}

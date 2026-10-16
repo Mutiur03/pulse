@@ -44,6 +44,25 @@ const (
 	KindRegression = domain.KindRegression
 )
 
+// Topic is the Kafka topic that carries issue events.
+const Topic = domain.Topic
+
+// NewEvent is the event for an occurrence that created or reopened iss.
+func NewEvent(iss Issue, kind Kind, o Occurrence) Event { return domain.NewEvent(iss, kind, o) }
+
+// Producer publishes messages; Outbox holds events until they are sent.
+type (
+	Producer = ports.Producer
+	Outbox   = ports.Outbox
+	// Relay publishes outbox events; run it with Run(ctx).
+	Relay = service.Relay
+)
+
+// NewRelay returns a relay from outbox to producer with default settings.
+func NewRelay(outbox Outbox, producer Producer) *Relay {
+	return &Relay{Outbox: outbox, Producer: producer}
+}
+
 // ErrNotFound means the issue does not exist.
 var ErrNotFound = domain.ErrNotFound
 
