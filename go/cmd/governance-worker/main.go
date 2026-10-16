@@ -6,7 +6,7 @@ package main
 
 import (
 	"context"
-	"log"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -29,14 +29,25 @@ import (
 func main() {
 	cfg := config.Load()
 	logging.Setup("governance-worker", cfg.LogLevel)
-	db, err := pgxpool.New(context.Background(), cfg.PostgresURL)
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, cfg); err != nil {
+		slog.Error("governance worker stopped", "err", err)
+		os.Exit(1)
+	}
+}
+
+// run starts the deletion and retention loops and serves health until ctx
+// ends or the health server fails.
+func run(ctx context.Context, cfg *config.Config) error {
+	db, err := pgxpool.New(ctx, cfg.PostgresURL)
 	if err != nil {
-		log.Fatalf("Failed to configure Postgres: %v", err)
+		return fmt.Errorf("configure Postgres: %w", err)
 	}
 	defer db.Close()
 	chClient, err := ch.Connect(cfg.ClickHouse)
 	if err != nil {
-		log.Fatalf("Failed to create ClickHouse client: %v", err)
+		return fmt.Errorf("create ClickHouse client: %w", err)
 	}
 	defer func() { _ = chClient.Close() }()
 
@@ -57,63 +68,65 @@ func main() {
 
 	poll := config.Duration("DELETION_POLL_INTERVAL", 5*time.Second)
 	every := config.Duration("RETENTION_INTERVAL", time.Hour)
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+	go repeat(ctx, poll, func() { runDeletions(ctx, w) })
+	go repeat(ctx, every, func() { runRetention(ctx, w) })
+	slog.Info("governance worker running", "deletion_poll", poll, "retention_every", every)
+	return serveHealth(ctx, ":8084")
+}
 
-	go func() {
-		t := time.NewTicker(poll)
-		defer t.Stop()
-		for {
-			if n, err := w.RunDeletions(ctx); err != nil {
-				monitor.GovernanceRuns.WithLabelValues("deletions", "error").Inc()
-				slog.Error("deletions", "err", err)
-			} else if n > 0 {
-				slog.Info("processed deletion requests", "count", n)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-			}
+// repeat calls fn now and then every d until ctx ends.
+func repeat(ctx context.Context, d time.Duration, fn func()) {
+	t := time.NewTicker(d)
+	defer t.Stop()
+	for {
+		fn()
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
 		}
-	}()
-	go func() {
-		t := time.NewTicker(every)
-		defer t.Stop()
-		for {
-			out, err := w.EnforceRetention(ctx)
-			result := "ok"
-			if err != nil {
-				result = "error"
-				slog.Error("retention", "err", err)
-			}
-			monitor.GovernanceRuns.WithLabelValues("retention", result).Inc()
-			for p, counts := range out {
-				slog.Info("retention removed rows", "project", p, "counts", counts)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-			}
-		}
-	}()
+	}
+}
 
+func runDeletions(ctx context.Context, w *governance.Worker) {
+	if n, err := w.RunDeletions(ctx); err != nil {
+		monitor.GovernanceRuns.WithLabelValues("deletions", "error").Inc()
+		slog.Error("deletions", "err", err)
+	} else if n > 0 {
+		slog.Info("processed deletion requests", "count", n)
+	}
+}
+
+func runRetention(ctx context.Context, w *governance.Worker) {
+	out, err := w.EnforceRetention(ctx)
+	result := "ok"
+	if err != nil {
+		result = "error"
+		slog.Error("retention", "err", err)
+	}
+	monitor.GovernanceRuns.WithLabelValues("retention", result).Inc()
+	for p, counts := range out {
+		slog.Info("retention removed rows", "project", p, "counts", counts)
+	}
+}
+
+func serveHealth(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", monitor.Handler())
 	monitor.Service("governance-worker")
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"governance-worker"}`))
 	})
-	srv := &http.Server{Addr: ":8084", Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	go func() {
-		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("health server: %v", err)
-		}
-	}()
-	slog.Info("governance worker running", "deletion_poll", poll, "retention_every", every)
-	<-ctx.Done()
+	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	errc := make(chan error, 1)
+	go func() { errc <- srv.ListenAndServe() }()
+	select {
+	case err := <-errc:
+		return fmt.Errorf("health server: %w", err)
+	case <-ctx.Done():
+	}
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(shutdown)
+	return nil
 }

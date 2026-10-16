@@ -3,7 +3,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -13,6 +13,7 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/config"
+	"github.com/Mutiur03/pulse/internal/httpx"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/kafka"
 	"github.com/Mutiur03/pulse/internal/logging"
@@ -22,33 +23,42 @@ import (
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/symbolicate"
 	"github.com/Mutiur03/pulse/internal/telemetry"
+	"github.com/twmb/franz-go/pkg/kgo"
 )
 
 func main() {
 	cfg := config.Load()
 	logging.Setup("stream-processor", cfg.LogLevel)
 	cfg.ServiceName = "stream-processor"
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, cfg); err != nil {
+		slog.Error("stream processor stopped", "err", err)
+		os.Exit(1)
+	}
+}
 
+// topics are the raw topics the ingest gateway writes.
+var topics = []string{"raw.events", "raw.spans", "raw.errors", "raw.logs", "raw.metrics"}
+
+// run connects to every dependency and processes batches until ctx ends.
+func run(ctx context.Context, cfg *config.Config) error {
 	_, cleanup, err := telemetry.InitTracer(cfg.ServiceName)
 	if err != nil {
 		slog.Error("failed to initialize tracer", "err", err)
 	} else {
-		defer func() {
-			_ = cleanup(context.Background())
-		}()
+		defer func() { _ = cleanup(context.Background()) }()
 	}
 
 	chClient, err := ch.Connect(cfg.ClickHouse)
 	if err != nil {
-		log.Fatalf("Failed to create ClickHouse client: %v", err)
+		return fmt.Errorf("create ClickHouse client: %w", err)
 	}
-	defer func() {
-		_ = chClient.Close()
-	}()
+	defer func() { _ = chClient.Close() }()
 
-	issueStore, err := connectIssues(cfg.PostgresURL)
+	issueStore, err := connectIssues(ctx, cfg.PostgresURL)
 	if err != nil {
-		log.Fatalf("Failed to connect to Postgres: %v", err)
+		return fmt.Errorf("connect to Postgres: %w", err)
 	}
 	defer issueStore.Close()
 
@@ -60,192 +70,189 @@ func main() {
 
 	producer, err := kafka.NewProducer(cfg.KafkaBootstrapServers, cfg.Kafka)
 	if err != nil {
-		log.Fatalf("Failed to create Kafka producer: %v", err)
+		return fmt.Errorf("create Kafka producer: %w", err)
 	}
 	defer producer.Close()
 
-	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, cfg.Kafka, "stream-processor", []string{"raw.events", "raw.spans", "raw.errors", "raw.logs", "raw.metrics"})
+	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, cfg.Kafka, "stream-processor", topics)
 	if err != nil {
-		log.Fatalf("Failed to create Kafka consumer: %v", err)
+		return fmt.Errorf("create Kafka consumer: %w", err)
 	}
 	defer consumer.Close()
 
-	go func() {
-		mux := http.NewServeMux()
-		mux.Handle("/metrics", monitor.Handler())
-		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-			_, _ = w.Write([]byte(`{"status":"healthy","service":"stream-processor"}`))
-		})
-		slog.Info("stream processor health endpoint listening", "addr", ":8082")
-		hs := &http.Server{Addr: ":8082", Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-		if err := hs.ListenAndServe(); err != nil {
-			slog.Error("health server error", "err", err)
-		}
-	}()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-
-	go func() {
-		<-sigChan
-		slog.Info("shutting down")
-		cancel()
-	}()
-
+	go serveHealth(":8082")
 	monitor.Service("stream-processor")
 	slog.Info("stream processor started")
 
-	for {
-		select {
-		case <-ctx.Done():
-			return
-		default:
-			records, err := consumer.Poll(ctx)
-			if err != nil {
-				if ctx.Err() != nil {
-					return
-				}
-				slog.Error("failed to poll", "err", err)
-				time.Sleep(time.Second)
-				continue
+	p := &pipeline{sink: chClient, issues: issueStore, publisher: producer, sym: sym}
+	for ctx.Err() == nil {
+		records, err := consumer.Poll(ctx)
+		if err != nil {
+			if ctx.Err() != nil {
+				break
 			}
-
-			if len(records) == 0 {
-				continue
-			}
-
-			var events []map[string]interface{}
-			var spans []map[string]interface{}
-			var errs []map[string]interface{}
-			var logs []map[string]interface{}
-			var metrics []map[string]interface{}
-
-			newest := map[string]time.Time{}
-			for _, record := range records {
-				monitor.ProcessorRecords.WithLabelValues(record.Topic).Inc()
-				if record.Timestamp.After(newest[record.Topic]) {
-					newest[record.Topic] = record.Timestamp
-				}
-				var data map[string]interface{}
-				if err := json.Unmarshal(record.Value, &data); err != nil {
-					monitor.ProcessorDecodeErrors.WithLabelValues(record.Topic).Inc()
-					slog.Error("failed to unmarshal record", "err", err)
-					continue
-				}
-
-				if record.Topic == "raw.events" {
-					events = append(events, data)
-				} else if record.Topic == "raw.spans" {
-					spans = append(spans, data)
-				} else if record.Topic == "raw.errors" {
-					errs = append(errs, data)
-				} else if record.Topic == "raw.logs" {
-					logs = append(logs, data)
-				} else if record.Topic == "raw.metrics" {
-					metrics = append(metrics, data)
-				}
-			}
-
-			ok := true
-			if len(events) > 0 {
-				slog.Info("processing events", "count", len(events))
-				if err := write(ctx, "events", len(events), func() error { return chClient.InsertEvents(ctx, events) }); err != nil {
-					slog.Error("failed to insert events", "err", err)
-					ok = false
-				} else {
-					slog.Info("successfully inserted events", "count", len(events))
-					if aliases := ch.AliasesFromEvents(events); len(aliases) > 0 {
-						if err := retry(ctx, func() error { return chClient.InsertAliases(ctx, aliases) }); err != nil {
-							slog.Error("failed to insert identity links", "count", len(aliases), "err", err)
-						}
-					}
-				}
-			}
-
-			if len(spans) > 0 {
-				slog.Info("processing spans", "count", len(spans))
-				if err := write(ctx, "spans", len(spans), func() error { return chClient.InsertSpans(ctx, spans) }); err != nil {
-					slog.Error("failed to insert spans", "err", err)
-					ok = false
-				} else {
-					slog.Info("successfully inserted spans", "count", len(spans))
-				}
-			}
-
-			if len(errs) > 0 {
-				var rows []ch.ErrorRow
-				if err := retry(ctx, func() error {
-					var gerr error
-					rows, gerr = processor.GroupErrorsWith(ctx, errs, issueStore, producer, sym)
-					return gerr
-				}); err != nil {
-					slog.Error("failed to group errors", "err", err)
-					return
-				}
-				if err := write(ctx, "errors", len(rows), func() error { return chClient.InsertErrors(ctx, rows) }); err != nil {
-					slog.Error("failed to insert errors", "err", err)
-					ok = false
-				} else {
-					slog.Info("successfully inserted errors", "count", len(errs))
-				}
-			}
-
-			if len(logs) > 0 {
-				if err := write(ctx, "logs", len(logs), func() error { return chClient.InsertLogs(ctx, logs) }); err != nil {
-					slog.Error("failed to insert logs", "err", err)
-					ok = false
-				} else {
-					slog.Info("successfully inserted logs", "count", len(logs))
-				}
-			}
-
-			if len(metrics) > 0 {
-				if err := write(ctx, "metrics", len(metrics), func() error { return chClient.InsertMetrics(ctx, metrics) }); err != nil {
-					slog.Error("failed to insert metrics", "err", err)
-					ok = false
-				} else {
-					slog.Info("successfully inserted metric points", "count", len(metrics))
-				}
-			}
-
-			if !ok {
-				// Only reached on shutdown: leave offsets uncommitted so the
-				// batch is redelivered on the next start.
-				return
-			}
-			monitor.ProcessorLastBatch.SetToCurrentTime()
-			for topic, ts := range newest {
-				monitor.ProcessorDelay.WithLabelValues(topic).Set(time.Since(ts).Seconds())
-			}
-			if err := consumer.Commit(ctx); err != nil {
-				slog.Error("failed to commit", "err", err)
-			}
+			slog.Error("failed to poll", "err", err)
+			time.Sleep(time.Second)
+			continue
 		}
+		if len(records) == 0 {
+			continue
+		}
+		b := splitRecords(records)
+		if !p.store(ctx, b) {
+			// Only reached on shutdown: leave offsets uncommitted so the
+			// batch is redelivered on the next start.
+			break
+		}
+		monitor.ProcessorLastBatch.SetToCurrentTime()
+		for topic, ts := range b.newest {
+			monitor.ProcessorDelay.WithLabelValues(topic).Set(time.Since(ts).Seconds())
+		}
+		if err := consumer.Commit(ctx); err != nil {
+			slog.Error("failed to commit", "err", err)
+		}
+	}
+	slog.Info("shutting down")
+	return nil
+}
+
+func serveHealth(addr string) {
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", monitor.Handler())
+	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+		httpx.WriteJSON(w, http.StatusOK, map[string]string{"status": "healthy", "service": "stream-processor"})
+	})
+	slog.Info("stream processor health endpoint listening", "addr", addr)
+	hs := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	if err := hs.ListenAndServe(); err != nil {
+		slog.Error("health server error", "err", err)
 	}
 }
 
+type row = map[string]interface{}
+
+// batch is one poll's records decoded and grouped by topic.
+type batch struct {
+	events, spans, errs, logs, metrics []row
+	// newest is the latest record time per topic, for the delay metric.
+	newest map[string]time.Time
+}
+
+func splitRecords(records []*kgo.Record) batch {
+	b := batch{newest: map[string]time.Time{}}
+	for _, record := range records {
+		monitor.ProcessorRecords.WithLabelValues(record.Topic).Inc()
+		if record.Timestamp.After(b.newest[record.Topic]) {
+			b.newest[record.Topic] = record.Timestamp
+		}
+		var data row
+		if err := json.Unmarshal(record.Value, &data); err != nil {
+			monitor.ProcessorDecodeErrors.WithLabelValues(record.Topic).Inc()
+			slog.Error("failed to unmarshal record", "topic", record.Topic, "err", err)
+			continue
+		}
+		switch record.Topic {
+		case "raw.events":
+			b.events = append(b.events, data)
+		case "raw.spans":
+			b.spans = append(b.spans, data)
+		case "raw.errors":
+			b.errs = append(b.errs, data)
+		case "raw.logs":
+			b.logs = append(b.logs, data)
+		case "raw.metrics":
+			b.metrics = append(b.metrics, data)
+		}
+	}
+	return b
+}
+
+// sink is the ClickHouse writer the pipeline needs.
+type sink interface {
+	InsertEvents(ctx context.Context, events []row) error
+	InsertAliases(ctx context.Context, aliases []ch.Alias) error
+	InsertSpans(ctx context.Context, spans []row) error
+	InsertErrors(ctx context.Context, rows []ch.ErrorRow) error
+	InsertLogs(ctx context.Context, logs []row) error
+	InsertMetrics(ctx context.Context, points []row) error
+}
+
+// pipeline writes batches, grouping errors into issues first.
+type pipeline struct {
+	sink      sink
+	issues    processor.IssueRecorder
+	publisher processor.Publisher
+	sym       *symbolicate.Symbolicator
+}
+
+// store writes every non-empty part of the batch. Writes retry until they
+// succeed, so false means ctx ended and the batch must not be committed.
+func (p *pipeline) store(ctx context.Context, b batch) bool {
+	ok := true
+	if len(b.events) > 0 {
+		ok = p.write(ctx, "events", len(b.events), func() error { return p.sink.InsertEvents(ctx, b.events) }) && ok
+		if ok {
+			if aliases := ch.AliasesFromEvents(b.events); len(aliases) > 0 {
+				if err := retry(ctx, func() error { return p.sink.InsertAliases(ctx, aliases) }); err != nil {
+					slog.Error("failed to insert identity links", "count", len(aliases), "err", err)
+				}
+			}
+		}
+	}
+	if len(b.spans) > 0 {
+		ok = p.write(ctx, "spans", len(b.spans), func() error { return p.sink.InsertSpans(ctx, b.spans) }) && ok
+	}
+	if len(b.errs) > 0 {
+		var rows []ch.ErrorRow
+		if err := retry(ctx, func() error {
+			var gerr error
+			rows, gerr = processor.GroupErrorsWith(ctx, b.errs, p.issues, p.publisher, p.sym)
+			return gerr
+		}); err != nil {
+			slog.Error("failed to group errors", "err", err)
+			return false
+		}
+		ok = p.write(ctx, "errors", len(rows), func() error { return p.sink.InsertErrors(ctx, rows) }) && ok
+	}
+	if len(b.logs) > 0 {
+		ok = p.write(ctx, "logs", len(b.logs), func() error { return p.sink.InsertLogs(ctx, b.logs) }) && ok
+	}
+	if len(b.metrics) > 0 {
+		ok = p.write(ctx, "metrics", len(b.metrics), func() error { return p.sink.InsertMetrics(ctx, b.metrics) }) && ok
+	}
+	return ok
+}
+
+// write stores one part and logs the outcome.
+func (p *pipeline) write(ctx context.Context, kind string, n int, fn func() error) bool {
+	if err := write(ctx, kind, n, fn); err != nil {
+		slog.Error("insert failed", "kind", kind, "count", n, "err", err)
+		return false
+	}
+	slog.Info("inserted", "kind", kind, "count", n)
+	return true
+}
+
 // connectIssues retries while Postgres starts up.
-func connectIssues(url string) (*issues.Store, error) {
+func connectIssues(ctx context.Context, url string) (*issues.Store, error) {
 	var lastErr error
 	for i := 0; i < 30; i++ {
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
-		s, err := issues.Connect(ctx, url)
+		c, cancel := context.WithTimeout(ctx, 5*time.Second)
+		s, err := issues.Connect(c, url)
 		cancel()
 		if err == nil {
 			return s, nil
 		}
 		lastErr = err
-		time.Sleep(2 * time.Second)
+		select {
+		case <-ctx.Done():
+			return nil, lastErr
+		case <-time.After(2 * time.Second):
+		}
 	}
 	return nil, lastErr
 }
 
-// retry runs fn until it succeeds or ctx is cancelled, backing off up to 30s.
-// Blocking here keeps offsets uncommitted, so no batch is skipped.
 // write stores one batch with retries and records its metrics.
 func write(ctx context.Context, kind string, n int, fn func() error) error {
 	start := time.Now()
@@ -259,6 +266,8 @@ func write(ctx context.Context, kind string, n int, fn func() error) error {
 	return nil
 }
 
+// retry runs fn until it succeeds or ctx is cancelled, backing off up to 30s.
+// Blocking here keeps offsets uncommitted, so no batch is skipped.
 func retry(ctx context.Context, fn func() error) error {
 	backoff := time.Second
 	for {

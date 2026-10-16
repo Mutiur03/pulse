@@ -6,7 +6,7 @@ package main
 import (
 	"context"
 	"encoding/json"
-	"log"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -16,6 +16,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/redis/go-redis/v9"
+	"github.com/twmb/franz-go/pkg/kgo"
 
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/config"
@@ -38,7 +39,17 @@ func main() {
 	cfg := config.Load()
 	logging.Setup("alerting-worker", cfg.LogLevel)
 	cfg.ServiceName = "alerting-worker"
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, cfg); err != nil {
+		slog.Error("alerting worker stopped", "err", err)
+		os.Exit(1)
+	}
+}
 
+// run wires the alert engine and serves until ctx ends or the health
+// server fails.
+func run(ctx context.Context, cfg *config.Config) error {
 	_, cleanup, err := telemetry.InitTracer(cfg.ServiceName)
 	if err != nil {
 		slog.Error("failed to initialize tracer", "err", err)
@@ -46,49 +57,57 @@ func main() {
 		defer func() { _ = cleanup(context.Background()) }()
 	}
 
-	db, err := pgxpool.New(context.Background(), cfg.PostgresURL)
-	if err != nil {
-		log.Fatalf("Failed to configure Postgres: %v", err)
-	}
-	defer db.Close()
-	chClient, err := ch.Connect(cfg.ClickHouse)
-	if err != nil {
-		log.Fatalf("Failed to create ClickHouse client: %v", err)
-	}
-	defer func() { _ = chClient.Close() }()
-	redisOpts, err := cfg.RedisOptions()
-	if err != nil {
-		log.Fatalf("Invalid REDIS_URL: %v", err)
-	}
-	rdb := redis.NewClient(redisOpts)
-	defer func() { _ = rdb.Close() }()
-
-	appURL := cfg.AppURL
 	// Webhook and Slack deliveries never reach internal addresses unless
 	// allowlisted here (development only).
 	outbound, err := safehttp.ParseAllowlist(cfg.OutboundAllowlist)
 	if err != nil {
-		log.Fatalf("OUTBOUND_ALLOWLIST: %v", err)
+		return fmt.Errorf("OUTBOUND_ALLOWLIST: %w", err)
 	}
+	redisOpts, err := cfg.RedisOptions()
+	if err != nil {
+		return fmt.Errorf("invalid REDIS_URL: %w", err)
+	}
+	db, err := pgxpool.New(ctx, cfg.PostgresURL)
+	if err != nil {
+		return fmt.Errorf("configure Postgres: %w", err)
+	}
+	defer db.Close()
+	chClient, err := ch.Connect(cfg.ClickHouse)
+	if err != nil {
+		return fmt.Errorf("create ClickHouse client: %w", err)
+	}
+	defer func() { _ = chClient.Close() }()
+	rdb := redis.NewClient(redisOpts)
+	defer func() { _ = rdb.Close() }()
+
 	engine := &alerts.Engine{
 		Store:   &alerts.Store{DB: db},
 		Metrics: chClient,
 		Sender: &alerts.Notifier{
 			// Without SMTP_ADDR emails are written to the log.
 			Mail:   mail.New(cfg.SMTP),
-			AppURL: appURL,
+			AppURL: cfg.AppURL,
 			Policy: outbound,
 		},
 		Locks:  alerts.RedisLocker{Client: rdb},
-		AppURL: appURL,
+		AppURL: cfg.AppURL,
 	}
 
 	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, cfg.Kafka, "alerting-worker", []string{processor.TopicIssueEvents})
 	if err != nil {
-		log.Fatalf("Failed to create Kafka consumer: %v", err)
+		return fmt.Errorf("create Kafka consumer: %w", err)
 	}
 	defer consumer.Close()
 
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	go tickLoop(ctx, engine)
+	go consumeIssueEvents(ctx, consumer, engine)
+	return serveHealth(ctx, ":8083")
+}
+
+// serveHealth serves /health and /metrics until ctx ends.
+func serveHealth(ctx context.Context, addr string) error {
 	mux := http.NewServeMux()
 	mux.Handle("/metrics", monitor.Handler())
 	monitor.Service("alerting-worker")
@@ -96,68 +115,82 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "healthy", "service": "alerting-worker"})
 	})
-	server := &http.Server{Addr: ":8083", Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	server := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 10 * time.Second}
+	errc := make(chan error, 1)
 	go func() {
-		slog.Info("alerting worker health endpoint listening", "addr", ":8083")
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
-		}
+		slog.Info("alerting worker health endpoint listening", "addr", addr)
+		errc <- server.ListenAndServe()
 	}()
-
-	ctx, cancel := context.WithCancel(context.Background())
-	defer cancel()
-
-	go func() {
-		t := time.NewTicker(tick)
-		defer t.Stop()
-		for {
-			if _, err := engine.Tick(ctx); err != nil && ctx.Err() == nil {
-				slog.Error("alerts: tick", "err", err)
-			}
-			select {
-			case <-ctx.Done():
-				return
-			case <-t.C:
-			}
-		}
-	}()
-
-	go func() {
-		for ctx.Err() == nil {
-			records, err := consumer.Poll(ctx)
-			if err != nil {
-				if ctx.Err() == nil {
-					slog.Error("alerts: poll", "err", err)
-					time.Sleep(time.Second)
-				}
-				continue
-			}
-			for _, rec := range records {
-				var ev issues.Event
-				if err := json.Unmarshal(rec.Value, &ev); err != nil {
-					slog.Error("alerts: bad issue event", "err", err)
-					continue
-				}
-				if err := engine.HandleIssueEvent(ctx, ev); err != nil {
-					slog.Error("alerts: issue event", "issue_id", ev.IssueID, "err", err)
-				}
-			}
-			if len(records) > 0 {
-				if err := consumer.Commit(ctx); err != nil && ctx.Err() == nil {
-					slog.Error("alerts: commit", "err", err)
-				}
-			}
-		}
-	}()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
+	select {
+	case err := <-errc:
+		return fmt.Errorf("health server: %w", err)
+	case <-ctx.Done():
+	}
 	slog.Info("shutting down")
-	cancel()
 	sctx, scancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer scancel()
 	if err := server.Shutdown(sctx); err != nil {
 		slog.Error("server shutdown error", "err", err)
+	}
+	return nil
+}
+
+// tickLoop runs due alert rules every tick until ctx ends.
+func tickLoop(ctx context.Context, engine *alerts.Engine) {
+	t := time.NewTicker(tick)
+	defer t.Stop()
+	for {
+		if _, err := engine.Tick(ctx); err != nil && ctx.Err() == nil {
+			slog.Error("alerts: tick", "err", err)
+		}
+		select {
+		case <-ctx.Done():
+			return
+		case <-t.C:
+		}
+	}
+}
+
+// issueSource is the part of the Kafka consumer the event loop uses.
+type issueSource interface {
+	Poll(ctx context.Context) ([]*kgo.Record, error)
+	Commit(ctx context.Context) error
+}
+
+// issueHandler reacts to one issue lifecycle event.
+type issueHandler interface {
+	HandleIssueEvent(ctx context.Context, ev issues.Event) error
+}
+
+// consumeIssueEvents feeds issue.events to the engine until ctx ends.
+func consumeIssueEvents(ctx context.Context, src issueSource, h issueHandler) {
+	for ctx.Err() == nil {
+		records, err := src.Poll(ctx)
+		if err != nil {
+			if ctx.Err() == nil {
+				slog.Error("alerts: poll", "err", err)
+				time.Sleep(time.Second)
+			}
+			continue
+		}
+		handleRecords(ctx, records, h)
+		if len(records) > 0 {
+			if err := src.Commit(ctx); err != nil && ctx.Err() == nil {
+				slog.Error("alerts: commit", "err", err)
+			}
+		}
+	}
+}
+
+func handleRecords(ctx context.Context, records []*kgo.Record, h issueHandler) {
+	for _, rec := range records {
+		var ev issues.Event
+		if err := json.Unmarshal(rec.Value, &ev); err != nil {
+			slog.Error("alerts: bad issue event", "err", err)
+			continue
+		}
+		if err := h.HandleIssueEvent(ctx, ev); err != nil {
+			slog.Error("alerts: issue event", "issue_id", ev.IssueID, "err", err)
+		}
 	}
 }

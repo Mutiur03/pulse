@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"log/slog"
 	"net/http"
 	"os"
@@ -43,7 +42,26 @@ func main() {
 	cfg := config.Load()
 	logging.Setup("query-api", cfg.LogLevel)
 	cfg.ServiceName = "query-api"
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+	if err := run(ctx, cfg); err != nil {
+		slog.Error("query API stopped", "err", err)
+		os.Exit(1)
+	}
+}
 
+// deps are the connections the API is built from.
+type deps struct {
+	ch       *ch.Client
+	issues   *issues.Store
+	db       *pgxpool.Pool
+	redis    *redis.Client
+	proxies  *clientip.Resolver
+	outbound *safehttp.Policy
+}
+
+// run connects to every dependency and serves the API until ctx ends.
+func run(ctx context.Context, cfg *config.Config) error {
 	_, cleanup, err := telemetry.InitTracer(cfg.ServiceName)
 	if err != nil {
 		slog.Error("failed to initialize tracer", "err", err)
@@ -51,46 +69,57 @@ func main() {
 		defer func() { _ = cleanup(context.Background()) }()
 	}
 
-	// Cost limits for every read; see docs/load-testing.md.
-	ch.HeavyMaxThreads = config.Int("QUERY_HEAVY_MAX_THREADS", ch.HeavyMaxThreads)
-	chClient, err := ch.Connect(chOptions(cfg))
-	if err != nil {
-		log.Fatalf("Failed to create ClickHouse client: %v", err)
+	var d deps
+	if d.proxies, err = clientip.Parse(config.String("TRUSTED_PROXIES", "")); err != nil {
+		return fmt.Errorf("TRUSTED_PROXIES: %w", err)
 	}
-	defer func() { _ = chClient.Close() }()
-
-	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-	issueStore, err := issues.Connect(ctx, cfg.PostgresURL)
-	cancel()
-	if err != nil {
-		log.Fatalf("Failed to connect to Postgres: %v", err)
+	if d.outbound, err = safehttp.ParseAllowlist(cfg.OutboundAllowlist); err != nil {
+		return fmt.Errorf("OUTBOUND_ALLOWLIST: %w", err)
 	}
-	defer issueStore.Close()
-
-	db, err := pgxpool.New(context.Background(), cfg.PostgresURL)
-	if err != nil {
-		log.Fatalf("Failed to configure Postgres: %v", err)
-	}
-	defer db.Close()
 	redisOpts, err := cfg.RedisOptions()
 	if err != nil {
-		log.Fatalf("Invalid REDIS_URL: %v", err)
+		return fmt.Errorf("invalid REDIS_URL: %w", err)
 	}
-	rdb := redis.NewClient(redisOpts)
-	defer func() { _ = rdb.Close() }()
+
+	// Cost limits for every read; see docs/load-testing.md.
+	ch.HeavyMaxThreads = config.Int("QUERY_HEAVY_MAX_THREADS", ch.HeavyMaxThreads)
+	if d.ch, err = ch.Connect(chOptions(cfg)); err != nil {
+		return fmt.Errorf("create ClickHouse client: %w", err)
+	}
+	defer func() { _ = d.ch.Close() }()
+
+	cctx, cancel := context.WithTimeout(ctx, 30*time.Second)
+	d.issues, err = issues.Connect(cctx, cfg.PostgresURL)
+	cancel()
+	if err != nil {
+		return fmt.Errorf("connect to Postgres: %w", err)
+	}
+	defer d.issues.Close()
+
+	if d.db, err = pgxpool.New(ctx, cfg.PostgresURL); err != nil {
+		return fmt.Errorf("configure Postgres: %w", err)
+	}
+	defer d.db.Close()
+	d.redis = redis.NewClient(redisOpts)
+	defer func() { _ = d.redis.Close() }()
+
+	srv, accounts := newServer(cfg, d)
+	handler := gen.HandlerFromMux(srv, newRouter(cfg, accounts))
+
+	// Metrics are served on their own port, not the public one.
+	monitor.Service("query-api")
+	monitor.Serve(config.String("METRICS_ADDR", ":9102"))
+	return serve(ctx, fmt.Sprintf(":%d", cfg.QueryAPIPort), handler)
+}
+
+// newServer builds the API handlers and stores on top of d.
+func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
+	db, rdb, chClient, issueStore, proxies, outbound := d.db, d.redis, d.ch, d.issues, d.proxies, d.outbound
 	idle := auth.DefaultIdle
 	if h := config.NonNegInt("SESSION_IDLE_HOURS", 0); h > 0 {
 		idle = time.Duration(h) * time.Hour
 	}
 	accounts := &auth.Store{DB: db, Idle: idle}
-	proxies, err := clientip.Parse(config.String("TRUSTED_PROXIES", ""))
-	if err != nil {
-		log.Fatalf("TRUSTED_PROXIES: %v", err)
-	}
-	outbound, err := safehttp.ParseAllowlist(cfg.OutboundAllowlist)
-	if err != nil {
-		log.Fatalf("OUTBOUND_ALLOWLIST: %v", err)
-	}
 	keyStore := &keys.Store{DB: db, Redis: rdb}
 	orgStore := &orgs.Store{DB: db}
 	auditStore := &audit.Store{DB: db}
@@ -153,6 +182,11 @@ func main() {
 	}
 	srv.ReplayRetentionDays = config.Int("REPLAY_RETENTION_DAYS", 0)
 
+	return srv, accounts
+}
+
+// newRouter returns the middleware stack every API request passes through.
+func newRouter(cfg *config.Config, accounts *auth.Store) chi.Router {
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
 	r.Use(monitor.Middleware("query-api", func(r *http.Request) string {
@@ -186,31 +220,29 @@ func main() {
 	}
 	r.Use(limiter.Middleware)
 
-	handler := gen.HandlerFromMux(srv, r)
+	return r
+}
 
-	// Metrics are served on their own port, not the public one.
-	monitor.Service("query-api")
-	monitor.Serve(config.String("METRICS_ADDR", ":9102"))
-	addr := fmt.Sprintf(":%d", cfg.QueryAPIPort)
+// serve runs the HTTP server until ctx ends or it fails.
+func serve(ctx context.Context, addr string, handler http.Handler) error {
 	server := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
-
+	errc := make(chan error, 1)
 	go func() {
 		slog.Info("query API listening", "addr", addr)
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server error: %v", err)
-		}
+		errc <- server.ListenAndServe()
 	}()
-
-	sigChan := make(chan os.Signal, 1)
-	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
-	<-sigChan
-
+	select {
+	case err := <-errc:
+		return fmt.Errorf("server: %w", err)
+	case <-ctx.Done():
+	}
 	slog.Info("shutting down")
-	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
+	sctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
-	if err := server.Shutdown(ctx); err != nil {
+	if err := server.Shutdown(sctx); err != nil {
 		slog.Error("server shutdown error", "err", err)
 	}
+	return nil
 }
 
 // chOptions adds the per-query cost limits; see docs/load-testing.md.

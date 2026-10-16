@@ -83,7 +83,7 @@ jobs:
           "$(go env GOPATH)/bin/gocyclo" -over 20 $files || true
           # Fail only when a function goes past the ceiling. Lower it as
           # hotspots are split.
-          "$(go env GOPATH)/bin/gocyclo" -over 40 $files
+          "$(go env GOPATH)/bin/gocyclo" -over 25 $files
 
   security-audit:
     name: Dependency Audit
