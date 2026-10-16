@@ -23,8 +23,21 @@ jobs:
           --health-interval 5s
           --health-timeout 5s
           --health-retries 10
+      clickhouse:
+        image: clickhouse/clickhouse-server:24.10
+        env:
+          CLICKHOUSE_USER: default
+          CLICKHOUSE_PASSWORD: ""
+        ports:
+          - 9000:9000
+        options: >-
+          --health-cmd "clickhouse-client --query 'SELECT 1'"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 24
     env:
       PULSE_TEST_POSTGRES: postgres://test:test@localhost:5432/postgres?sslmode=disable
+      PULSE_TEST_CLICKHOUSE: localhost:9000
     steps:
       - uses: actions/checkout@v4
 
@@ -37,6 +50,12 @@ jobs:
       - name: Download dependencies
         working-directory: go
         run: go mod download
+
+      - name: Apply the ClickHouse schema
+        run: |
+          for f in $(ls schemas/clickhouse/*.sql | sort); do
+            docker exec -i ${{ job.services.clickhouse.id }} clickhouse-client --multiquery < "$f"
+          done
 
       - name: Run tests
         working-directory: go

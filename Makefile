@@ -5,7 +5,7 @@ OAPI_CODEGEN ?= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@
 help: ## Show this help
 	@grep -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | sort | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-20s\033[0m %s\n", $$1, $$2}'
 
-generate: ## Generate all code (OpenAPI, sqlc, buf)
+generate: ## Generate all code (OpenAPI Go servers and TS client)
 	@echo "==> Generating OpenAPI Go server code..."
 	cd schemas/openapi && for c in oapi-codegen.yaml $$(ls modules/*.yaml 2>/dev/null); do $(OAPI_CODEGEN) -config $$c api.yaml || exit 1; done
 	@echo "==> Generating TypeScript client..."

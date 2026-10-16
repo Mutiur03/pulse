@@ -309,7 +309,7 @@ init({
 | `raw.logs`, `raw.metrics` | ingest-gateway | stream-processor | `project_id` | |
 | `raw.errors` | ingest-gateway | stream-processor | `project_id` | Symbolicate → group |
 | `raw.replay` | ingest-gateway | stream-processor | `session_id` | Chunk → S3, index → ClickHouse |
-| `issue.events` | stream-processor, query-api | alerting-worker, ai-worker | `issue_id` | new / regressed / resolved |
+| `issue.events` | stream-processor (from the issue outbox) | alerting-worker, the analysis worker | `issue_id` | new / regressed / resolved |
 | `ai.jobs` / `ai.results` | query-api / ai-worker | ai-worker / query-api | `job_id` | |
 | `dlq.*` | all | ops tooling | — | Poison messages, replayable |
 
@@ -600,42 +600,44 @@ Plans adjust the TTLs per project (per-project TTL columns or a separate table s
 ├─ go/                     # ONE Go module: github.com/Mutiur03/pulse
 │  ├─ go.mod
 │  ├─ cmd/
-│  │  ├─ ingest-gateway/   # OTel Collector distro (ocb builder-config + generated main)
+│  │  ├─ ingest-gateway/   # OTLP/HTTP, OTLP/gRPC and SDK envelope intake → Kafka
 │  │  ├─ stream-processor/ # enrich, identity, tail-sample, group, symbolicate, sessionize
 │  │  ├─ query-api/        # composition root: wires and mounts the modules
-│  │  ├─ alerting-worker/  # asynq scheduler + workers, franz-go consumer, notifiers
+│  │  ├─ alerting-worker/  # rule ticker, franz-go consumer, notifiers
+│  │  ├─ governance-worker/ # retention and deletion requests
+│  │  ├─ pulse-cli/        # source-map inject and upload
 │  │  └─ platform/         # combined binary for small self-host (`platform all`)
 │  └─ internal/
-│     ├─ collector/        # custom OTel receivers/processors (auth, quota, scrub)
-│     ├─ pipeline/         # stream-processor stages
+│     ├─ ingest/           # gateway handlers: auth, quota, scrubbing, OTLP decoding
+│     ├─ processor/        # stream-processor stages
 │     ├─ insights/         # InsightQuery → ClickHouse SQL (query-api + alerting-worker)
 │     ├─ api/gen/          # shared OpenAPI models (generated)
 │     ├─ modules/          # query-api modules: domain, service, ports, adapters, module.go
-│     ├─ store/pg/         # sqlc + pgx (generated queries)
 │     ├─ store/ch/         # clickhouse-go wrappers, batch writer
 │     ├─ kafka/            # franz-go producer/consumer helpers
-│     ├─ auth/ rbac/ tenancy/ redis/ config/ telemetry/
-│     └─ proto/            # buf-generated Go types
+│     ├─ archtest/         # import boundary checks for the modules
+│     └─ auth/ orgs/ audit/ alerts/ governance/ config/ telemetry/ …
 ├─ workers/ai-worker/      # Python (uv, FastAPI health + Kafka consumer)
 ├─ apps/web/               # Next.js / React (replay player, insights, trace explorer)
 ├─ packages/               # TypeScript only (pnpm + Turborepo)
 │  ├─ sdk-browser/         # @pulse/browser – SDK on OTel web + rrweb
 │  ├─ api-client/          # @pulse/api-client – generated from schemas/openapi (openapi-typescript + openapi-fetch)
-│  ├─ ui/                  # shared React components
-│  ├─ config/              # shared tsconfig, eslint, prettier presets
-│  └─ otel-distros/        # Node/Python/Java OTel presets (Go preset lives in go/internal/telemetry)
+│  └─ vite-plugin/         # @pulse/vite-plugin – source-map upload at build time
 ├─ schemas/
 │  ├─ openapi/             # OpenAPI 3.1 spec – source of truth for query-api + TS client
-│  ├─ postgres/            # SQL migrations (golang-migrate) + sqlc queries
-│  ├─ clickhouse/          # ClickHouse DDL migrations
-│  └─ proto/               # buf – Kafka message schemas (Go + Python)
+│  ├─ postgres/            # SQL migrations
+│  └─ clickhouse/          # ClickHouse DDL migrations
 ├─ deploy/
 │  ├─ compose/             # docker-compose.yml for self-host
-│  └─ helm/                # umbrella chart + per-service subcharts
-└─ tools/                  # CLI (source-map upload, releases), load generators
+│  ├─ helm/                # one chart for all services
+│  ├─ migrate/             # migration runner image
+│  ├─ monitoring/ staging/ terraform/
+├─ examples/               # browser and Go demo apps
+├─ load/                   # k6 load tests
+└─ tools/                  # smoke tests, backup scripts
 ```
 
-Tooling: the **Go module** in `go/` covers all backend services, with `golangci-lint` and `go test ./...`. A single `make generate` runs oapi-codegen, sqlc and buf. **pnpm workspaces + Turborepo** cover only `apps/web` and `packages/*`, with `@pulse/api-client` regenerated from the spec as a Turborepo task the web build depends on. uv covers Python. A single CI pipeline uses path filters (a change under `schemas/openapi/` triggers both the Go and web jobs), checks that generated code is up to date, and produces one image per service from the same Go module (multi-stage `CGO_ENABLED=0` builds on distroless), with a shared version tag.
+Tooling: the **Go module** in `go/` covers all backend services, with `golangci-lint` and `go test ./...`. A single `make generate` runs oapi-codegen and the TypeScript client generator. **pnpm workspaces + Turborepo** cover only `apps/web` and `packages/*`, with `@pulse/api-client` regenerated from the spec as a Turborepo task the web build depends on. uv covers Python. A single CI pipeline uses path filters (a change under `schemas/openapi/` triggers both the Go and web jobs), checks that generated code is up to date, and produces one image per service from the same Go module (multi-stage `CGO_ENABLED=0` builds on distroless), with a shared version tag.
 
 ## 20. Deployment
 
