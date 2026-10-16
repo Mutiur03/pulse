@@ -4,13 +4,13 @@ import { Logo } from '@/components/nav';
 /** The page frame of the signed-out pages: the mark, a title and a card. */
 export function AuthFrame({ children }: { children: React.ReactNode }) {
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center px-4 py-10">
+    <div className="soft-page soft-auth flex min-h-screen flex-col items-center justify-center px-4 py-10">
       <div className="mb-6 flex items-center gap-2">
         <Logo size={28} />
         <span className="text-[15px] font-semibold tracking-tight">Pulse</span>
       </div>
       {children}
-      <p className="mt-6 text-center text-[11px] text-subtle">Product analytics, traces, logs and errors in one place.</p>
+      <p className="mt-6 text-center text-[11px] text-muted">Product analytics, traces, logs and errors in one place.</p>
     </div>
   );
 }

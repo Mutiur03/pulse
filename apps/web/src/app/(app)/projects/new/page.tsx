@@ -30,7 +30,7 @@ export default function NewProjectPage() {
   };
 
   return (
-    <>
+    <div className="soft-auth">
       <PageHeader
         title="New project"
         description={`A project holds one app's traces, errors and events, with its own ingest keys.${org ? ` It is created in ${org.name}.` : ''}`}
@@ -47,6 +47,6 @@ export default function NewProjectPage() {
           </Button>
         </form>
       </Card>
-    </>
+    </div>
   );
 }

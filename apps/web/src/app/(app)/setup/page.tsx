@@ -23,5 +23,9 @@ export default function SetupPage() {
         Every key of {project.name} is revoked. Add one in Settings.
       </Empty>
     );
-  return <SetupSteps name={project.name} project={project.id} apiKey={key} />;
+  return (
+    <div className="soft-auth">
+      <SetupSteps name={project.name} project={project.id} apiKey={key} />
+    </div>
+  );
 }

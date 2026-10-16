@@ -11,6 +11,9 @@
   :root,
   .light {
     color-scheme: light;
+    --shadow-hi: 255 255 255;
+    --shadow-lo: 166 174 190;
+    --soft-bg: 236 238 243;
     --bg: 250 250 251;
     --surface: 255 255 255;
     --surface-2: 244 244 246;
@@ -48,6 +51,9 @@
 
   .dark {
     color-scheme: dark;
+    --shadow-hi: 40 41 48;
+    --shadow-lo: 3 3 5;
+    --soft-bg: 20 20 24;
     --bg: 10 10 12;
     --surface: 17 17 20;
     --surface-2: 24 24 28;
@@ -86,6 +92,9 @@
   @media (prefers-color-scheme: dark) {
     .system {
       color-scheme: dark;
+      --shadow-hi: 40 41 48;
+      --shadow-lo: 3 3 5;
+      --soft-bg: 20 20 24;
       --bg: 10 10 12;
       --surface: 17 17 20;
       --surface-2: 24 24 28;
@@ -143,4 +152,30 @@
 /* Data tables keep their columns on small screens and scroll sideways. */
 @media (max-width: 767px) {
   .overflow-x-auto > table { min-width: 42rem; }
+}
+
+/*
+ * Soft UI, used only on the signed-out pages and project setup. Paired light
+ * and dark shadows raise cards and buttons and sink fields; faint borders keep
+ * every edge visible, and focus rings (utilities) still win on focus.
+ */
+@layer components {
+  .soft-page { --bg: var(--soft-bg); --surface: var(--soft-bg); background: rgb(var(--soft-bg)); }
+  .soft-auth .rounded-lg.border.bg-surface {
+    border-color: rgb(var(--border-strong) / 0.45);
+    box-shadow: -6px -6px 14px rgb(var(--shadow-hi) / 0.85), 6px 6px 16px rgb(var(--shadow-lo) / 0.55);
+  }
+  .soft-auth input:not([type='checkbox']):not([type='radio']),
+  .soft-auth select,
+  .soft-auth textarea {
+    border-color: rgb(var(--border-strong) / 0.6);
+    box-shadow: inset 2px 2px 4px rgb(var(--shadow-lo) / 0.45), inset -2px -2px 4px rgb(var(--shadow-hi) / 0.8);
+  }
+  .soft-auth button:not(:disabled) {
+    box-shadow: -2px -2px 5px rgb(var(--shadow-hi) / 0.85), 2px 2px 5px rgb(var(--shadow-lo) / 0.55);
+  }
+  .soft-auth [role='tab']:not([aria-selected='true']) { box-shadow: none; }
+  .soft-auth button:not(:disabled):active {
+    box-shadow: inset 2px 2px 4px rgb(var(--shadow-lo) / 0.5), inset -2px -2px 4px rgb(var(--shadow-hi) / 0.7);
+  }
 }
