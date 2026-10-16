@@ -12,7 +12,6 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
-	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/orgs"
 )
 
@@ -40,14 +39,6 @@ type SessionRevoker interface {
 // RoleStore changes organization roles.
 type RoleStore interface {
 	SetRole(ctx context.Context, org, user int64, role string) error
-}
-
-// AuditReader lists an organization's audit log.
-// OriginStore reads and replaces a project's allowed browser origins and
-// drops its keys from the ingest cache so changes apply at once.
-type OriginStore interface {
-	AllowedOrigins(ctx context.Context, project int64) ([]string, error)
-	SetAllowedOrigins(ctx context.Context, project int64, origins []string) ([]string, error)
 }
 
 // ip is the client address, trusting X-Forwarded-For only from configured
@@ -138,48 +129,4 @@ func (s *Server) SetMemberRole(w http.ResponseWriter, r *http.Request, org gen.O
 			Details: map[string]any{"role": string(body.Role)}})
 		w.WriteHeader(http.StatusNoContent)
 	}
-}
-
-func (s *Server) GetAllowedOrigins(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath) {
-	if !canRead(r, projectID) {
-		writeErr(w, http.StatusNotFound, "project not found")
-		return
-	}
-	if s.Origins == nil {
-		writeJSON(w, http.StatusOK, gen.AllowedOrigins{Origins: []string{}})
-		return
-	}
-	list, err := s.Origins.AllowedOrigins(r.Context(), projectID)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, gen.AllowedOrigins{Origins: list})
-}
-
-func (s *Server) SetAllowedOrigins(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath) {
-	if !owns(w, r, projectID) {
-		return
-	}
-	var body gen.AllowedOrigins
-	if !decode(w, r, &body) {
-		return
-	}
-	clean, err := keys.CleanOrigins(body.Origins)
-	if err != nil {
-		writeErr(w, http.StatusBadRequest, err.Error())
-		return
-	}
-	if s.Origins == nil {
-		writeErr(w, http.StatusServiceUnavailable, "origins are not configured")
-		return
-	}
-	saved, err := s.Origins.SetAllowedOrigins(r.Context(), projectID, clean)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.ProjectUpdate, Target: "allowed origins",
-		Details: map[string]any{"origins": saved}})
-	writeJSON(w, http.StatusOK, gen.AllowedOrigins{Origins: saved})
 }

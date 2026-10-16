@@ -192,16 +192,10 @@ func TestRedactURLAndHeaders(t *testing.T) {
 	}
 }
 
-func TestAuditAndOriginsRBAC(t *testing.T) {
+func TestRoleRBAC(t *testing.T) {
 	s := &Server{}
 	owner := &auth.Principal{Orgs: []auth.Org{{ID: 1, Role: "owner"}}, Projects: []auth.Project{{ID: 1, Role: "owner", OrgID: 1}}}
 	member := &auth.Principal{Orgs: []auth.Org{{ID: 1, Role: "member"}}, Projects: []auth.Project{{ID: 1, Role: "member", OrgID: 1}}}
-	if rec := call(t, s, member, "POST", "/v1/projects/1/allowed-origins", `{"origins":["https://a.example"]}`); rec.Code != 403 {
-		t.Fatalf("member sets origins: %d", rec.Code)
-	}
-	if rec := call(t, s, owner, "POST", "/v1/projects/1/allowed-origins", `{"origins":["not an origin"]}`); rec.Code != 400 {
-		t.Fatalf("bad origin: %d", rec.Code)
-	}
 	if rec := call(t, s, member, "POST", "/v1/orgs/1/members/2/role", `{"role":"owner"}`); rec.Code != 403 {
 		t.Fatalf("member changes role: %d", rec.Code)
 	}

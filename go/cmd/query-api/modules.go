@@ -5,13 +5,16 @@ import (
 	"github.com/Mutiur03/pulse/internal/api"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/governance"
+	"github.com/Mutiur03/pulse/internal/keys"
 	alertsmod "github.com/Mutiur03/pulse/internal/modules/alerts"
 	"github.com/Mutiur03/pulse/internal/modules/analytics"
 	"github.com/Mutiur03/pulse/internal/modules/dashboards"
 	governancemod "github.com/Mutiur03/pulse/internal/modules/governance"
 	"github.com/Mutiur03/pulse/internal/modules/issues"
+	projectsmod "github.com/Mutiur03/pulse/internal/modules/projects"
 	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/Mutiur03/pulse/internal/modules/telemetry"
+	"github.com/Mutiur03/pulse/internal/projects"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/Mutiur03/pulse/internal/config"
@@ -48,6 +51,11 @@ func mountModules(r chi.Router, cfg *config.Config, d deps, srv *api.Server) {
 	}).Register(r)
 	governancemod.New(governancemod.Deps{
 		Store: &governance.Store{DB: d.db}, Persons: d.ch, AuditLog: &audit.Store{DB: d.db},
+		Audit: srv.Audit, ClientIP: d.proxies,
+	}).Register(r)
+	keyStore := &keys.Store{DB: d.db, Redis: d.redis}
+	projectsmod.New(projectsmod.Deps{
+		Projects: &projects.Store{DB: d.db}, Keys: keyStore, Origins: &projects.Origins{DB: d.db, Keys: keyStore},
 		Audit: srv.Audit, ClientIP: d.proxies,
 	}).Register(r)
 	issues.New(issues.Deps{Repository: d.issues, Occurrences: d.ch, Symbolicator: d.sym}).Register(r)

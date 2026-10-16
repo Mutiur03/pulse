@@ -9,7 +9,6 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
-	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/orgs"
 )
 
@@ -19,7 +18,7 @@ func meOf(p *auth.Principal) gen.Me {
 		Projects: []gen.Project{}, Orgs: []gen.Org{},
 	}
 	for _, pr := range p.Projects {
-		out.Projects = append(out.Projects, project2gen(pr))
+		out.Projects = append(out.Projects, gen.Project{Id: pr.ID, Name: pr.Name, Role: gen.ProjectRole(pr.Role), OrgId: pr.OrgID})
 	}
 	for _, o := range p.Orgs {
 		out.Orgs = append(out.Orgs, gen.Org{Id: o.ID, Name: o.Name, Role: gen.OrgRole(o.Role)})
@@ -152,104 +151,4 @@ func (s *Server) GetMe(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	writeJSON(w, http.StatusOK, meOf(p))
-}
-
-func apiKey(k keys.APIKey) gen.ApiKey {
-	return gen.ApiKey{Id: k.ID, ProjectId: k.ProjectID, PublicKey: k.PublicKey, RateLimitPerSec: k.RateLimitPerSec,
-		CreatedAt: k.CreatedAt, RevokedAt: k.RevokedAt}
-}
-
-func (s *Server) ListKeys(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath) {
-	if !canRead(r, projectID) {
-		writeErr(w, http.StatusNotFound, "project not found")
-		return
-	}
-	list, err := s.Keys.List(r.Context(), projectID)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	out := make([]gen.ApiKey, 0, len(list))
-	for _, k := range list {
-		out = append(out, apiKey(k))
-	}
-	writeJSON(w, http.StatusOK, out)
-}
-
-func (s *Server) RotateKey(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath) {
-	if !owns(w, r, projectID) {
-		return
-	}
-	k, revoked, err := s.Keys.Rotate(r.Context(), projectID)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.KeyRotate, Target: keyLabel(k.PublicKey),
-		Details: map[string]any{"revoked": len(revoked)}})
-	for _, old := range revoked {
-		if err := s.Keys.Purge(r.Context(), old); err != nil {
-			// The cache entry still expires within keys.PositiveTTL.
-			internal(w, err)
-			return
-		}
-	}
-	writeJSON(w, http.StatusCreated, apiKey(k))
-}
-
-// owns writes 404 if the user is not a member and 403 if not an owner.
-func owns(w http.ResponseWriter, r *http.Request, projectID int64) bool {
-	p := auth.FromContext(r.Context())
-	if p == nil || !p.Can(projectID) {
-		writeErr(w, http.StatusNotFound, "project not found")
-		return false
-	}
-	for _, pr := range p.Projects {
-		if pr.ID == projectID && pr.Role != "owner" {
-			writeErr(w, http.StatusForbidden, "only project owners can do this")
-			return false
-		}
-	}
-	return true
-}
-
-func (s *Server) CreateKey(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath) {
-	if !owns(w, r, projectID) {
-		return
-	}
-	k, err := s.Keys.Create(r.Context(), projectID)
-	if err != nil {
-		internal(w, err)
-		return
-	}
-	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.KeyCreate, Target: keyLabel(k.PublicKey)})
-	writeJSON(w, http.StatusCreated, apiKey(k))
-}
-
-func (s *Server) RevokeKey(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath, keyID int64) {
-	if !owns(w, r, projectID) {
-		return
-	}
-	k, err := s.Keys.Revoke(r.Context(), projectID, keyID)
-	if errors.Is(err, keys.ErrKeyNotFound) {
-		writeErr(w, http.StatusNotFound, "key not found")
-		return
-	} else if err != nil {
-		internal(w, err)
-		return
-	}
-	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.KeyRevoke, Target: keyLabel(k.PublicKey)})
-	if err := s.Keys.Purge(r.Context(), k.PublicKey); err != nil {
-		internal(w, err)
-		return
-	}
-	writeJSON(w, http.StatusOK, apiKey(k))
-}
-
-// keyLabel shortens a public key for the audit log.
-func keyLabel(k string) string {
-	if len(k) > 12 {
-		return k[:12] + "..."
-	}
-	return k
 }

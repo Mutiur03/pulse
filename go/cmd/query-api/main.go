@@ -16,14 +16,12 @@ import (
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/config"
-	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/mail"
 	"github.com/Mutiur03/pulse/internal/modules/issues"
 	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/orgs"
-	"github.com/Mutiur03/pulse/internal/projects"
 	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/safehttp"
 	"github.com/Mutiur03/pulse/internal/store/ch"
@@ -129,7 +127,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		idle = time.Duration(h) * time.Hour
 	}
 	accounts := &auth.Store{DB: db, Idle: idle}
-	keyStore := &keys.Store{DB: db, Redis: rdb}
 	orgStore := &orgs.Store{DB: db}
 	auditStore := &audit.Store{DB: db}
 	limit := func(prefix, env string, def int, window time.Duration) *auth.Throttle {
@@ -137,8 +134,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 	}
 	srv := &api.Server{
 		Accounts: accounts,
-		Keys:     keyStore,
-		Projects: &projects.Store{DB: db},
 		Limits: api.AuthLimits{
 			// Five failed logins per email and address lock it for 15 minutes,
 			// twenty from any addresses lock the email.
@@ -154,7 +149,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		ClientIP: proxies,
 		Sessions: accounts,
 		Roles:    orgStore,
-		Origins:  &projects.Origins{DB: db, Keys: keyStore},
 		Audit:    auditStore,
 		Orgs:     orgStore,
 		// Without SMTP_ADDR emails are written to the log.

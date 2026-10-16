@@ -10,8 +10,6 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/legacy"
 
 	"github.com/Mutiur03/pulse/internal/auth"
-	"github.com/Mutiur03/pulse/internal/keys"
-	"github.com/Mutiur03/pulse/internal/projects"
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-chi/chi/v5"
 	"github.com/redis/go-redis/v9"
@@ -161,74 +159,5 @@ func TestLoginThrottleRedisDown(t *testing.T) {
 	post(s, "/v1/auth/login", `{"email":"a@example.com","password":"x"}`, "1.1.1.1")
 	if rec := post(s, "/v1/auth/login", `{"email":"a@example.com","password":"right password"}`, "1.1.1.1"); rec.Code != 200 {
 		t.Errorf("must fail open: %d", rec.Code)
-	}
-}
-
-type fakeProjects struct {
-	created []string
-	renamed map[int64]string
-}
-
-func (f *fakeProjects) List(context.Context, int64) ([]auth.Project, error) {
-	return []auth.Project{{ID: 1, Name: "One", Role: "owner"}}, nil
-}
-
-func (f *fakeProjects) Create(_ context.Context, _, _ int64, name string) (auth.Project, keys.APIKey, error) {
-	f.created = append(f.created, name)
-	return auth.Project{ID: 5, Name: name, Role: "owner"}, keys.APIKey{ID: 1, ProjectID: 5, PublicKey: "pk_first"}, nil
-}
-
-func (f *fakeProjects) Rename(_ context.Context, id int64, name string) (string, error) {
-	f.renamed[id] = name
-	return name, nil
-}
-
-func TestProjectsAndKeys(t *testing.T) {
-	fp := &fakeProjects{renamed: map[int64]string{}}
-	fk := &fakeKeys{}
-	s := &Server{Projects: fp, Keys: fk}
-	me := &auth.Principal{User: auth.User{ID: 1}, Projects: []auth.Project{{ID: 1, Role: "owner"}, {ID: 2, Role: "member"}}}
-	cases := []struct {
-		method, path, body string
-		want               int
-		contains           string
-	}{
-		{"GET", "/v1/projects", "", 200, `"name":"One"`},
-		{"POST", "/v1/projects", `{"name":"  Shop  "}`, 201, `"public_key":"pk_first"`},
-		{"POST", "/v1/projects", `{"name":""}`, 400, ""},
-		{"POST", "/v1/projects", `{"name":"` + strings.Repeat("x", 81) + `"}`, 400, ""},
-		{"PATCH", "/v1/projects/1", `{"name":"Renamed"}`, 200, `"name":"Renamed"`},
-		{"PATCH", "/v1/projects/2", `{"name":"Nope"}`, 403, ""},
-		{"PATCH", "/v1/projects/3", `{"name":"Nope"}`, 404, ""},
-		{"POST", "/v1/projects/1/keys", "", 201, "pk_added"},
-		{"POST", "/v1/projects/2/keys", "", 403, ""},
-		{"POST", "/v1/projects/3/keys", "", 404, ""},
-		{"POST", "/v1/projects/1/keys/7/revoke", "", 200, "pk_revoked"},
-		{"POST", "/v1/projects/1/keys/8/revoke", "", 404, ""},
-		{"POST", "/v1/projects/2/keys/7/revoke", "", 403, ""},
-	}
-	for _, c := range cases {
-		rec := call(t, s, me, c.method, c.path, c.body)
-		if rec.Code != c.want || !strings.Contains(rec.Body.String(), c.contains) {
-			t.Errorf("%s %s: got %d %s, want %d containing %q", c.method, c.path, rec.Code, rec.Body, c.want, c.contains)
-		}
-	}
-	if len(fp.created) != 1 || fp.created[0] != "Shop" {
-		t.Errorf("created: %v", fp.created)
-	}
-	if fp.renamed[2] != "" || fp.renamed[1] != "Renamed" {
-		t.Errorf("renamed: %v", fp.renamed)
-	}
-	if len(fk.purged) != 1 || fk.purged[0] != "pk_revoked" {
-		t.Errorf("revoked key must be purged: %v", fk.purged)
-	}
-	if rec := call(t, s, nil, "POST", "/v1/projects", `{"name":"x"}`); rec.Code != 401 {
-		t.Errorf("anonymous create: %d", rec.Code)
-	}
-}
-
-func TestCleanName(t *testing.T) {
-	if n, err := projects.CleanName("  a b "); err != nil || n != "a b" {
-		t.Errorf("%q %v", n, err)
 	}
 }

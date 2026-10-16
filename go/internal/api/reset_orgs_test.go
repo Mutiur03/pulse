@@ -189,10 +189,7 @@ func TestOrgMembersAndInvites(t *testing.T) {
 		{"POST", "/v1/orgs/8/invites", `{"email":"y@example.com","role":"member"}`, 403},
 		{"POST", "/v1/orgs/7/invites/3/revoke", "", 204},
 		{"POST", "/v1/orgs/7/invites/4/revoke", "", 404},
-		{"POST", "/v1/projects", `{"name":"P","org_id":8}`, 403},
-		{"POST", "/v1/projects", `{"name":"P","org_id":9}`, 404},
 	}
-	s.Projects = &fakeProjects{renamed: map[int64]string{}}
 	for _, c := range cases {
 		if rec := call(t, s, owner, c.method, c.path, c.body); rec.Code != c.want {
 			t.Errorf("%s %s: %d want %d (%s)", c.method, c.path, rec.Code, c.want, rec.Body)
