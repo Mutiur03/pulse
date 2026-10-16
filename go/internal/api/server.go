@@ -15,6 +15,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/clientip"
+	"github.com/Mutiur03/pulse/internal/httpx"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/mail"
@@ -153,15 +154,9 @@ func (s *Server) now() time.Time {
 
 var _ gen.ServerInterface = (*Server)(nil)
 
-func writeJSON(w http.ResponseWriter, code int, v interface{}) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_ = json.NewEncoder(w).Encode(v)
-}
+func writeJSON(w http.ResponseWriter, code int, v interface{}) { httpx.WriteJSON(w, code, v) }
 
-func writeErr(w http.ResponseWriter, code int, msg string) {
-	writeJSON(w, code, gen.Error{Error: msg})
-}
+func writeErr(w http.ResponseWriter, code int, msg string) { httpx.WriteError(w, code, msg) }
 
 // Messages for queries stopped by a cost limit; the web app shows them.
 const (

@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mutiur03/pulse/internal/httpx"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -368,11 +369,7 @@ func Middleware(store SessionStore, csrf CSRF) func(http.Handler) http.Handler {
 	}
 }
 
-func writeErr(w http.ResponseWriter, code int, msg string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(code)
-	_, _ = w.Write([]byte(`{"error":"` + msg + `"}`))
-}
+func writeErr(w http.ResponseWriter, code int, msg string) { httpx.WriteError(w, code, msg) }
 
 // SetCookie writes the session cookie. secure should be true behind HTTPS.
 func SetCookie(w http.ResponseWriter, token string, secure bool) {
