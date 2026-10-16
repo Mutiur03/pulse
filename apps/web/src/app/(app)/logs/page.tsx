@@ -1,17 +1,15 @@
 'use client';
 import Link from 'next/link';
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useState } from 'react';
 import type { LogRecord, LogStats } from '@pulse/api-client';
 import { api } from '@/lib/api';
 import { fromRange, time } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
+import { useLogStream } from '@/lib/use-log-stream';
 import { levelColor, levelOrder, levelTone, withTerm } from '@/lib/logs';
 import { Badge, Button, Card, CardHeader, Empty, ErrorNote, Input, PageHeader, Spinner, Toolbar } from '@/components/ui';
 import { TimeRange } from '@/components/time-range';
 
-const pageSize = 100;
-const tailEvery = 2000;
-const tailMax = 1000;
 
 function Histogram({ stats }: { stats: LogStats }) {
   const max = Math.max(1, ...stats.buckets.map((b) => Object.values(b.counts).reduce((a, c) => a + c, 0)));
@@ -147,68 +145,10 @@ export default function LogsPage() {
   const q = p.q ?? '';
   const [draft, setDraft] = useState<string>();
   const [live, setLive] = useState(false);
-  const [logs, setLogs] = useState<LogRecord[]>([]);
-  const [next, setNext] = useState<string>();
-  const [query, setQuery] = useState('');
-  const [error, setError] = useState<string>();
-  const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState<string>();
-  const seq = useRef(0);
   const stats = useAsync(() => api.logStats({ q: q || undefined, from: fromRange(range) }), [q, range, live]);
+  const { logs, next, query, error, loading, older } = useLogStream(q, range, live);
 
-  // First page of a search.
-  useEffect(() => {
-    const id = ++seq.current;
-    setLoading(true);
-    setError(undefined);
-    api.searchLogs({ q: q || undefined, from: fromRange(range), limit: pageSize }).then(
-      (r) => {
-        if (id !== seq.current) return;
-        setLogs(r.logs);
-        setNext(r.next_before ?? undefined);
-        setQuery(r.query);
-        setLoading(false);
-      },
-      (e: unknown) => {
-        if (id !== seq.current) return;
-        setError(e instanceof Error ? e.message : String(e));
-        setLogs([]);
-        setNext(undefined);
-        setLoading(false);
-      },
-    );
-  }, [q, range]);
-
-  // Live tail: poll for logs newer than the newest one shown.
-  const newest = useRef<string | undefined>(undefined);
-  newest.current = logs[0]?.timestamp;
-  useEffect(() => {
-    if (!live) return;
-    let stop = false;
-    const tick = async () => {
-      const id = seq.current;
-      try {
-        const r = await api.searchLogs({ q: q || undefined, from: fromRange(range), after: newest.current, limit: 500 });
-        if (!stop && id === seq.current && r.logs.length) setLogs((old) => [...r.logs, ...old].slice(0, tailMax));
-      } catch {
-        // Keep tailing; the next poll retries.
-      }
-    };
-    const t = setInterval(tick, tailEvery);
-    return () => {
-      stop = true;
-      clearInterval(t);
-    };
-  }, [live, q, range]);
-
-  const older = async () => {
-    if (!next) return;
-    const id = seq.current;
-    const r = await api.searchLogs({ q: q || undefined, from: fromRange(range), before: next, limit: pageSize });
-    if (id !== seq.current) return;
-    setLogs((old) => [...old, ...r.logs]);
-    setNext(r.next_before ?? undefined);
-  };
   const search = (s: string) => {
     setDraft(undefined);
     setP({ q: s.trim() });
