@@ -3,7 +3,7 @@ package ingest
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 
@@ -85,7 +85,7 @@ func (h *handler) authorize(ctx context.Context, req interface{}, info *grpc.Una
 		monitor.IngestRejected.WithLabelValues("invalid_key").Inc()
 		return nil, status.Error(codes.Unauthenticated, "invalid ingest key")
 	} else if err != nil {
-		log.Printf("key lookup failed: %v", err)
+		slog.Error("key lookup failed", "err", err)
 		return nil, status.Error(codes.Unavailable, "key lookup unavailable")
 	}
 	if ok, retry := h.auth.Allow(ctx, key); !ok {

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"strings"
 	"time"
@@ -167,15 +167,15 @@ const (
 func internal(w http.ResponseWriter, err error) {
 	switch ch.LimitError(err) {
 	case ch.ErrQueryTimeout:
-		log.Printf("query api: query stopped by time limit: %v", err)
+		slog.Error("query api: query stopped by time limit", "err", err)
 		writeErr(w, http.StatusGatewayTimeout, msgQueryTimeout)
 		return
 	case ch.ErrQueryTooLarge:
-		log.Printf("query api: query stopped by size limit: %v", err)
+		slog.Error("query api: query stopped by size limit", "err", err)
 		writeErr(w, http.StatusUnprocessableEntity, msgQueryTooLarge)
 		return
 	}
-	log.Printf("query api error: %v", err)
+	slog.Error("query api error", "err", err)
 	writeErr(w, http.StatusInternalServerError, "internal error")
 }
 

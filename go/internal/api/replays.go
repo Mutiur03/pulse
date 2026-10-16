@@ -7,7 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"regexp"
 
@@ -161,7 +161,7 @@ func (s *Server) GetReplayEvents(w http.ResponseWriter, r *http.Request, session
 	for _, c := range chunks {
 		events, err := s.readChunk(r.Context(), c.Key)
 		if err != nil {
-			log.Printf("replay chunk %s: %v", c.Key, err)
+			slog.Error("replay chunk", "key", c.Key, "err", err)
 			continue
 		}
 		for _, e := range events {

@@ -5,7 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 
 	"github.com/Mutiur03/pulse/internal/grouping"
 	"github.com/Mutiur03/pulse/internal/issues"
@@ -104,7 +104,7 @@ func GroupErrorsWith(ctx context.Context, raw []map[string]interface{}, rec Issu
 			})
 			if err := pub.Produce(ctx, TopicIssueEvents, []byte(fmt.Sprint(iss.ID)), ev); err != nil {
 				// The issue itself is stored; a lost notification should not block ingestion.
-				log.Printf("publish %s for issue %d failed: %v", kind, iss.ID, err)
+				slog.Error("publishing issue event failed", "kind", kind, "issue_id", iss.ID, "err", err)
 			}
 		}
 	}

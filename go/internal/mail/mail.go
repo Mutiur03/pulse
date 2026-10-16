@@ -6,7 +6,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
+	"log/slog"
 	"net"
 	"net/smtp"
 	"strings"
@@ -48,7 +48,7 @@ func New(c Config) Sender {
 type LogSender struct{}
 
 func (LogSender) Send(_ context.Context, m Message) error {
-	log.Printf("email (not sent, no SMTP_ADDR) to=%s subject=%q\n%s", m.To, m.Subject, m.Text)
+	slog.Info("email not sent, no SMTP_ADDR", "to", m.To, "subject", m.Subject, "text", m.Text)
 	return nil
 }
 
@@ -98,7 +98,7 @@ func Async(s Sender, m Message) {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 		if err := s.Send(ctx, m); err != nil {
-			log.Printf("email to %s failed: %v", m.To, err)
+			slog.Error("email failed", "to", m.To, "err", err)
 		}
 	}()
 }

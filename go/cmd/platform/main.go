@@ -1,24 +1,26 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/Mutiur03/pulse/internal/config"
+	"github.com/Mutiur03/pulse/internal/logging"
 )
 
 func main() {
 	cfg := config.Load()
-	log.Printf("Platform combined binary starting with config: %+v", cfg)
+	logging.Setup("platform", cfg.LogLevel)
+	slog.Info("platform combined binary starting", "service", cfg.ServiceName, "environment", cfg.Environment)
 
-	log.Println("This would start all services in one process")
-	log.Println("For now, run services separately")
+	slog.Info("this would start all services in one process")
+	slog.Info("for now, run services separately")
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("Shutting down...")
+	slog.Info("shutting down")
 }

@@ -5,7 +5,7 @@
 package monitor
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"time"
@@ -88,9 +88,9 @@ func Serve(addr string) {
 	mux.Handle("/metrics", Handler())
 	srv := &http.Server{Addr: addr, Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 	go func() {
-		log.Printf("Metrics on %s/metrics", addr)
+		slog.Info("metrics endpoint listening", "addr", addr, "path", "/metrics")
 		if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			log.Printf("metrics server: %v", err)
+			slog.Error("metrics server", "err", err)
 		}
 	}()
 }

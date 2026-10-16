@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -14,6 +15,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/kafka"
+	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/processor"
 	"github.com/Mutiur03/pulse/internal/replay"
@@ -24,11 +26,12 @@ import (
 
 func main() {
 	cfg := config.Load()
+	logging.Setup("stream-processor", cfg.LogLevel)
 	cfg.ServiceName = "stream-processor"
 
 	_, cleanup, err := telemetry.InitTracer(cfg.ServiceName)
 	if err != nil {
-		log.Printf("Failed to initialize tracer: %v", err)
+		slog.Error("failed to initialize tracer", "err", err)
 	} else {
 		defer func() {
 			_ = cleanup(context.Background())
@@ -74,10 +77,10 @@ func main() {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"status":"healthy","service":"stream-processor"}`))
 		})
-		log.Println("Stream processor health endpoint on :8082")
+		slog.Info("stream processor health endpoint listening", "addr", ":8082")
 		hs := &http.Server{Addr: ":8082", Handler: mux, ReadHeaderTimeout: 5 * time.Second}
 		if err := hs.ListenAndServe(); err != nil {
-			log.Printf("Health server error: %v", err)
+			slog.Error("health server error", "err", err)
 		}
 	}()
 
@@ -89,12 +92,12 @@ func main() {
 
 	go func() {
 		<-sigChan
-		log.Println("Shutting down...")
+		slog.Info("shutting down")
 		cancel()
 	}()
 
 	monitor.Service("stream-processor")
-	log.Println("Stream processor started")
+	slog.Info("stream processor started")
 
 	for {
 		select {
@@ -106,7 +109,7 @@ func main() {
 				if ctx.Err() != nil {
 					return
 				}
-				log.Printf("Failed to poll: %v", err)
+				slog.Error("failed to poll", "err", err)
 				time.Sleep(time.Second)
 				continue
 			}
@@ -130,7 +133,7 @@ func main() {
 				var data map[string]interface{}
 				if err := json.Unmarshal(record.Value, &data); err != nil {
 					monitor.ProcessorDecodeErrors.WithLabelValues(record.Topic).Inc()
-					log.Printf("Failed to unmarshal record: %v", err)
+					slog.Error("failed to unmarshal record", "err", err)
 					continue
 				}
 
@@ -149,27 +152,27 @@ func main() {
 
 			ok := true
 			if len(events) > 0 {
-				log.Printf("Processing %d events", len(events))
+				slog.Info("processing events", "count", len(events))
 				if err := write(ctx, "events", len(events), func() error { return chClient.InsertEvents(ctx, events) }); err != nil {
-					log.Printf("Failed to insert events: %v", err)
+					slog.Error("failed to insert events", "err", err)
 					ok = false
 				} else {
-					log.Printf("Successfully inserted %d events", len(events))
+					slog.Info("successfully inserted events", "count", len(events))
 					if aliases := ch.AliasesFromEvents(events); len(aliases) > 0 {
 						if err := retry(ctx, func() error { return chClient.InsertAliases(ctx, aliases) }); err != nil {
-							log.Printf("Failed to insert %d identity links: %v", len(aliases), err)
+							slog.Error("failed to insert identity links", "count", len(aliases), "err", err)
 						}
 					}
 				}
 			}
 
 			if len(spans) > 0 {
-				log.Printf("Processing %d spans", len(spans))
+				slog.Info("processing spans", "count", len(spans))
 				if err := write(ctx, "spans", len(spans), func() error { return chClient.InsertSpans(ctx, spans) }); err != nil {
-					log.Printf("Failed to insert spans: %v", err)
+					slog.Error("failed to insert spans", "err", err)
 					ok = false
 				} else {
-					log.Printf("Successfully inserted %d spans", len(spans))
+					slog.Info("successfully inserted spans", "count", len(spans))
 				}
 			}
 
@@ -180,32 +183,32 @@ func main() {
 					rows, gerr = processor.GroupErrorsWith(ctx, errs, issueStore, producer, sym)
 					return gerr
 				}); err != nil {
-					log.Printf("Failed to group errors: %v", err)
+					slog.Error("failed to group errors", "err", err)
 					return
 				}
 				if err := write(ctx, "errors", len(rows), func() error { return chClient.InsertErrors(ctx, rows) }); err != nil {
-					log.Printf("Failed to insert errors: %v", err)
+					slog.Error("failed to insert errors", "err", err)
 					ok = false
 				} else {
-					log.Printf("Successfully inserted %d errors", len(errs))
+					slog.Info("successfully inserted errors", "count", len(errs))
 				}
 			}
 
 			if len(logs) > 0 {
 				if err := write(ctx, "logs", len(logs), func() error { return chClient.InsertLogs(ctx, logs) }); err != nil {
-					log.Printf("Failed to insert logs: %v", err)
+					slog.Error("failed to insert logs", "err", err)
 					ok = false
 				} else {
-					log.Printf("Successfully inserted %d logs", len(logs))
+					slog.Info("successfully inserted logs", "count", len(logs))
 				}
 			}
 
 			if len(metrics) > 0 {
 				if err := write(ctx, "metrics", len(metrics), func() error { return chClient.InsertMetrics(ctx, metrics) }); err != nil {
-					log.Printf("Failed to insert metrics: %v", err)
+					slog.Error("failed to insert metrics", "err", err)
 					ok = false
 				} else {
-					log.Printf("Successfully inserted %d metric points", len(metrics))
+					slog.Info("successfully inserted metric points", "count", len(metrics))
 				}
 			}
 
@@ -219,7 +222,7 @@ func main() {
 				monitor.ProcessorDelay.WithLabelValues(topic).Set(time.Since(ts).Seconds())
 			}
 			if err := consumer.Commit(ctx); err != nil {
-				log.Printf("Failed to commit: %v", err)
+				slog.Error("failed to commit", "err", err)
 			}
 		}
 	}
@@ -263,7 +266,7 @@ func retry(ctx context.Context, fn func() error) error {
 		if err == nil || ctx.Err() != nil {
 			return err
 		}
-		log.Printf("ClickHouse write failed, retrying in %s: %v", backoff, err)
+		slog.Warn("ClickHouse write failed, retrying", "backoff", backoff, "err", err)
 		select {
 		case <-ctx.Done():
 			return ctx.Err()

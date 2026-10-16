@@ -3,7 +3,7 @@ package governance
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/audit"
@@ -71,7 +71,7 @@ func (w *Worker) record(ctx context.Context, e audit.Entry) {
 		return
 	}
 	if err := w.Audit.Record(ctx, e); err != nil {
-		log.Printf("audit: %v", err)
+		slog.Error("audit write failed", "err", err)
 	}
 }
 
@@ -102,7 +102,7 @@ func (w *Worker) RunDeletions(ctx context.Context) (int, error) {
 			details["error"] = runErr.Error()
 			w.record(ctx, audit.Entry{ProjectID: r.ProjectID, Action: ActionDeletionFailed, Target: r.DistinctID, Details: details})
 		default:
-			log.Printf("deletion request %d failed, will retry: %v", r.ID, runErr)
+			slog.Warn("deletion request failed, will retry", "request_id", r.ID, "err", runErr)
 		}
 	}
 }

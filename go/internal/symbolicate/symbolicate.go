@@ -6,7 +6,7 @@ import (
 	"container/list"
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"net/url"
 	"regexp"
 	"strconv"
@@ -190,7 +190,7 @@ func (s *Symbolicator) load(ctx context.Context, project int64, release, fileURL
 	}
 	if err != nil {
 		if !errors.Is(err, ErrNoMap) {
-			log.Printf("symbolicate: find map for %s: %v", fileURL, err)
+			slog.Error("symbolicate: find map", "file_url", fileURL, "err", err)
 			return nil // don't cache transient failures
 		}
 		s.miss(missKey, now)
@@ -201,12 +201,12 @@ func (s *Symbolicator) load(ctx context.Context, project int64, release, fileURL
 	}
 	data, err := s.Objects.Get(ctx, key)
 	if err != nil {
-		log.Printf("symbolicate: read %s: %v", key, err)
+		slog.Error("symbolicate: read", "key", key, "err", err)
 		return nil
 	}
 	m, err := sourcemap.Parse(data)
 	if err != nil {
-		log.Printf("symbolicate: parse %s: %v", key, err)
+		slog.Error("symbolicate: parse", "key", key, "err", err)
 		s.miss(missKey, now)
 		return nil
 	}

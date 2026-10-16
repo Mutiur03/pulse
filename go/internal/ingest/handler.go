@@ -5,14 +5,15 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"github.com/Mutiur03/pulse/internal/useragent"
 	"io"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/Mutiur03/pulse/internal/useragent"
 
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/replay"
@@ -117,7 +118,7 @@ func (h *handler) post(fn func(r *http.Request, body []byte, project string) (in
 				monitor.IngestRejected.WithLabelValues("invalid_key").Inc()
 				http.Error(w, "invalid ingest key", http.StatusUnauthorized)
 			} else {
-				log.Printf("key lookup failed: %v", err)
+				slog.Error("key lookup failed", "err", err)
 				http.Error(w, "key lookup unavailable", http.StatusServiceUnavailable)
 			}
 			return
@@ -213,7 +214,7 @@ func (h *handler) produceAll(ctx context.Context, topic string, keys []string, v
 	monitor.IngestProduceLatency.WithLabelValues(topic).Observe(time.Since(start).Seconds())
 	if err != nil {
 		monitor.IngestProduceErrors.WithLabelValues(topic).Inc()
-		log.Printf("produce to %s failed: %v", topic, err)
+		slog.Error("produce failed", "topic", topic, "err", err)
 		return &apiError{http.StatusServiceUnavailable, "failed to enqueue"}
 	}
 	monitor.IngestRecords.WithLabelValues(topic).Add(float64(len(vals)))
@@ -413,7 +414,7 @@ func (h *handler) replayChunk(r *http.Request, body []byte, project string) (int
 	}
 	scrubEvents(h.scrubber(r.Context(), project), c.Events)
 	if err := h.replays.Store(r.Context(), pid, c); err != nil {
-		log.Printf("replay store failed: %v", err)
+		slog.Error("replay store failed", "err", err)
 		return 0, &apiError{http.StatusServiceUnavailable, "replay storage unavailable"}
 	}
 	return len(c.Events), nil

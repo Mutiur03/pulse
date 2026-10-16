@@ -7,6 +7,7 @@ package main
 import (
 	"context"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -19,6 +20,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/governance"
+	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
@@ -26,6 +28,7 @@ import (
 
 func main() {
 	cfg := config.Load()
+	logging.Setup("governance-worker", cfg.LogLevel)
 	db, err := pgxpool.New(context.Background(), cfg.PostgresURL)
 	if err != nil {
 		log.Fatalf("Failed to configure Postgres: %v", err)
@@ -63,9 +66,9 @@ func main() {
 		for {
 			if n, err := w.RunDeletions(ctx); err != nil {
 				monitor.GovernanceRuns.WithLabelValues("deletions", "error").Inc()
-				log.Printf("deletions: %v", err)
+				slog.Error("deletions", "err", err)
 			} else if n > 0 {
-				log.Printf("processed %d deletion requests", n)
+				slog.Info("processed deletion requests", "count", n)
 			}
 			select {
 			case <-ctx.Done():
@@ -82,11 +85,11 @@ func main() {
 			result := "ok"
 			if err != nil {
 				result = "error"
-				log.Printf("retention: %v", err)
+				slog.Error("retention", "err", err)
 			}
 			monitor.GovernanceRuns.WithLabelValues("retention", result).Inc()
 			for p, counts := range out {
-				log.Printf("retention removed for project %d: %v", p, counts)
+				slog.Info("retention removed rows", "project", p, "counts", counts)
 			}
 			select {
 			case <-ctx.Done():
@@ -108,7 +111,7 @@ func main() {
 			log.Fatalf("health server: %v", err)
 		}
 	}()
-	log.Printf("governance worker running (deletions every %s, retention every %s)", poll, every)
+	slog.Info("governance worker running", "deletion_poll", poll, "retention_every", every)
 	<-ctx.Done()
 	shutdown, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()

@@ -2,13 +2,13 @@ package telemetry
 
 import (
 	"context"
-	"log"
+	"log/slog"
 )
 
 type TracerProvider interface{}
 
 func InitTracer(serviceName string) (TracerProvider, func(context.Context) error, error) {
-	log.Printf("Tracer initialized for service: %s (OTel disabled in stub)", serviceName)
+	slog.Info("tracer initialized (OTel disabled in stub)", "service", serviceName)
 
 	cleanup := func(ctx context.Context) error {
 		return nil

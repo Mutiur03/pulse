@@ -3,7 +3,7 @@ package api
 import (
 	"context"
 	"errors"
-	"log"
+	"log/slog"
 	"math"
 	"net/http"
 	"strconv"
@@ -89,7 +89,7 @@ func (s *Server) record(r *http.Request, e audit.Entry) {
 	ctx, cancel := context.WithTimeout(context.WithoutCancel(r.Context()), 5*time.Second)
 	defer cancel()
 	if err := s.Audit.Record(ctx, e); err != nil {
-		log.Printf("audit log write failed for %s: %v", e.Action, err)
+		slog.Error("audit log write failed", "action", e.Action, "err", err)
 	}
 }
 

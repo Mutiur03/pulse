@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -22,6 +23,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/governance"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
+	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/mail"
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/orgs"
@@ -39,11 +41,12 @@ import (
 
 func main() {
 	cfg := config.Load()
+	logging.Setup("query-api", cfg.LogLevel)
 	cfg.ServiceName = "query-api"
 
 	_, cleanup, err := telemetry.InitTracer(cfg.ServiceName)
 	if err != nil {
-		log.Printf("Failed to initialize tracer: %v", err)
+		slog.Error("failed to initialize tracer", "err", err)
 	} else {
 		defer func() { _ = cleanup(context.Background()) }()
 	}
@@ -173,7 +176,7 @@ func main() {
 		}
 	}
 	if len(csrf.Origins) == 0 {
-		log.Printf("APP_URL is not set: the CSRF Origin check only rejects requests browsers mark as cross-site")
+		slog.Warn("APP_URL is not set: the CSRF Origin check only rejects requests browsers mark as cross-site")
 	}
 	r.Use(auth.Middleware(accounts, csrf))
 	limiter := &api.QueryLimiter{
@@ -192,7 +195,7 @@ func main() {
 	server := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
 	go func() {
-		log.Printf("Query API listening on %s", addr)
+		slog.Info("query API listening", "addr", addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
@@ -202,11 +205,11 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("Shutting down...")
+	slog.Info("shutting down")
 	ctx, cancel = context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+		slog.Error("server shutdown error", "err", err)
 	}
 }
 

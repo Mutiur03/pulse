@@ -3,7 +3,7 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 
 	"github.com/Mutiur03/pulse/internal/api/gen"
@@ -71,7 +71,7 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 func (s *Server) endOldSession(r *http.Request) {
 	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" {
 		if err := s.Accounts.Logout(r.Context(), c.Value); err != nil {
-			log.Printf("ending previous session: %v", err)
+			slog.Error("ending previous session", "err", err)
 		}
 	}
 }

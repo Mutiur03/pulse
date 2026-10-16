@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,6 +21,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/kafka"
+	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/mail"
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/processor"
@@ -34,11 +36,12 @@ const tick = 5 * time.Second
 
 func main() {
 	cfg := config.Load()
+	logging.Setup("alerting-worker", cfg.LogLevel)
 	cfg.ServiceName = "alerting-worker"
 
 	_, cleanup, err := telemetry.InitTracer(cfg.ServiceName)
 	if err != nil {
-		log.Printf("Failed to initialize tracer: %v", err)
+		slog.Error("failed to initialize tracer", "err", err)
 	} else {
 		defer func() { _ = cleanup(context.Background()) }()
 	}
@@ -95,7 +98,7 @@ func main() {
 	})
 	server := &http.Server{Addr: ":8083", Handler: mux, ReadHeaderTimeout: 10 * time.Second}
 	go func() {
-		log.Println("Alerting worker health endpoint on :8083")
+		slog.Info("alerting worker health endpoint listening", "addr", ":8083")
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
@@ -109,7 +112,7 @@ func main() {
 		defer t.Stop()
 		for {
 			if _, err := engine.Tick(ctx); err != nil && ctx.Err() == nil {
-				log.Printf("alerts: tick: %v", err)
+				slog.Error("alerts: tick", "err", err)
 			}
 			select {
 			case <-ctx.Done():
@@ -124,7 +127,7 @@ func main() {
 			records, err := consumer.Poll(ctx)
 			if err != nil {
 				if ctx.Err() == nil {
-					log.Printf("alerts: poll: %v", err)
+					slog.Error("alerts: poll", "err", err)
 					time.Sleep(time.Second)
 				}
 				continue
@@ -132,16 +135,16 @@ func main() {
 			for _, rec := range records {
 				var ev issues.Event
 				if err := json.Unmarshal(rec.Value, &ev); err != nil {
-					log.Printf("alerts: bad issue event: %v", err)
+					slog.Error("alerts: bad issue event", "err", err)
 					continue
 				}
 				if err := engine.HandleIssueEvent(ctx, ev); err != nil {
-					log.Printf("alerts: issue event %d: %v", ev.IssueID, err)
+					slog.Error("alerts: issue event", "issue_id", ev.IssueID, "err", err)
 				}
 			}
 			if len(records) > 0 {
 				if err := consumer.Commit(ctx); err != nil && ctx.Err() == nil {
-					log.Printf("alerts: commit: %v", err)
+					slog.Error("alerts: commit", "err", err)
 				}
 			}
 		}
@@ -150,11 +153,11 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
-	log.Println("Shutting down...")
+	slog.Info("shutting down")
 	cancel()
 	sctx, scancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer scancel()
 	if err := server.Shutdown(sctx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+		slog.Error("server shutdown error", "err", err)
 	}
 }

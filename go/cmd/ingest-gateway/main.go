@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"log/slog"
 	"net"
 	"net/http"
 	"os"
@@ -15,6 +16,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/ingest"
 	"github.com/Mutiur03/pulse/internal/kafka"
 	"github.com/Mutiur03/pulse/internal/keys"
+	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/telemetry"
@@ -29,11 +31,12 @@ import (
 
 func main() {
 	cfg := config.Load()
+	logging.Setup("ingest-gateway", cfg.LogLevel)
 	cfg.ServiceName = "ingest-gateway"
 
 	_, cleanup, err := telemetry.InitTracer(cfg.ServiceName)
 	if err != nil {
-		log.Printf("Failed to initialize tracer: %v", err)
+		slog.Error("failed to initialize tracer", "err", err)
 	} else {
 		defer func() {
 			_ = cleanup(context.Background())
@@ -88,7 +91,7 @@ func main() {
 	}
 
 	go func() {
-		log.Printf("Ingest gateway listening on %s", addr)
+		slog.Info("ingest gateway listening", "addr", addr)
 		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server error: %v", err)
 		}
@@ -100,11 +103,11 @@ func main() {
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 	<-sigChan
 
-	log.Println("Shutting down...")
+	slog.Info("shutting down")
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	if err := server.Shutdown(ctx); err != nil {
-		log.Printf("Server shutdown error: %v", err)
+		slog.Error("server shutdown error", "err", err)
 	}
 	if grpcServer != nil {
 		// Finish in-flight exports, then force close what remains.
@@ -145,7 +148,7 @@ func startGRPC(p ingest.Producer, auth ingest.Authenticator, scrub ingest.ScrubS
 	}
 	s := ingest.NewGRPCServer(p, auth, scrub, opts...)
 	go func() {
-		log.Printf("OTLP gRPC receiver listening on :%s (tls=%v)", port, cert != "") //nolint:gosec // operator setting
+		slog.Info("OTLP gRPC receiver listening", "port", port, "tls", cert != "")
 		if err := s.Serve(lis); err != nil && err != grpc.ErrServerStopped {
 			log.Fatalf("gRPC server error: %v", err)
 		}

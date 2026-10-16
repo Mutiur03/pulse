@@ -3,7 +3,7 @@ package alerts
 import (
 	"context"
 	"fmt"
-	"log"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -58,7 +58,7 @@ func (e *Engine) lock(ctx context.Context, key string, ttl time.Duration) bool {
 	}
 	ok, err := e.Locks.Lock(ctx, key, ttl)
 	if err != nil {
-		log.Printf("alerts: lock %s: %v", key, err)
+		slog.Error("alerts: lock failed", "key", key, "err", err)
 		return false
 	}
 	return ok
@@ -87,7 +87,7 @@ func (e *Engine) Tick(ctx context.Context) (int, error) {
 			continue
 		}
 		if err := e.Evaluate(ctx, r, now); err != nil {
-			log.Printf("alerts: rule %d: %v", r.ID, err)
+			slog.Error("alerts: rule failed", "rule_id", r.ID, "err", err)
 			continue
 		}
 		n++
@@ -170,7 +170,7 @@ func (e *Engine) HandleIssueEvent(ctx context.Context, ev issues.Event) error {
 		id := ev.IssueID
 		entry := Entry{IssueID: &id, TraceID: ev.TraceID, Message: ev.Title}
 		if err := e.apply(ctx, r, DecideEvent(r, now), nil, entry, true, now); err != nil {
-			log.Printf("alerts: rule %d: %v", r.ID, err)
+			slog.Error("alerts: rule failed", "rule_id", r.ID, "err", err)
 		}
 	}
 	return nil

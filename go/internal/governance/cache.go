@@ -2,7 +2,7 @@ package governance
 
 import (
 	"context"
-	"log"
+	"log/slog"
 	"strconv"
 	"sync"
 	"time"
@@ -81,12 +81,12 @@ func (c *Cache) load(ctx context.Context, project string) *Scrubber {
 	}
 	st, err := c.Source.Settings(ctx, id)
 	if err != nil {
-		log.Printf("data settings for project %s: %v", project, err)
+		slog.Error("loading data settings failed", "project", project, "err", err)
 		return nil
 	}
 	s, err := Compile(st.Rules)
 	if err != nil {
-		log.Printf("data settings for project %s: %v", project, err)
+		slog.Error("loading data settings failed", "project", project, "err", err)
 		return nil
 	}
 	return s

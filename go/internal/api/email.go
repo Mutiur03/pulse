@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strings"
@@ -32,7 +32,7 @@ func (s *Server) send(m mail.Message) {
 func (s *Server) sendVerification(ctx context.Context, u auth.User) {
 	token, err := s.Accounts.IssueVerify(ctx, u.ID)
 	if err != nil {
-		log.Printf("issue verification token: %v", err)
+		slog.Error("issue verification token", "err", err)
 		return
 	}
 	s.send(mail.Message{To: u.Email, Subject: "Confirm your email for Pulse", Text: "Hi " + u.Name + ",\n\n" +

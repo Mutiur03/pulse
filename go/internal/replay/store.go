@@ -5,7 +5,7 @@ import (
 	"context"
 	"errors"
 	"io"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -45,7 +45,7 @@ func NewS3(ctx context.Context, cfg S3Config) (*S3, error) {
 		if err == nil || i >= 30 {
 			return s, err
 		}
-		log.Printf("object storage not ready (%v), retrying", err)
+		slog.Warn("object storage not ready, retrying", "err", err)
 		select {
 		case <-ctx.Done():
 			return nil, ctx.Err()
@@ -106,14 +106,14 @@ func ConnectArtifacts(cfg S3Config, bucket string) *S3 {
 
 func connect(cfg S3Config, ok bool, what string) *S3 {
 	if !ok {
-		log.Printf("S3_ENDPOINT not set: %s storage disabled", what)
+		slog.Warn("S3_ENDPOINT not set, storage disabled", "storage", what)
 		return nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 45*time.Second)
 	defer cancel()
 	s, err := NewS3(ctx, cfg)
 	if err != nil {
-		log.Printf("%s storage unavailable, disabled: %v", what, err)
+		slog.Error("storage unavailable, disabled", "storage", what, "err", err)
 		return nil
 	}
 	return s

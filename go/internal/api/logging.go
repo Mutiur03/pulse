@@ -1,7 +1,7 @@
 package api
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"net/url"
 	"strconv"
@@ -42,9 +42,11 @@ func RequestLogger(next http.Handler) http.Handler {
 		ww := middleware.NewWrapResponseWriter(w, r.ProtoMajor)
 		start := time.Now()
 		next.ServeHTTP(ww, r)
-		// %q escapes control characters, so a request cannot forge log lines.
-		log.Printf("%q %q %d %dB %s id=%q", r.Method, RedactURL(r.URL), ww.Status(), ww.BytesWritten(), //nolint:gosec // quoted
-			time.Since(start).Round(time.Microsecond), middleware.GetReqID(r.Context()))
+		// Attribute values are escaped by the handler, so a request cannot
+		// forge log lines.
+		slog.Info("request", "method", r.Method, "path", RedactURL(r.URL), "status", ww.Status(),
+			"bytes", ww.BytesWritten(), "duration", time.Since(start).Round(time.Microsecond),
+			"request_id", middleware.GetReqID(r.Context()))
 	})
 }
 

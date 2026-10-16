@@ -4,7 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -134,7 +134,7 @@ func (c *Consumer) Poll(ctx context.Context) ([]*kgo.Record, error) {
 	// Per-partition errors (e.g. a topic that does not exist yet) are logged
 	// but do not discard records fetched from healthy partitions.
 	fetches.EachError(func(topic string, partition int32, err error) {
-		log.Printf("Kafka fetch error on %s[%d]: %v", topic, partition, err)
+		slog.Error("kafka fetch error", "topic", topic, "partition", partition, "err", err)
 	})
 
 	var records []*kgo.Record
