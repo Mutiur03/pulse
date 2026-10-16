@@ -56,7 +56,7 @@ export default function TracesPage() {
         <TimeRange value={range} onChange={(v) => setQ({ range: v })} />
         {traces.loading && <Spinner />}
       </Card>
-      <ErrorNote error={traces.error} />
+      <ErrorNote error={traces.error} onRetry={traces.reload} />
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-accent/40">

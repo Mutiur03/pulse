@@ -67,7 +67,7 @@ export default function EventsPage() {
         )}
         {events.loading && <Spinner />}
       </Card>
-      <ErrorNote error={events.error} />
+      <ErrorNote error={events.error} onRetry={events.reload} />
       <Card className="overflow-hidden">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-accent/40">

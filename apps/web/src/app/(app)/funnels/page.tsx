@@ -120,7 +120,7 @@ export default function FunnelsPage() {
           {busy && <Spinner />}
         </div>
       </Card>
-      <ErrorNote error={error} />
+      <ErrorNote error={error} onRetry={() => void run()} />
       {result && top === 0 && (
         <Card>
           <Empty>No users entered this funnel in the selected time range.</Empty>

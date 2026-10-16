@@ -103,6 +103,7 @@ var personTables = []struct{ table, cond string }{
 	{"replay_chunks", "distinct_id IN (?) OR session_id IN (?)"},
 	{"errors", "distinct_id IN (?) OR session_id IN (?) OR trace_id IN (?)"},
 	{"spans", "session_id IN (?) OR trace_id IN (?) OR attributes['enduser.id'] IN (?)"},
+	{"trace_summaries", "trace_id IN (?)"},
 	{"logs", "trace_id IN (?) OR JSONExtractString(attributes, 'enduser.id') IN (?)"},
 	{"person_aliases", "distinct_id IN (?) OR person_key IN (?)"},
 }
@@ -114,13 +115,14 @@ func (c *Client) DeletePersonData(ctx context.Context, project uint64, ids []str
 	traces := append([]string{""}, d.Traces...)
 	ids = append([]string{}, ids...)
 	argsFor := map[string][]interface{}{
-		"events":         {ids, sessions},
-		"sessions":       {ids, sessions},
-		"replay_chunks":  {ids, sessions},
-		"errors":         {ids, sessions, traces},
-		"spans":          {sessions, traces, ids},
-		"logs":           {traces, ids},
-		"person_aliases": {ids, ids},
+		"events":          {ids, sessions},
+		"sessions":        {ids, sessions},
+		"replay_chunks":   {ids, sessions},
+		"errors":          {ids, sessions, traces},
+		"spans":           {sessions, traces, ids},
+		"trace_summaries": {traces},
+		"logs":            {traces, ids},
+		"person_aliases":  {ids, ids},
 	}
 	out := map[string]int64{}
 	for _, t := range personTables {
@@ -146,7 +148,7 @@ func (c *Client) DeletePersonData(ctx context.Context, project uint64, ids []str
 // RetentionTables maps a kind of data to its tables and time columns.
 var RetentionTables = map[string][][2]string{
 	"events":  {{"events", "timestamp"}, {"sessions", "started_at"}},
-	"traces":  {{"spans", "timestamp"}},
+	"traces":  {{"spans", "timestamp"}, {"trace_summaries", "hour"}},
 	"logs":    {{"logs", "timestamp"}},
 	"errors":  {{"errors", "timestamp"}},
 	"replays": {{"replay_chunks", "start"}},

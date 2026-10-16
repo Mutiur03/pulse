@@ -60,7 +60,7 @@ export default function InsightsPage() {
           {busy && <Spinner />}
         </div>
       </Card>
-      <ErrorNote error={error} />
+      <ErrorNote error={error} onRetry={() => void run()} />
       {result && (
         <Card className="mb-4" data-testid="trend-result">
           <CardHeader

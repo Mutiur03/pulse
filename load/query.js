@@ -2,6 +2,11 @@
 // explorer, a trend insight and a funnel, by several logged-in users.
 //
 //   k6 run -e VUS=20 -e DURATION=60s load/query.js
+//
+// Trends and funnels are cached by ClickHouse for 60 s per minute-aligned
+// range, so repeated runs of the same query are answered from the cache.
+// VARY_RANGE=1 starts each request's range at a different minute, so every
+// query is computed (the uncached worst case).
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 import { API_URL } from './lib.js';
@@ -37,7 +42,8 @@ export default function ({ cookie, project }) {
   const jar = http.cookieJar();
   jar.set(API_URL, 'pulse_session', cookie);
   const json = { 'Content-Type': 'application/json' };
-  const from = new Date(Date.now() - 24 * 3600 * 1000).toISOString();
+  const shift = __ENV.VARY_RANGE ? Math.floor(Math.random() * 600) * 60 * 1000 : 0;
+  const from = new Date(Date.now() - 24 * 3600 * 1000 - shift).toISOString();
   const to = new Date().toISOString();
   const get = (name, path) => check(http.get(`${API_URL}${path}`, { tags: { name } }), { [`${name} 200`]: (r) => r.status === 200 });
 

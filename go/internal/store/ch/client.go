@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"strconv"
@@ -24,9 +25,74 @@ func envOr(k, def string) string {
 	return def
 }
 
+// ReadLimits caps what one query may cost. Zero values mean no limit. The
+// query API sets them; the writers do not.
+type ReadLimits struct {
+	MaxExecutionTime time.Duration // max_execution_time
+	MaxRowsToRead    uint64        // max_rows_to_read
+	MaxMemoryUsage   uint64        // max_memory_usage, bytes
+}
+
+// Settings returns the ClickHouse settings for the limits.
+func (l ReadLimits) Settings() clickhouse.Settings {
+	s := clickhouse.Settings{}
+	if l.MaxExecutionTime > 0 {
+		s["max_execution_time"] = int(l.MaxExecutionTime.Seconds())
+		s["timeout_overflow_mode"] = "throw"
+	}
+	if l.MaxRowsToRead > 0 {
+		s["max_rows_to_read"] = l.MaxRowsToRead
+		s["read_overflow_mode"] = "throw"
+	}
+	if l.MaxMemoryUsage > 0 {
+		s["max_memory_usage"] = l.MaxMemoryUsage
+	}
+	return s
+}
+
+// Error codes of queries stopped by a limit.
+const (
+	codeTimeout     = 159 // TIMEOUT_EXCEEDED
+	codeTooManyRows = 158 // TOO_MANY_ROWS
+	codeMemory      = 241 // MEMORY_LIMIT_EXCEEDED
+)
+
+// ErrQueryTimeout and ErrQueryTooLarge mark queries stopped by a cost limit.
+var (
+	ErrQueryTimeout  = errors.New("query took too long")
+	ErrQueryTooLarge = errors.New("query would read too much data")
+)
+
+// LimitError maps an error from a stopped query to ErrQueryTimeout or
+// ErrQueryTooLarge, and returns nil for any other error.
+func LimitError(err error) error {
+	if err == nil {
+		return nil
+	}
+	var ex *clickhouse.Exception
+	if errors.As(err, &ex) {
+		switch ex.Code {
+		case codeTimeout:
+			return ErrQueryTimeout
+		case codeTooManyRows, codeMemory:
+			return ErrQueryTooLarge
+		}
+	}
+	if errors.Is(err, context.DeadlineExceeded) {
+		return ErrQueryTimeout
+	}
+	return nil
+}
+
 func NewClient(addr string) (*Client, error) {
+	return NewClientWithLimits(addr, ReadLimits{})
+}
+
+// NewClientWithLimits connects with every query capped by limits.
+func NewClientWithLimits(addr string, limits ReadLimits) (*Client, error) {
 	opts := &clickhouse.Options{
-		Addr: []string{addr},
+		Settings: limits.Settings(),
+		Addr:     []string{addr},
 		Auth: clickhouse.Auth{
 			Database: envOr("CLICKHOUSE_DB", "default"),
 			Username: envOr("CLICKHOUSE_USER", "default"),

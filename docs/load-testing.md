@@ -52,32 +52,93 @@ to write a request's records to Kafka one at a time, waiting for each. At
 200 requests/s × 50 records, p95 latency was 448 ms. Producing each
 request's records together brought it to 4.3 ms at the same rate.
 
+A longer run on 2026-10-16 (2,000 requests/s × 50 records for 380 s, 37.6M
+records) accepted 98,681 records/s and stored 97,884 records/s. The
+backlog drained 3 s after sending stopped. Ingest p95 rose to 156 ms
+because k6 ran out of its 400 virtual users. That run also produced the
+dataset for the large-data query tests below.
+
 ### Query API
 
-20 virtual users, each running the four reads and then waiting one second:
+Each virtual user runs the trace list, the event list, a unique-users trend
+(hourly) and a two-step funnel over the last 24 hours, then waits one
+second.
 
-| Data in the last 24 hours | Trace list p95 | Event list p95 | Trend p95 | Funnel p95 | Throughput |
+```bash
+k6 run -e VUS=5 load/query.js                  # repeated dashboards (cache hits)
+k6 run -e VUS=5 -e VARY_RANGE=1 load/query.js  # every request computed
+```
+
+With the demo data (about 130 events and 40 spans), 20 users got p95 of
+29 ms (traces), 16 ms (events), 43 ms (trend) and 238 ms (funnel). That is
+67 requests/s with no errors.
+
+#### Large data: 18.8M events and 18.8M spans in the last 24 hours
+
+The data comes from the ingest run above. It has 100,000 users, about
+376,000 traces and 376,000 sessions in one project. Before is the code
+before the query work below. After is the current code. "Computed" uses
+`VARY_RANGE=1`, so no request is answered from the cache. All values are
+p95.
+
+| 5 virtual users | Events | Trend | Traces | Funnel | Errors |
 | --- | --- | --- | --- | --- | --- |
-| Demo data (about 130 events, 40 spans) | 29 ms | 16 ms | 43 ms | 238 ms | 67 req/s, no errors |
+| Target | < 1 s | < 1 s | < 1.5 s | < 5 s | |
+| Before | 4.0 s | 2.5 s | 11.8 s | 54.3 s | 0 |
+| After, computed (run 1) | 0.38 s | 0.90 s | 0.72 s | 4.4 s | 0 |
+| After, computed (run 2) | 0.37 s | 0.78 s | 0.65 s | 3.9 s | 0 |
+| After, repeated dashboards | 0.29 s | 0.02 s | 0.59 s | 2.1 s | 0 |
 
-The load runs above left about 18.6M events and 18.5M spans in the demo
-project. With that data, even 5 virtual users were slow:
+| 20 virtual users | Events | Trend | Traces | Funnel | Errors |
+| --- | --- | --- | --- | --- | --- |
+| Before | — | — | timed out (60 s) | — | |
+| After, computed | 5.8 s | 7.8 s | 7.5 s | 14.8 s | 1.1% (funnels rejected with 429) |
+| After, repeated dashboards | 1.9 s | 0.8 s | 2.4 s | 7.2 s | 0.3% (429) |
 
-| Read | p95 |
-| --- | --- |
-| Event list | 4.0 s |
-| Trend | 3.4 s |
-| Trace list | 10.2 s |
-| Funnel | 43 s |
+A single user (computed) gets 63 ms (events), 0.24 s (trend), 0.23 s
+(traces) and 3.2 s (funnel).
 
-With 20 users, trace list requests hit the 60-second API timeout.
+At 20 users the box is CPU-bound. The per-organization limit queues the
+extra requests, and funnels that wait more than 10 s for a slot get a 429
+instead of piling up. No request timed out.
 
-The trace list groups every span in the range by trace. The funnel joins
-person aliases for about 100,000 synthetic users. Both scale with the rows
-in the range. Known follow-ups:
+#### What changed
 
-- A pre-aggregated trace summary table.
-- Ordering the event list by time within the primary key.
-- A query cost limit.
+- **Trace list.** A materialized view keeps `trace_summaries`, one
+  pre-aggregated row per trace and hour (ADR 0013). The list merges about
+  376,000 rows instead of grouping 18.8M spans. When the last two hours
+  already hold a full page, older hours are not read.
+- **Event list.** A subquery finds the timestamp of the 100th newest event
+  by reading only the timestamp column. The wide `properties` column is then
+  read only for those rows.
+- **Trend.** The buckets and the totals come from one scan (`GROUPING
+  SETS`). The few aliased ids are mapped to persons with `transform()`
+  instead of joining every event to `person_aliases`.
+- **Funnel.** It used to read events about 8 times, because ClickHouse
+  inlines CTEs on every reference. Now one scan computes both the levels
+  and the per-step health from per-person states. A second scan for top
+  errors runs only when the range has errors tied to sessions.
+- **Cache.** Trends and funnels use the ClickHouse query cache for 60 s.
+  Their ranges are aligned to whole minutes, so everyone opening the same
+  chart within a minute shares one computation. Lists are never cached.
+- **Skip indexes.** Bloom filters on `trace_id`/`session_id` (spans) and
+  `distinct_id`/`session_id` (events) serve lookups by id. Projections
+  were ruled out because they conflict with the lightweight deletes used by
+  data governance.
 
-Until then, keep dashboards on shorter ranges for very high-volume projects.
+#### Query limits
+
+The query API caps every ClickHouse read. The defaults suit an 8 vCPU
+server:
+
+| Variable | Default | Effect |
+| --- | --- | --- |
+| `QUERY_MAX_EXECUTION_SECONDS` | 30 | `max_execution_time`. The API answers 504 and the UI shows "Query timed out" with a retry button. |
+| `QUERY_MAX_ROWS_TO_READ` | 2,000,000,000 | `max_rows_to_read`. Answers 422 ("Query too large"). |
+| `QUERY_MAX_MEMORY_MB` | 4096 | `max_memory_usage` per query. Answers 422. |
+| `QUERY_MAX_CONCURRENT_PER_ORG` | 8 | Analytical requests per organization running at once in one API replica. Others wait. |
+| `QUERY_QUEUE_WAIT_SECONDS` | 10 | How long a request waits for a slot before a 429. |
+| `QUERY_HEAVY_MAX_THREADS` | 3 | Threads per funnel query, so funnels leave cores for lists and charts. 2 and 4 were also measured: 3 kept every read under target. |
+
+The concurrency limit is per replica. With several replicas, an
+organization can run that many requests on each.

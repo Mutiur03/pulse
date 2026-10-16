@@ -163,7 +163,23 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 	writeJSON(w, code, gen.Error{Error: msg})
 }
 
+// Messages for queries stopped by a cost limit; the web app shows them.
+const (
+	msgQueryTimeout  = "This query took too long and was stopped. Try a shorter time range or more filters."
+	msgQueryTooLarge = "This query would read too much data. Try a shorter time range or more filters."
+)
+
 func internal(w http.ResponseWriter, err error) {
+	switch ch.LimitError(err) {
+	case ch.ErrQueryTimeout:
+		log.Printf("query api: query stopped by time limit: %v", err)
+		writeErr(w, http.StatusGatewayTimeout, msgQueryTimeout)
+		return
+	case ch.ErrQueryTooLarge:
+		log.Printf("query api: query stopped by size limit: %v", err)
+		writeErr(w, http.StatusUnprocessableEntity, msgQueryTooLarge)
+		return
+	}
 	log.Printf("query api error: %v", err)
 	writeErr(w, http.StatusInternalServerError, "internal error")
 }

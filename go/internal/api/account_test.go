@@ -65,7 +65,9 @@ func (f *fakeAccounts) ResetPassword(_ context.Context, token, pw string) error 
 	return nil
 }
 
-func (f *fakeAccounts) IssueVerify(context.Context, int64) (string, error) { return "verify-token", nil }
+func (f *fakeAccounts) IssueVerify(context.Context, int64) (string, error) {
+	return "verify-token", nil
+}
 
 func (f *fakeAccounts) VerifyEmail(_ context.Context, token string) error {
 	if token != "verify-token" {

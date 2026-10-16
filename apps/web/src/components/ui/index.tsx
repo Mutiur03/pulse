@@ -93,9 +93,36 @@ export function Empty({ children }: { children: React.ReactNode }) {
   return <div className="px-4 py-12 text-center text-sm text-muted">{children}</div>;
 }
 
-export function ErrorNote({ error }: { error?: string }) {
+// Titles for errors of queries stopped by the API's cost limits; the
+// messages come from the query API.
+const limitTitles: [string, string][] = [
+  ['This query took too long', 'Query timed out'],
+  ['This query would read too much data', 'Query too large'],
+  ['Too many queries are running', 'Too many queries at once'],
+];
+
+/** The title for an error from a query stopped by a cost limit, if it is one. */
+export function limitTitle(error: string): string | undefined {
+  return limitTitles.find(([prefix]) => error.startsWith(prefix))?.[1];
+}
+
+export function ErrorNote({ error, onRetry }: { error?: string; onRetry?: () => void }) {
   if (!error) return null;
-  return <div className="rounded-md border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-red-300">{error}</div>;
+  const title = limitTitle(error);
+  const tone = title ? 'border-amber-500/40 bg-amber-500/10 text-amber-200' : 'border-danger/40 bg-danger/10 text-red-300';
+  return (
+    <div role="alert" className={`flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm ${tone}`}>
+      <div>
+        {title && <div className="font-medium">{title}</div>}
+        <div>{error}</div>
+      </div>
+      {onRetry && (
+        <button type="button" onClick={onRetry} className="shrink-0 rounded border border-white/20 px-2 py-0.5 text-xs hover:bg-white/5">
+          Retry
+        </button>
+      )}
+    </div>
+  );
 }
 
 export function Spinner() {

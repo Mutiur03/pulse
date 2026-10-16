@@ -275,20 +275,67 @@ func TrendSQL(q TrendQuery, s TrendSeries, bucketed bool) (string, []interface{}
 		cols = append(cols, "'' AS term")
 	}
 	cols = append(cols, mathSQL(s, &args)+" AS value")
-	from := "events"
-	if s.Math == MathUniqueUsers {
-		from = PersonsFrom
-		args = append(args, q.Project)
-	}
 	where, wargs := seriesWhere(q, s)
-	args = append(args, wargs...)
-	sql := "SELECT " + strings.Join(cols, ", ") + " FROM " + from + " WHERE " + where
+	var sql string
+	if s.Math == MathUniqueUsers {
+		// Users are persons. The few aliased ids are mapped with transform()
+		// instead of joining every event to person_aliases.
+		args = append(args, q.Project, q.Project)
+		args = append(args, wargs...)
+		sql = "SELECT " + strings.Join(cols, ", ") + " FROM (" + aliasWith +
+			"SELECT *, " + personExpr + " AS person FROM events WHERE " + where + ")"
+	} else {
+		args = append(args, wargs...)
+		sql = "SELECT " + strings.Join(cols, ", ") + " FROM events WHERE " + where
+	}
 	if len(group) > 0 {
 		sql += " GROUP BY " + strings.Join(group, ", ")
 	}
 	sql += " ORDER BY bucket"
 	return sql, args
 }
+
+// TrendBothSQL returns the buckets and the totals of a series in one scan:
+// the totals are the rows of the (term) grouping set, whose bucket is the
+// zero time, as in TrendSQL without buckets.
+func TrendBothSQL(q TrendQuery, s TrendSeries) (string, []interface{}) {
+	sql, args := TrendSQL(q, s, true)
+	group := " GROUP BY bucket"
+	if q.Breakdown != "" {
+		group += ", term"
+	}
+	i := strings.LastIndex(sql, group+" ORDER BY bucket")
+	return sql[:i] + " GROUP BY GROUPING SETS ((bucket, term), (term)) ORDER BY bucket", args
+}
+
+// splitTotals separates the rows of TrendBothSQL into buckets and totals.
+func splitTotals(rows []TrendRow) TrendSeriesData {
+	d := TrendSeriesData{Buckets: []TrendRow{}, Totals: []TrendRow{}}
+	for _, r := range rows {
+		if r.Bucket.Unix() == 0 {
+			d.Totals = append(d.Totals, r)
+		} else {
+			d.Buckets = append(d.Buckets, r)
+		}
+	}
+	return d
+}
+
+// aliasWith defines al_ids and al_keys: every aliased distinct id of the
+// project and its current person key, both sorted by id (ids are unique, so
+// the arrays line up). It binds the project twice and must be in the same
+// SELECT as personExpr.
+const aliasWith = `WITH
+	(SELECT arrayMap(x -> x.1, arraySort(groupArray((distinct_id, person_key)))) FROM (` + latestAliasSQL + `)) AS al_ids,
+	(SELECT arrayMap(x -> x.2, arraySort(groupArray((distinct_id, person_key)))) FROM (` + latestAliasSQL + `)) AS al_keys
+`
+
+// latestAliasSQL is the current person key of each aliased id.
+const latestAliasSQL = `SELECT distinct_id, argMax(person_key, updated_at) AS person_key FROM person_aliases
+	WHERE project_id = ? GROUP BY distinct_id`
+
+// personExpr is the person of an event's distinct_id.
+const personExpr = "transform(distinct_id, al_ids, al_keys, distinct_id)"
 
 // TrendRow is one bucket (or total) of one breakdown term.
 type TrendRow struct {
@@ -303,22 +350,37 @@ type TrendSeriesData struct {
 	Totals  []TrendRow
 }
 
-// RunTrend queries every series.
+// RunTrend queries every series, running the reads concurrently. Each
+// series is one scan for both its buckets and its totals.
 func (c *Client) RunTrend(ctx context.Context, q TrendQuery) ([]TrendSeriesData, error) {
 	out := make([]TrendSeriesData, len(q.Series))
+	q.From, q.To = cacheRange(q.From, q.To)
+	ctx = cached(ctx, false)
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	errs := make(chan error, len(q.Series))
+	// At most four series of one trend run at the same time.
+	sem := make(chan struct{}, 4)
 	for i, s := range q.Series {
-		for _, bucketed := range []bool{true, false} {
-			sql, args := TrendSQL(q, s, bucketed)
+		sql, args := TrendBothSQL(q, s)
+		go func() {
+			sem <- struct{}{}
+			defer func() { <-sem }()
 			var rows []TrendRow
-			if err := c.conn.Select(ctx, &rows, sql, args...); err != nil {
-				return nil, err
-			}
-			if bucketed {
-				out[i].Buckets = rows
-			} else {
-				out[i].Totals = rows
-			}
+			err := c.conn.Select(ctx, &rows, sql, args...)
+			out[i] = splitTotals(rows)
+			errs <- err
+		}()
+	}
+	var first error
+	for range q.Series {
+		if err := <-errs; err != nil && first == nil {
+			first = err
+			cancel()
 		}
+	}
+	if first != nil {
+		return nil, first
 	}
 	return out, nil
 }

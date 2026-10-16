@@ -18,3 +18,4 @@ marked superseded rather than deleted.
 | [0010](0010-pii-scrubbing-at-ingest.md) | PII scrubbing at the ingest gateway | Accepted |
 | [0011](0011-self-monitoring-with-prometheus.md) | Prometheus metrics for self-monitoring | Accepted |
 | [0012](0012-managed-data-services-in-kubernetes.md) | Managed data services; Helm deploys only Pulse | Accepted |
+| [0013](0013-pre-aggregated-trace-summaries-and-query-limits.md) | Pre-aggregated trace summaries and query limits | Accepted |

@@ -139,3 +139,20 @@ func TestTrendClickHouse(t *testing.T) {
 		t.Fatalf("trace stats %+v %v", stats, err)
 	}
 }
+
+func TestTrendBothSQL(t *testing.T) {
+	q := TrendQuery{Project: 1, Interval: "day", From: time.Unix(0, 0), To: time.Unix(86400, 0), Breakdown: "plan",
+		Series: []TrendSeries{{Event: "buy", Math: MathUniqueUsers}}}
+	for _, b := range []string{"", "plan"} {
+		q.Breakdown = b
+		sql, args := TrendBothSQL(q, q.Series[0])
+		if strings.Count(sql, "?") != len(args) || !strings.Contains(sql, "GROUPING SETS ((bucket, term), (term))") ||
+			strings.Contains(sql, "GROUP BY bucket") {
+			t.Errorf("breakdown %q: %d args\n%s", b, len(args), sql)
+		}
+	}
+	d := splitTotals([]TrendRow{{Bucket: time.Unix(0, 0), Value: 3}, {Bucket: time.Unix(86400, 0), Value: 1}})
+	if len(d.Totals) != 1 || d.Totals[0].Value != 3 || len(d.Buckets) != 1 {
+		t.Errorf("split: %+v", d)
+	}
+}

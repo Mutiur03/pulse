@@ -61,6 +61,13 @@ services:
     command:
       - |
         set -euo pipefail
+        # The healthcheck can pass before the native port accepts queries
+        # (exit 210, connection refused); wait until it does.
+        for i in $$(seq 1 60); do
+          clickhouse-client --host clickhouse -q "SELECT 1" >/dev/null 2>&1 && break
+          [ "$$i" = 60 ] && { echo "clickhouse is not accepting queries"; exit 1; }
+          sleep 1
+        done
         for f in $$(ls /migrations/*.sql | sort); do
           echo "applying $$f"
           clickhouse-client --host clickhouse --multiquery < "$$f"
@@ -267,6 +274,10 @@ services:
       KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       REDIS_ADDR: redis:6379
       CLICKHOUSE_ADDR: clickhouse:9000
+      # Query cost limits (docs/load-testing.md#query-limits).
+      QUERY_MAX_EXECUTION_SECONDS: ${QUERY_MAX_EXECUTION_SECONDS:-30}
+      QUERY_MAX_CONCURRENT_PER_ORG: ${QUERY_MAX_CONCURRENT_PER_ORG:-8}
+      QUERY_HEAVY_MAX_THREADS: ${QUERY_HEAVY_MAX_THREADS:-3}
       POSTGRES_URL: postgres://platform:platform@postgres:5432/platform?sslmode=disable
       QUERY_API_PORT: 8081
       # Local mail goes to Mailpit (web UI and API on http://localhost:8025).

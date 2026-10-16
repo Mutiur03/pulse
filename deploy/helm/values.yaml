@@ -95,7 +95,15 @@ queryApi:
     limits: {cpu: "2", memory: 1Gi}
   autoscaling: {enabled: true, minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70}
   pdb: {enabled: true, minAvailable: 1}
-  env: {}
+  # Query cost limits; see docs/load-testing.md#query-limits. The
+  # concurrency limit applies per replica.
+  env:
+    QUERY_MAX_EXECUTION_SECONDS: "30"
+    QUERY_MAX_ROWS_TO_READ: "2000000000"
+    QUERY_MAX_MEMORY_MB: "4096"
+    QUERY_MAX_CONCURRENT_PER_ORG: "8"
+    QUERY_QUEUE_WAIT_SECONDS: "10"
+    QUERY_HEAVY_MAX_THREADS: "3"
 
 alertingWorker:
   replicas: 1

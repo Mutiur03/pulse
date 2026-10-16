@@ -50,7 +50,12 @@ func main() {
 		defer func() { _ = cleanup(context.Background()) }()
 	}
 
-	chClient, err := ch.NewClient(cfg.ClickHouseAddr)
+	// Cost limits for every read; see docs/load-testing.md.
+	chClient, err := ch.NewClientWithLimits(cfg.ClickHouseAddr, ch.ReadLimits{
+		MaxExecutionTime: time.Duration(envInt("QUERY_MAX_EXECUTION_SECONDS", 30)) * time.Second,
+		MaxRowsToRead:    uint64(envInt("QUERY_MAX_ROWS_TO_READ", 2_000_000_000)),
+		MaxMemoryUsage:   uint64(envInt("QUERY_MAX_MEMORY_MB", 4096)) << 20,
+	})
 	if err != nil {
 		log.Fatalf("Failed to create ClickHouse client: %v", err)
 	}
@@ -181,6 +186,12 @@ func main() {
 		log.Printf("APP_URL is not set: the CSRF Origin check only rejects requests browsers mark as cross-site")
 	}
 	r.Use(auth.Middleware(accounts, csrf))
+	limiter := &api.QueryLimiter{
+		PerOrg:  envInt("QUERY_MAX_CONCURRENT_PER_ORG", 8),
+		Wait:    time.Duration(envInt("QUERY_QUEUE_WAIT_SECONDS", 10)) * time.Second,
+		Timeout: time.Duration(envInt("QUERY_MAX_EXECUTION_SECONDS", 30)) * time.Second,
+	}
+	r.Use(limiter.Middleware)
 
 	handler := gen.HandlerFromMux(srv, r)
 
