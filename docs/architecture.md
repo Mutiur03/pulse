@@ -576,7 +576,7 @@ Plans adjust the TTLs per project (per-project TTL columns or a separate table s
 
 - **Dashboards** mix widgets from any source (trend, funnel, retention, trace RED chart, log count, error count) with shared filters (release, country, cohort). Widgets compile to ClickHouse SQL through query-api, and results are cached in Redis with a TTL.
 - **Alerts:** thresholds and anomalies on any insight (including "funnel conversion dropped 20% vs last week"), new or regressed issues, SLO burn rate, log patterns. alerting-worker evaluates on a schedule, dedups, groups and snoozes.
-- **AI root cause (ai-worker):** given an issue, a funnel drop or an alert, it collects the correlated context: top stack frames, the matching slow spans and SQL, the deploy or release diff, affected cohorts, and replay summaries (DOM event digest, never raw PII). It then produces a ranked hypothesis with links to the evidence (trace IDs, replay timestamps). It never acts on its own. The model provider is pluggable (any OpenAI-compatible endpoint or a local model for self-host), runs on the customer's own data only, and is opt-in per org.
+- **AI root cause (ai-worker):** given an issue, a funnel drop or an alert, it collects the correlated context: top stack frames, the matching slow spans and SQL, the deploy or release diff, affected cohorts, and replay summaries (DOM event digest, never raw PII). It then produces a ranked hypothesis with links to the evidence (trace IDs, replay timestamps). It never acts on its own. The model provider is pluggable (any compatible chat-completions endpoint or a local model for self-host), runs on the customer's own data only, and is opt-in per org.
 
 ## 18. How we beat GA4 / PostHog / Datadog / Sentry
 
