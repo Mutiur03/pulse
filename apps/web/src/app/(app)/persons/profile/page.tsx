@@ -1,23 +1,52 @@
 'use client';
 import Link from 'next/link';
-import { useSearchParams } from 'next/navigation';
-import { Suspense } from 'react';
-import { api } from '@/lib/api';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { Suspense, useState } from 'react';
+import { api, currentContext, handleAuthError } from '@/lib/api';
 import { ago, duration, time } from '@/lib/format';
 import { useAsync } from '@/lib/hooks';
-import { Badge, Card, CardHeader, Empty, ErrorNote, PageHeader, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Empty, ErrorNote, PageHeader, Spinner, Td, Th } from '@/components/ui';
 import { displayName } from '@/lib/person';
 
 function Profile() {
   const id = useSearchParams().get('id') ?? '';
   const res = useAsync(() => api.getPerson(id), [id]);
+  const me = useAsync(() => api.me(), []);
+  const router = useRouter();
+  const [err, setErr] = useState<string>();
+  const project = me.data ? currentContext(me.data).project : undefined;
   if (res.error) return <ErrorNote error={res.error} />;
   if (!res.data) return <Spinner />;
   const { person: p, sessions, events } = res.data;
   const traits = Object.entries(p.traits);
   return (
     <>
-      <PageHeader title={displayName(p)} description={`First seen ${ago(p.first_seen)} · last seen ${ago(p.last_seen)}`} />
+      <PageHeader
+        title={displayName(p)}
+        description={`First seen ${ago(p.first_seen)} · last seen ${ago(p.last_seen)}`}
+        actions={
+          project?.role === 'owner' && (
+            <Button
+              size="sm"
+              variant="outline"
+              data-testid="delete-person"
+              onClick={async () => {
+                if (!confirm(`Delete all data of ${displayName(p)} and every linked id? This cannot be undone.`)) return;
+                try {
+                  await api.createDeletionRequest(project.id, p.id, 'Requested from the person profile');
+                  router.push('/settings/governance');
+                } catch (e) {
+                  handleAuthError(e);
+                  setErr(e instanceof Error ? e.message : String(e));
+                }
+              }}
+            >
+              Delete person data
+            </Button>
+          )
+        }
+      />
+      <ErrorNote error={err} />
       <div className="mb-4 grid gap-4 lg:grid-cols-3">
         <Card data-testid="person-properties">
           <CardHeader title="Properties" description="Traits from the latest identify() call" />

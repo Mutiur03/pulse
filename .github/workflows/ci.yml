@@ -38,6 +38,7 @@ jobs:
           go build -o bin/stream-processor ./cmd/stream-processor
           go build -o bin/query-api ./cmd/query-api
           go build -o bin/alerting-worker ./cmd/alerting-worker
+          go build -o bin/governance-worker ./cmd/governance-worker
           go build -o bin/platform ./cmd/platform
 
   go-lint:

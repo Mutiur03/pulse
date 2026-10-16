@@ -17,6 +17,7 @@ See [docs/architecture.md](docs/architecture.md) for the complete technical desi
 - **Unified Correlation**: Every signal (event, span, log, error, replay) shares `trace_id`, `session_id`, and `person_id`
 - **Dashboards and Insights**: Trend query builder (series, filters, breakdowns, formulas) and shareable dashboards of trends, funnels, metrics and trace stats; see [docs/dashboards.md](docs/dashboards.md)
 - **Product Analytics**: Persons with identify and alias stitching, retention cohorts, user paths and per-person sessions; see [docs/product-analytics.md](docs/product-analytics.md)
+- **Data Governance**: Per-project PII scrubbing at ingest, enforced retention periods and audited person deletion requests; see [docs/data-governance.md](docs/data-governance.md)
 
 ## Repository Structure
 

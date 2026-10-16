@@ -1194,6 +1194,139 @@ paths:
           $ref: '#/components/responses/Unauthorized'
         '413':
           $ref: '#/components/responses/BadRequest'
+  /v1/projects/{project_id}/data-settings:
+    get:
+      summary: The project's PII scrubbing rules and retention periods
+      operationId: getDataSettings
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: Settings, or the defaults when none were saved
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataSettings'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      summary: Save scrubbing rules and retention periods
+      description: >
+        Owners only. Scrubbing applies to data received after the change (the
+        ingest gateway picks it up within 30 seconds). Retention can only be
+        shortened below the limits; the governance worker deletes older data.
+      operationId: updateDataSettings
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataSettingsInput'
+      responses:
+        '200':
+          description: The saved settings
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DataSettings'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/data-settings/preview:
+    post:
+      summary: Show what scrubbing rules do to a sample text
+      operationId: previewScrubbing
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ScrubPreviewInput'
+      responses:
+        '200':
+          description: The scrubbed sample
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ScrubPreview'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/deletion-requests:
+    get:
+      summary: Deletion requests of the project, newest first
+      operationId: listDeletionRequests
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: Requests
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/DeletionRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Request deletion of all data of one person
+      description: >
+        Owners only. The id is resolved to its person and every linked id;
+        the governance worker deletes their events, sessions, replays (rows
+        and objects), errors, spans and logs of their sessions and traces,
+        and the links. The request and its outcome are in the audit log.
+      operationId: createDeletionRequest
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DeletionRequestInput'
+      responses:
+        '202':
+          description: Queued
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionRequest'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/deletion-requests/{request_id}:
+    get:
+      summary: One deletion request and its outcome
+      operationId: getDeletionRequest
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+        - name: request_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: The request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DeletionRequest'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/projects/{project_id}/upload-tokens:
     get:
       summary: List the project's source map upload tokens
@@ -3172,6 +3305,144 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/LogFacetValue'
+    ScrubRules:
+      type: object
+      required: [emails, cards, ips, keys, patterns]
+      properties:
+        emails:
+          type: boolean
+          description: Replace email addresses with [email].
+        cards:
+          type: boolean
+          description: Replace card numbers (Luhn-valid, 13 to 19 digits) with [card].
+        ips:
+          type: boolean
+          description: Replace IPv4 and IPv6 addresses with [ip].
+        keys:
+          type: array
+          description: Property and attribute names whose values become [redacted]; a name matches when it contains a key.
+          items:
+            type: string
+        patterns:
+          type: array
+          description: RE2 expressions; matches become [redacted].
+          items:
+            type: string
+    RetentionSettings:
+      type: object
+      required: [events_days, traces_days, logs_days, errors_days, replays_days, sourcemaps_days]
+      properties:
+        events_days:
+          type: integer
+        traces_days:
+          type: integer
+        logs_days:
+          type: integer
+        errors_days:
+          type: integer
+        replays_days:
+          type: integer
+        sourcemaps_days:
+          type: integer
+          description: 0 keeps source maps until they are deleted.
+    DataSettingsInput:
+      type: object
+      required: [scrubbing, retention]
+      properties:
+        scrubbing:
+          $ref: '#/components/schemas/ScrubRules'
+        retention:
+          $ref: '#/components/schemas/RetentionSettings'
+    DataSettings:
+      type: object
+      required: [project_id, scrubbing, retention, limits, saved]
+      properties:
+        project_id:
+          type: integer
+          format: int64
+        scrubbing:
+          $ref: '#/components/schemas/ScrubRules'
+        retention:
+          $ref: '#/components/schemas/RetentionSettings'
+        limits:
+          $ref: '#/components/schemas/RetentionSettings'
+        saved:
+          type: boolean
+          description: False while the project uses the defaults.
+        updated_at:
+          type: string
+          format: date-time
+    ScrubPreviewInput:
+      type: object
+      required: [scrubbing, sample]
+      properties:
+        scrubbing:
+          $ref: '#/components/schemas/ScrubRules'
+        sample:
+          type: string
+          maxLength: 10000
+          description: Text, or a JSON object whose keys are checked too.
+    ScrubPreview:
+      type: object
+      required: [scrubbed]
+      properties:
+        scrubbed:
+          type: string
+    DeletionRequestInput:
+      type: object
+      required: [distinct_id]
+      properties:
+        distinct_id:
+          type: string
+          description: Any id of the person; every linked id is included.
+        reason:
+          type: string
+          maxLength: 500
+    DeletionStatus:
+      type: string
+      enum: [pending, running, completed, failed]
+    DeletionRequest:
+      type: object
+      required: [id, project_id, distinct_id, person_key, distinct_ids, reason, status, result, error, attempts, created_at]
+      properties:
+        id:
+          type: integer
+          format: int64
+        project_id:
+          type: integer
+          format: int64
+        distinct_id:
+          type: string
+        person_key:
+          type: string
+        distinct_ids:
+          type: array
+          description: The ids deleted (known ids when queued, all found ids once done).
+          items:
+            type: string
+        reason:
+          type: string
+        status:
+          $ref: '#/components/schemas/DeletionStatus'
+        result:
+          type: object
+          description: Rows deleted per table, plus replay_objects removed.
+          additionalProperties:
+            type: integer
+            format: int64
+        error:
+          type: string
+        attempts:
+          type: integer
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: string
+          format: date-time
     AlertMetric:
       type: string
       description: >

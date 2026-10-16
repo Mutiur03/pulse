@@ -14,6 +14,7 @@ RUN CGO_ENABLED=0 GOOS=linux go build -o /ingest-gateway ./cmd/ingest-gateway
 RUN CGO_ENABLED=0 GOOS=linux go build -o /stream-processor ./cmd/stream-processor
 RUN CGO_ENABLED=0 GOOS=linux go build -o /query-api ./cmd/query-api
 RUN CGO_ENABLED=0 GOOS=linux go build -o /alerting-worker ./cmd/alerting-worker
+RUN CGO_ENABLED=0 GOOS=linux go build -o /governance-worker ./cmd/governance-worker
 
 # Ingest gateway
 FROM alpine:latest AS ingest-gateway
@@ -46,3 +47,11 @@ WORKDIR /app
 COPY --from=builder /alerting-worker .
 EXPOSE 8083
 CMD ["./alerting-worker"]
+
+# Governance worker
+FROM alpine:latest AS governance-worker
+RUN apk --no-cache add ca-certificates
+WORKDIR /app
+COPY --from=builder /governance-worker .
+EXPOSE 8084
+CMD ["./governance-worker"]

@@ -20,6 +20,8 @@ import (
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/telemetry"
 	"github.com/jackc/pgx/v5/pgxpool"
+
+	"github.com/Mutiur03/pulse/internal/governance"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -65,6 +67,9 @@ func main() {
 		defer func() { _ = chClient.Close() }()
 		opts = append(opts, ingest.WithReplay(&replay.Writer{Objects: objects, Meta: chClient}))
 	}
+	// PII scrubbing with each project's rules (internal/governance).
+	scrub := &governance.Cache{Source: &governance.Store{DB: db}}
+	opts = append(opts, ingest.WithScrubbing(scrub))
 	if h := os.Getenv("COUNTRY_HEADER"); h != "" {
 		opts = append(opts, ingest.WithCountryHeader(h))
 	}
@@ -82,7 +87,7 @@ func main() {
 		}
 	}()
 
-	grpcServer, lis := startGRPC(producer, auth)
+	grpcServer, lis := startGRPC(producer, auth, scrub)
 
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -110,7 +115,7 @@ func main() {
 // startGRPC serves OTLP/gRPC on OTLP_GRPC_PORT (default 4317; "0" or "off"
 // disables it), with TLS when OTLP_GRPC_TLS_CERT and OTLP_GRPC_TLS_KEY are
 // set and a size limit from OTLP_GRPC_MAX_RECV_MIB.
-func startGRPC(p ingest.Producer, auth ingest.Authenticator) (*grpc.Server, net.Listener) {
+func startGRPC(p ingest.Producer, auth ingest.Authenticator, scrub ingest.ScrubSource) (*grpc.Server, net.Listener) {
 	port := os.Getenv("OTLP_GRPC_PORT")
 	if port == "" {
 		port = "4317"
@@ -134,7 +139,7 @@ func startGRPC(p ingest.Producer, auth ingest.Authenticator) (*grpc.Server, net.
 	if err != nil {
 		log.Fatalf("OTLP gRPC listen: %v", err)
 	}
-	s := ingest.NewGRPCServer(p, auth, opts...)
+	s := ingest.NewGRPCServer(p, auth, scrub, opts...)
 	go func() {
 		log.Printf("OTLP gRPC receiver listening on :%s (tls=%v)", port, cert != "") //nolint:gosec // operator setting
 		if err := s.Serve(lis); err != nil && err != grpc.ErrServerStopped {

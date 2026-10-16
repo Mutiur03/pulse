@@ -211,6 +211,9 @@ func (f FunnelQuery) Validate() error {
 
 // funnelCTE defines, for the funnel:
 //
+// Users are persons: ids linked by identify or alias count as one user. The
+// distinct_id column of these tables holds the person key.
+//
 //	levels:   furthest step (0..n) each user reached in order within the window
 //	cohort:   one row per (step s, user) for users who reached s and s < n,
 //	          kind 'dropped' if they stopped at s, else 'continued'
@@ -223,13 +226,13 @@ func funnelCTE(f FunnelQuery) (string, []interface{}) {
 		conds[i] = "event = ?"
 		args = append(args, s)
 	}
-	args = append(args, f.Project, f.From, f.To, f.Steps)
+	args = append(args, f.Project, f.Project, f.From, f.To, f.Steps)
 	q := fmt.Sprintf(`WITH
 	levels AS (
-		SELECT distinct_id, windowFunnel(%d)(toDateTime(timestamp), %s) AS level
-		FROM events
-		WHERE project_id = ? AND timestamp >= ? AND timestamp < ? AND distinct_id != '' AND event IN (?)
-		GROUP BY distinct_id
+		SELECT person AS distinct_id, windowFunnel(%d)(toDateTime(timestamp), %s) AS level
+		FROM `+PersonsFrom+`
+		WHERE project_id = ? AND timestamp >= ? AND timestamp < ? AND person != '' AND event IN (?)
+		GROUP BY person
 	),
 	cohort AS (
 		SELECT distinct_id, s AS step, if(level = s, 'dropped', 'continued') AS kind
@@ -237,16 +240,16 @@ func funnelCTE(f FunnelQuery) (string, []interface{}) {
 		WHERE level >= s
 	),
 	sessions AS (
-		SELECT DISTINCT distinct_id, session_id FROM events
+		SELECT DISTINCT person AS distinct_id, session_id FROM `+PersonsFrom+`
 		WHERE project_id = ? AND timestamp >= ? AND timestamp < ? AND session_id != ''
-			AND distinct_id IN (SELECT distinct_id FROM levels WHERE level >= 1)
+			AND person IN (SELECT distinct_id FROM levels WHERE level >= 1)
 	),
 	cs AS (
 		SELECT c.step AS step, c.kind AS kind, c.distinct_id AS distinct_id, s.session_id AS session_id
 		FROM cohort AS c INNER JOIN sessions AS s ON c.distinct_id = s.distinct_id
 	)
 `, f.WindowSeconds, strings.Join(conds, ", "), len(f.Steps))
-	args = append(args, f.Project, f.From, f.To)
+	args = append(args, f.Project, f.Project, f.From, f.To)
 	return q, args
 }
 

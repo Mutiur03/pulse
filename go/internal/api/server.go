@@ -132,6 +132,10 @@ type Server struct {
 	Dashboards DashboardStore
 	// Analytics serves persons, retention and paths; nil disables them.
 	Analytics AnalyticsReader
+	// Governance keeps data settings and deletion requests; nil disables
+	// them. Persons links a deletion to every id of the person.
+	Governance GovernanceStore
+	Persons    PersonLinker
 	// Logs serves the logs explorer; nil disables it.
 	Logs LogsReader
 	// Metrics reads OTLP metrics; nil returns empty results.

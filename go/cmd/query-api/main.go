@@ -21,6 +21,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/dashboards"
+	"github.com/Mutiur03/pulse/internal/governance"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/mail"
@@ -123,6 +124,8 @@ func main() {
 		Insights:   chClient,
 		Analytics:  chClient,
 		Logs:       chClient,
+		Governance: &governance.Store{DB: db},
+		Persons:    chClient,
 		Dashboards: &dashboards.Store{DB: db},
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: os.Getenv("COOKIE_SECURE") != "false",

@@ -35,7 +35,7 @@ func (failingProducer) Produce(context.Context, string, []byte, []byte) error {
 func dial(t *testing.T, p Producer, a Authenticator, opts ...grpc.ServerOption) *grpc.ClientConn {
 	t.Helper()
 	lis := bufconn.Listen(1 << 20)
-	srv := NewGRPCServer(p, a, opts...)
+	srv := NewGRPCServer(p, a, nil, opts...)
 	go func() { _ = srv.Serve(lis) }()
 	t.Cleanup(srv.GracefulStop)
 	conn, err := grpc.NewClient("passthrough:///bufnet",

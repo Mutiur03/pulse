@@ -29,8 +29,9 @@ const DefaultGRPCMaxRecv = 16 << 20
 // TraceService, LogsService and MetricsService plus gRPC health. Clients
 // authenticate with x-pulse-key metadata or "authorization: Bearer <key>",
 // under the same keys and rate limits as OTLP/HTTP.
-func NewGRPCServer(p Producer, auth Authenticator, opts ...grpc.ServerOption) *grpc.Server {
-	h := &handler{p: p, auth: auth}
+// scrub may be nil to keep records as sent.
+func NewGRPCServer(p Producer, auth Authenticator, scrub ScrubSource, opts ...grpc.ServerOption) *grpc.Server {
+	h := &handler{p: p, auth: auth, scrub: scrub}
 	opts = append([]grpc.ServerOption{
 		grpc.MaxRecvMsgSize(DefaultGRPCMaxRecv),
 		grpc.ChainUnaryInterceptor(h.authorize),

@@ -142,3 +142,31 @@ func connect(cfg S3Config, ok bool, what string) *S3 {
 	}
 	return s
 }
+
+// Object is a stored object's key and last change.
+type Object struct {
+	Key      string
+	Modified time.Time
+}
+
+// List returns the objects under a prefix.
+func (s *S3) List(ctx context.Context, prefix string) ([]Object, error) {
+	var out []Object
+	for o := range s.c.ListObjects(ctx, s.bucket, minio.ListObjectsOptions{Prefix: prefix, Recursive: true}) {
+		if o.Err != nil {
+			return out, o.Err
+		}
+		out = append(out, Object{Key: o.Key, Modified: o.LastModified})
+	}
+	return out, nil
+}
+
+// Remove deletes an object; a missing object is not an error.
+func (s *S3) Remove(ctx context.Context, key string) error {
+	err := s.c.RemoveObject(ctx, s.bucket, key, minio.RemoveObjectOptions{})
+	var resp minio.ErrorResponse
+	if errors.As(err, &resp) && resp.Code == "NoSuchKey" {
+		return nil
+	}
+	return err
+}

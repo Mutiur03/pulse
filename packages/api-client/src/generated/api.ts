@@ -847,6 +847,82 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/projects/{project_id}/data-settings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** The project's PII scrubbing rules and retention periods */
+        get: operations["getDataSettings"];
+        /**
+         * Save scrubbing rules and retention periods
+         * @description Owners only. Scrubbing applies to data received after the change (the ingest gateway picks it up within 30 seconds). Retention can only be shortened below the limits; the governance worker deletes older data.
+         */
+        put: operations["updateDataSettings"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/data-settings/preview": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Show what scrubbing rules do to a sample text */
+        post: operations["previewScrubbing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/deletion-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Deletion requests of the project, newest first */
+        get: operations["listDeletionRequests"];
+        put?: never;
+        /**
+         * Request deletion of all data of one person
+         * @description Owners only. The id is resolved to its person and every linked id; the governance worker deletes their events, sessions, replays (rows and objects), errors, spans and logs of their sessions and traces, and the links. The request and its outcome are in the audit log.
+         */
+        post: operations["createDeletionRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/deletion-requests/{request_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** One deletion request and its outcome */
+        get: operations["getDeletionRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/projects/{project_id}/upload-tokens": {
         parameters: {
             query?: never;
@@ -1889,6 +1965,81 @@ export interface components {
             total: number;
             services: components["schemas"]["LogFacetValue"][];
             levels: components["schemas"]["LogFacetValue"][];
+        };
+        ScrubRules: {
+            /** @description Replace email addresses with [email]. */
+            emails: boolean;
+            /** @description Replace card numbers (Luhn-valid, 13 to 19 digits) with [card]. */
+            cards: boolean;
+            /** @description Replace IPv4 and IPv6 addresses with [ip]. */
+            ips: boolean;
+            /** @description Property and attribute names whose values become [redacted]; a name matches when it contains a key. */
+            keys: string[];
+            /** @description RE2 expressions; matches become [redacted]. */
+            patterns: string[];
+        };
+        RetentionSettings: {
+            events_days: number;
+            traces_days: number;
+            logs_days: number;
+            errors_days: number;
+            replays_days: number;
+            /** @description 0 keeps source maps until they are deleted. */
+            sourcemaps_days: number;
+        };
+        DataSettingsInput: {
+            scrubbing: components["schemas"]["ScrubRules"];
+            retention: components["schemas"]["RetentionSettings"];
+        };
+        DataSettings: {
+            /** Format: int64 */
+            project_id: number;
+            scrubbing: components["schemas"]["ScrubRules"];
+            retention: components["schemas"]["RetentionSettings"];
+            limits: components["schemas"]["RetentionSettings"];
+            /** @description False while the project uses the defaults. */
+            saved: boolean;
+            /** Format: date-time */
+            updated_at?: string;
+        };
+        ScrubPreviewInput: {
+            scrubbing: components["schemas"]["ScrubRules"];
+            /** @description Text, or a JSON object whose keys are checked too. */
+            sample: string;
+        };
+        ScrubPreview: {
+            scrubbed: string;
+        };
+        DeletionRequestInput: {
+            /** @description Any id of the person; every linked id is included. */
+            distinct_id: string;
+            reason?: string;
+        };
+        /** @enum {string} */
+        DeletionStatus: "pending" | "running" | "completed" | "failed";
+        DeletionRequest: {
+            /** Format: int64 */
+            id: number;
+            /** Format: int64 */
+            project_id: number;
+            distinct_id: string;
+            person_key: string;
+            /** @description The ids deleted (known ids when queued, all found ids once done). */
+            distinct_ids: string[];
+            reason: string;
+            status: components["schemas"]["DeletionStatus"];
+            /** @description Rows deleted per table, plus replay_objects removed. */
+            result: {
+                [key: string]: number;
+            };
+            error: string;
+            attempts: number;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            started_at?: string;
+            /** Format: date-time */
+            completed_at?: string;
         };
         /**
          * @description error_count (errors in the window), error_rate (errors per minute), failure_rate (percent of server requests that failed), latency_p95 and latency_p99 (server span milliseconds), throughput (server requests per minute; use lt to catch drops), event_count (product events named by event_name), log_count (logs matching log_query), new_issue and issue_regression (fire on each issue event).
@@ -3519,6 +3670,162 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["Unauthorized"];
             413: components["responses"]["BadRequest"];
+        };
+    };
+    getDataSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Settings, or the defaults when none were saved */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataSettings"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    updateDataSettings: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DataSettingsInput"];
+            };
+        };
+        responses: {
+            /** @description The saved settings */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DataSettings"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    previewScrubbing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ScrubPreviewInput"];
+            };
+        };
+        responses: {
+            /** @description The scrubbed sample */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ScrubPreview"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listDeletionRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Requests */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionRequest"][];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    createDeletionRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["DeletionRequestInput"];
+            };
+        };
+        responses: {
+            /** @description Queued */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionRequest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getDeletionRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+                request_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The request */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["DeletionRequest"];
+                };
+            };
+            404: components["responses"]["NotFound"];
         };
     };
     listUploadTokens: {

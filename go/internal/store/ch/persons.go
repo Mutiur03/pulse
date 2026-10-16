@@ -112,6 +112,14 @@ const personEvents = `(SELECT e.*, if(a.person_key != '', a.person_key, e.distin
 		WHERE project_id = ? GROUP BY distinct_id) AS a ON a.distinct_id = e.distinct_id
 	WHERE e.project_id = ? AND e.timestamp >= ? AND e.timestamp < ? AND e.distinct_id != '')`
 
+// PersonsFrom is the events table of one project with a person column: the
+// person key each distinct id was linked to, or the id itself. Its one
+// argument is the project id.
+const PersonsFrom = `(SELECT e.*, if(a.person_key != '', a.person_key, e.distinct_id) AS person
+	FROM events AS e
+	LEFT JOIN (SELECT distinct_id, argMax(person_key, updated_at) AS person_key FROM person_aliases
+		WHERE project_id = ? GROUP BY distinct_id) AS a ON a.distinct_id = e.distinct_id)`
+
 func personArgs(project uint64, from, to time.Time) []interface{} {
 	return []interface{}{project, project, from, to}
 }

@@ -1,4 +1,5 @@
 'use client';
+import Link from 'next/link';
 import { useState } from 'react';
 import { api, currentContext, handleAuthError } from '@/lib/api';
 import { Members } from '@/components/members';
@@ -52,7 +53,15 @@ export default function SettingsPage() {
 
   return (
     <>
-      <PageHeader title="Settings" description={project ? `Project: ${project.name}` : undefined} />
+      <PageHeader
+        title="Settings"
+        description={project ? `Project: ${project.name}` : undefined}
+        actions={
+          <Link href="/settings/governance" className="text-sm text-sky-300 hover:underline" data-testid="data-settings-link">
+            Data governance: scrubbing, retention, deletion
+          </Link>
+        }
+      />
       <ErrorNote error={me.error ?? keys.error ?? err} />
       {owner && (
         <Card className="mb-4">

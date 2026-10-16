@@ -1046,3 +1046,99 @@ test('logs explorer tails, searches and links logs to traces, and alerts on a se
   await page.getByRole('button', { name: 'Save rule' }).click();
   await expect(page).toHaveURL(/\/alerts\/\d+$/);
 });
+
+test('data governance scrubs PII at ingest, deletes a person on request and enforces retention', async ({ browser }) => {
+  test.setTimeout(240_000);
+  // A fresh owner and project, so these settings do not affect other tests.
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  page.on('dialog', (d) => void d.accept());
+  await page.goto('/signup');
+  await page.getByLabel('Name').fill('Gov Owner');
+  await page.getByLabel('Email').fill(`gov-${Date.now()}@example.com`);
+  await page.getByLabel('Password').fill('a-long-e2e-password');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/\/projects\/new/);
+  await page.getByLabel('Project name').fill('Gov Shop');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  const key = (await page.getByTestId('new-project-key').innerText()).trim();
+  const projectId = ((await (await page.request.get('/api/v1/projects')).json()) as { id: number }[])[0].id;
+
+  // Scrubbing rules: built-in patterns plus a custom key and regex.
+  await page.goto('/settings');
+  await page.getByTestId('data-settings-link').click();
+  await expect(page).toHaveURL(/\/settings\/governance/);
+  await expect(page.getByTestId('scrub-cards')).toBeChecked();
+  await page.getByTestId('scrub-emails').check();
+  await page.getByTestId('scrub-ips').check();
+  await page.getByTestId('scrub-keys').fill('password\ntoken');
+  await page.getByTestId('scrub-patterns').fill('ord-\\d+');
+  await page.getByTestId('scrub-sample').fill('{"contact": "zoe@shop.example", "card": "4242 4242 4242 4242", "from": "203.0.113.9", "password": "hunter2", "note": "order ord-123"}');
+  await page.getByTestId('scrub-preview').click();
+  const result = page.getByTestId('scrub-result');
+  for (const marker of ['[email]', '[card]', '[ip]', '[redacted]']) await expect(result).toContainText(marker);
+  await expect(result).not.toContainText('hunter2');
+  await page.getByTestId('save-data-settings').click();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await shot(page, '50-data-settings');
+
+  // Data sent afterwards is scrubbed before it is stored; ids are kept.
+  const at = (daysAgo: number) => new Date(Date.now() - daysAgo * 86_400_000).toISOString();
+  const events = [
+    { event: '$pageview', distinct_id: 'anon-zoe', session_id: 's-zoe-1', timestamp: at(0), properties: { $pathname: '/checkout' } },
+    { event: '$identify', distinct_id: 'user-zoe', session_id: 's-zoe-1', timestamp: at(0),
+      properties: { $anon_distinct_id: 'anon-zoe', email: 'zoe@shop.example', plan: 'pro' } },
+    { event: 'purchase', distinct_id: 'user-zoe', session_id: 's-zoe-1', timestamp: at(0),
+      properties: { card: '4242 4242 4242 4242', password: 'hunter2', note: 'paid ord-991 from 203.0.113.9', amount: 30 } },
+    { event: 'old_visit', distinct_id: 'anon-old', session_id: 's-old-1', timestamp: at(2), properties: {} },
+  ];
+  const sent = await page.request.post(`${ingestURL}/v1/events?key=${key}`, {
+    headers: { 'Content-Type': 'text/plain' },
+    data: JSON.stringify(events),
+  });
+  expect(sent.status()).toBe(202);
+  type Ev = { event: string; distinct_id: string; properties: Record<string, unknown> };
+  const list = async (q: string) => {
+    const res = await page.request.get(`/api/v1/events?project_id=${projectId}&from=${encodeURIComponent(at(3))}&${q}`);
+    return ((await res.json()) as { events: Ev[] }).events;
+  };
+  await expect.poll(async () => (await list('distinct_id=user-zoe')).length, { timeout: 60_000 }).toBe(2);
+  const purchase = (await list('event=purchase'))[0];
+  expect(purchase.properties).toMatchObject({ card: '[card]', password: '[redacted]', note: 'paid [redacted] from [ip]', amount: 30 });
+  expect((await list('event=%24identify'))[0].properties).toMatchObject({ email: '[email]', $anon_distinct_id: 'anon-zoe' });
+  expect(await list('event=old_visit')).toHaveLength(1);
+
+  await page.goto('/persons/profile?id=anon-zoe');
+  await expect(page.getByTestId('person-properties')).toContainText('[email]');
+  await expect(page.getByTestId('person-ids')).toContainText('user-zoe');
+  await shot(page, '51-scrubbed-person');
+
+  // Deleting the person removes every linked id's data.
+  await page.getByTestId('delete-person').click();
+  await expect(page).toHaveURL(/\/settings\/governance/);
+  const row = page.getByTestId('deletion-row').first();
+  await expect(row).toContainText('anon-zoe');
+  await expect(row).toContainText('user-zoe');
+  await expect(row.getByTestId('deletion-status')).toHaveText('completed', { timeout: 60_000 });
+  await expect(row).toContainText('events 3');
+  await shot(page, '52-deletion-request');
+  expect(await list('distinct_id=user-zoe')).toHaveLength(0);
+  expect(await list('distinct_id=anon-zoe')).toHaveLength(0);
+  await page.goto('/settings');
+  const auditLog = page.getByTestId('audit-log');
+  await expect(auditLog).toContainText('data.deletion.complete');
+  await expect(auditLog).toContainText('data.deletion.request');
+  await expect(auditLog).toContainText('data.settings.update');
+  await shot(page, '53-audit-deletion');
+
+  // A one-day event retention deletes the two-day-old event.
+  await page.goto('/settings/governance');
+  await page.getByTestId('retention-events_days').fill('1');
+  await page.getByTestId('save-data-settings').click();
+  await expect(page.getByText('Saved', { exact: true })).toBeVisible();
+  await shot(page, '54-retention-settings');
+  await expect.poll(async () => (await list('event=old_visit')).length, { timeout: 90_000 }).toBe(0);
+  await page.goto('/settings');
+  await expect(page.getByTestId('audit-log')).toContainText('data.retention');
+  await ctx.close();
+});

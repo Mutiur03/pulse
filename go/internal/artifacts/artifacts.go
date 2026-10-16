@@ -311,3 +311,38 @@ func (s *Store) Authenticate(ctx context.Context, secret string) (int64, error) 
 	}
 	return project, err
 }
+
+// ExpireArtifacts deletes a project's source maps uploaded before cutoff and
+// returns the object keys no other artifact still uses, for removal from
+// storage, and how many artifacts were deleted.
+func (s *Store) ExpireArtifacts(ctx context.Context, project int64, cutoff time.Time) ([]string, int, error) {
+	rows, err := s.DB.Query(ctx, `DELETE FROM release_artifacts WHERE project_id = $1 AND created_at < $2 RETURNING object_key`, project, cutoff)
+	if err != nil {
+		return nil, 0, err
+	}
+	keys, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil || len(keys) == 0 {
+		return nil, 0, err
+	}
+	rows, err = s.DB.Query(ctx, `SELECT DISTINCT object_key FROM release_artifacts WHERE object_key = ANY($1)`, keys)
+	if err != nil {
+		return nil, len(keys), err
+	}
+	used, err := pgx.CollectRows(rows, pgx.RowTo[string])
+	if err != nil {
+		return nil, len(keys), err
+	}
+	inUse := map[string]bool{}
+	for _, k := range used {
+		inUse[k] = true
+	}
+	var gone []string
+	seen := map[string]bool{}
+	for _, k := range keys {
+		if !inUse[k] && !seen[k] {
+			seen[k] = true
+			gone = append(gone, k)
+		}
+	}
+	return gone, len(keys), nil
+}

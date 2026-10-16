@@ -235,7 +235,8 @@ func seriesWhere(q TrendQuery, s TrendSeries) (string, []interface{}) {
 func mathSQL(s TrendSeries, args *[]interface{}) string {
 	switch s.Math {
 	case MathUniqueUsers:
-		return "toFloat64(uniq(distinct_id))"
+		// Counted as persons: ids linked by identify or alias count once.
+		return "toFloat64(uniqIf(person, person != ''))"
 	case MathUniqueSessions:
 		return "toFloat64(uniqIf(session_id, session_id != ''))"
 	case MathSum, MathAvg, MathMin, MathMax, MathP95:
@@ -274,9 +275,14 @@ func TrendSQL(q TrendQuery, s TrendSeries, bucketed bool) (string, []interface{}
 		cols = append(cols, "'' AS term")
 	}
 	cols = append(cols, mathSQL(s, &args)+" AS value")
+	from := "events"
+	if s.Math == MathUniqueUsers {
+		from = PersonsFrom
+		args = append(args, q.Project)
+	}
 	where, wargs := seriesWhere(q, s)
 	args = append(args, wargs...)
-	sql := "SELECT " + strings.Join(cols, ", ") + " FROM events WHERE " + where
+	sql := "SELECT " + strings.Join(cols, ", ") + " FROM " + from + " WHERE " + where
 	if len(group) > 0 {
 		sql += " GROUP BY " + strings.Join(group, ", ")
 	}

@@ -29,7 +29,8 @@ was written.
   the browser, OS and country, sessions with their duration, error count and
   replay link, and the latest events.
 
-Trends and funnels still count distinct ids, not persons.
+Trends (unique users), funnels and the funnel session views count persons: the
+anonymous, identified and aliased ids of one person are counted once.
 
 ## Retention
 

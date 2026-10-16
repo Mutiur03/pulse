@@ -137,6 +137,19 @@ func TestAnalyticsClickHouse(t *testing.T) {
 		t.Fatalf("events %+v %v", events, err)
 	}
 
+	// Trends and funnels count persons: Ann's three ids are one user.
+	trend, err := c.RunTrend(ctx, TrendQuery{Project: project, Series: []TrendSeries{{Math: MathUniqueUsers}}, Interval: "day", From: from, To: to})
+	if err != nil || len(trend) != 1 || len(trend[0].Totals) != 1 || trend[0].Totals[0].Value != 2 {
+		t.Fatalf("unique users %+v %v", trend, err)
+	}
+	funnel, err := c.RunFunnel(ctx, FunnelQuery{Project: project, Steps: []string{"$identify", "purchase"}, WindowSeconds: 7 * 24 * 3600, From: from, To: to})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := funnelCompleted(funnel); got != 1 {
+		t.Errorf("funnel across linked ids: %d completed, %+v", got, funnel.Levels)
+	}
+
 	rq := RetentionQuery{Project: project, StartEvent: "$pageview", ReturnEvent: "$pageview", Periods: 3, From: from, To: to}
 	_ = rq.Validate()
 	d, err := c.RunRetention(ctx, rq)
@@ -181,4 +194,13 @@ func TestAnalyticsClickHouse(t *testing.T) {
 	if len(byPath) != 2 || byPath["/pricing>/signup"] != 1 || byPath["/pricing"] != 1 {
 		t.Fatalf("paths from /pricing %v", byPath)
 	}
+}
+
+func funnelCompleted(f FunnelData) uint64 {
+	for _, l := range f.Levels {
+		if l.Level == 2 {
+			return l.Users
+		}
+	}
+	return 0
 }

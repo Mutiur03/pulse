@@ -57,6 +57,7 @@ type handler struct {
 	// countryHeader names a header set by a trusted proxy or CDN with the
 	// client's ISO country code (e.g. CF-IPCountry); empty disables it.
 	countryHeader string
+	scrub         ScrubSource
 }
 
 // WithCountryHeader reads the client country from a header set by a
@@ -171,6 +172,7 @@ func decodeOneOrMany[T any](body []byte) ([]T, error) {
 
 func (h *handler) produceAll(ctx context.Context, topic string, keys []string, vals []interface{}) *apiError {
 	for i, v := range vals {
+		h.scrubRecord(ctx, v)
 		b, err := json.Marshal(v)
 		if err != nil {
 			return &apiError{http.StatusInternalServerError, "failed to encode record"}
@@ -374,6 +376,7 @@ func (h *handler) replayChunk(r *http.Request, body []byte, project string) (int
 	if err != nil {
 		return 0, &apiError{http.StatusInternalServerError, "bad project"}
 	}
+	scrubEvents(h.scrubber(r.Context(), project), c.Events)
 	if err := h.replays.Store(r.Context(), pid, c); err != nil {
 		log.Printf("replay store failed: %v", err)
 		return 0, &apiError{http.StatusServiceUnavailable, "replay storage unavailable"}

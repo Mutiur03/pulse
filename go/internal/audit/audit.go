@@ -68,6 +68,7 @@ func nullable(v int64) *int64 {
 
 // Record inserts an entry. Without an actor id the user is looked up by
 // email, so failed logins against an existing account are attributed to it.
+// Without an organization, a project's entry goes to the project's.
 func (s *Store) Record(ctx context.Context, e Entry) error {
 	details := e.Details
 	if details == nil {
@@ -78,7 +79,7 @@ func (s *Store) Record(ctx context.Context, e Entry) error {
 		return err
 	}
 	_, err = s.DB.Exec(ctx, `INSERT INTO audit_log (org_id, project_id, actor_id, actor_email, action, target, ip, details)
-		VALUES ($1, $2, COALESCE($3, (SELECT id FROM users WHERE lower(email) = lower($4::text) LIMIT 1)), $4, $5, $6, $7, $8)`,
+		VALUES (COALESCE($1, (SELECT org_id FROM projects WHERE id = $2)), $2, COALESCE($3, (SELECT id FROM users WHERE lower(email) = lower($4::text) LIMIT 1)), $4, $5, $6, $7, $8)`,
 		nullable(e.OrgID), nullable(e.ProjectID), nullable(e.ActorID), e.ActorEmail, e.Action, e.Target, e.IP, b)
 	return err
 }

@@ -20,6 +20,12 @@ export type ReleaseDetail = Schemas['ReleaseDetail'];
 export type Artifact = Schemas['Artifact'];
 export type UploadToken = Schemas['UploadToken'];
 export type UploadTokenCreated = Schemas['UploadTokenCreated'];
+export type ScrubRules = Schemas['ScrubRules'];
+export type RetentionSettings = Schemas['RetentionSettings'];
+export type DataSettings = Schemas['DataSettings'];
+export type DataSettingsInput = Schemas['DataSettingsInput'];
+export type DeletionRequest = Schemas['DeletionRequest'];
+export type DeletionStatus = Schemas['DeletionStatus'];
 export type ProductEvent = Schemas['ProductEvent'];
 export type SpanEvent = Schemas['SpanEvent'];
 export type TraceSummary = Schemas['TraceSummary'];
@@ -411,6 +417,35 @@ export class APIClient {
 
   revokeUploadToken(projectId: number, tokenId: number): Promise<UploadToken> {
     return this.request('POST', `/v1/projects/${projectId}/upload-tokens/${tokenId}/revoke`);
+  }
+
+  getDataSettings(projectId: number): Promise<DataSettings> {
+    return this.request('GET', `/v1/projects/${projectId}/data-settings`);
+  }
+
+  /** Owners only. */
+  updateDataSettings(projectId: number, input: DataSettingsInput): Promise<DataSettings> {
+    return this.request('PUT', `/v1/projects/${projectId}/data-settings`, undefined, input);
+  }
+
+  previewScrubbing(projectId: number, scrubbing: ScrubRules, sample: string): Promise<{ scrubbed: string }> {
+    return this.request('POST', `/v1/projects/${projectId}/data-settings/preview`, undefined, { scrubbing, sample });
+  }
+
+  listDeletionRequests(projectId: number): Promise<DeletionRequest[]> {
+    return this.request('GET', `/v1/projects/${projectId}/deletion-requests`);
+  }
+
+  /** Owners only. Deletes every id linked to the person. */
+  createDeletionRequest(projectId: number, distinctId: string, reason?: string): Promise<DeletionRequest> {
+    return this.request('POST', `/v1/projects/${projectId}/deletion-requests`, undefined, {
+      distinct_id: distinctId,
+      ...(reason ? { reason } : {}),
+    });
+  }
+
+  getDeletionRequest(projectId: number, requestId: number): Promise<DeletionRequest> {
+    return this.request('GET', `/v1/projects/${projectId}/deletion-requests/${requestId}`);
   }
 
   updateIssue(id: number, status: IssueStatus): Promise<Issue> {
