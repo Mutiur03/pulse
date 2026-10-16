@@ -29,6 +29,27 @@ func (e *Error) Error() string { return e.Message }
 // Err returns an *Error.
 func Err(status int, msg string) error { return &Error{Status: status, Message: msg} }
 
+// BadRequest wraps err as a 400 with its message.
+func BadRequest(err error) error { return Err(http.StatusBadRequest, err.Error()) }
+
+// LimitBody returns middleware that caps request bodies at n bytes.
+func LimitBody(n int64) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			r.Body = http.MaxBytesReader(w, r.Body, n)
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
+// Readable returns a 404 unless the caller may read project.
+func Readable(ctx context.Context, project int64) error {
+	if !CanRead(ctx, project) {
+		return Err(http.StatusNotFound, "project not found")
+	}
+	return nil
+}
+
 // Messages for queries stopped by a cost limit; the web app shows them.
 const (
 	MsgQueryTimeout  = "This query took too long and was stopped. Try a shorter time range or more filters."

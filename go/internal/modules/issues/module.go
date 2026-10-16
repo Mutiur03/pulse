@@ -5,12 +5,11 @@ package issues
 
 import (
 	"context"
-	"net/http"
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/Mutiur03/pulse/internal/apikit"
 	"github.com/Mutiur03/pulse/internal/modules/issues/adapters/httpapi"
 	"github.com/Mutiur03/pulse/internal/modules/issues/adapters/httpapi/oapi"
 	"github.com/Mutiur03/pulse/internal/modules/issues/adapters/postgres"
@@ -74,9 +73,6 @@ func Transition(exists bool, cur Status, resolvedAt *time.Time, eventAt time.Tim
 // Connect opens the Postgres issue store.
 func Connect(ctx context.Context, url string) (*Store, error) { return postgres.Connect(ctx, url) }
 
-// NewStore returns an issue store on an existing pool.
-func NewStore(db *pgxpool.Pool) *Store { return postgres.New(db) }
-
 // Deps are the module's dependencies.
 type Deps struct {
 	Repository  Repository
@@ -96,12 +92,5 @@ func New(d Deps) *Module {
 
 // Register mounts the module's routes on r.
 func (m *Module) Register(r chi.Router) {
-	oapi.HandlerWithOptions(m.handlers.Handler(), oapi.ChiServerOptions{BaseRouter: r.With(maxBody)})
-}
-
-func maxBody(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, httpapi.MaxBody)
-		next.ServeHTTP(w, r)
-	})
+	oapi.HandlerWithOptions(m.handlers.Handler(), oapi.ChiServerOptions{BaseRouter: r.With(apikit.LimitBody(httpapi.MaxBody))})
 }

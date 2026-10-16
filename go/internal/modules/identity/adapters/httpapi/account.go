@@ -9,6 +9,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/httpx"
 	"github.com/Mutiur03/pulse/internal/modules/identity/domain"
 	"github.com/Mutiur03/pulse/internal/orgs"
 )
@@ -30,7 +31,7 @@ func meOf(p *auth.Principal) gen.Me {
 func (s *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 	var body gen.LoginRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&body); err != nil || body.Email == "" || body.Password == "" {
-		writeErr(w, http.StatusBadRequest, "email and password are required")
+		httpx.WriteError(w, http.StatusBadRequest, "email and password are required")
 		return
 	}
 	ctx, ip, l := r.Context(), s.ip(r), s.Limits
@@ -52,7 +53,7 @@ func (s *Handlers) Login(w http.ResponseWriter, r *http.Request) {
 		l.LoginFail.Fail(ctx, body.Email, ip)
 		l.LoginEmail.Fail(ctx, body.Email)
 		s.record(r, audit.Entry{ActorEmail: body.Email, Action: audit.LoginFailure, IP: ip})
-		writeErr(w, http.StatusUnauthorized, "invalid email or password")
+		httpx.WriteError(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	} else if err != nil {
 		internal(w, err)
@@ -83,13 +84,13 @@ func (s *Handlers) startSession(w http.ResponseWriter, r *http.Request, token st
 		return
 	}
 	auth.SetCookie(w, token, s.SecureCookie)
-	writeJSON(w, code, meOf(p))
+	httpx.WriteJSON(w, code, meOf(p))
 }
 
 func (s *Handlers) Signup(w http.ResponseWriter, r *http.Request) {
 	var body gen.SignupRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&body); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON body")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid JSON body")
 		return
 	}
 	if ok, wait := s.Limits.SignupIP.Take(r.Context(), s.ip(r)); !ok {
@@ -104,16 +105,16 @@ func (s *Handlers) Signup(w http.ResponseWriter, r *http.Request) {
 	var verr *auth.ValidationError
 	switch {
 	case errors.As(err, &verr):
-		writeErr(w, http.StatusBadRequest, verr.Msg)
+		httpx.WriteError(w, http.StatusBadRequest, verr.Msg)
 		return
 	case errors.Is(err, auth.ErrEmailTaken):
-		writeErr(w, http.StatusConflict, "an account with this email already exists")
+		httpx.WriteError(w, http.StatusConflict, "an account with this email already exists")
 		return
 	case errors.Is(err, orgs.ErrWrongUser):
-		writeErr(w, http.StatusBadRequest, "this invite was sent to a different email address")
+		httpx.WriteError(w, http.StatusBadRequest, "this invite was sent to a different email address")
 		return
 	case errors.Is(err, orgs.ErrBadInvite):
-		writeErr(w, http.StatusBadRequest, "the invite is invalid or has expired")
+		httpx.WriteError(w, http.StatusBadRequest, "the invite is invalid or has expired")
 		return
 	case err != nil:
 		internal(w, err)
@@ -141,8 +142,8 @@ func (s *Handlers) Logout(w http.ResponseWriter, r *http.Request) {
 func (s *Handlers) GetMe(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	if p == nil {
-		writeErr(w, http.StatusUnauthorized, "not logged in")
+		httpx.WriteError(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
-	writeJSON(w, http.StatusOK, meOf(p))
+	httpx.WriteJSON(w, http.StatusOK, meOf(p))
 }

@@ -19,7 +19,7 @@ func TestMapTracesGolden(t *testing.T) {
 			"deployment.environment": "prod", "pulse.project_id": "999"},
 		spans: []rawSpan{
 			{traceID: "t1", spanID: "s1", name: "GET /pay", kind: 2, start: ts, end: ts + 5e6,
-				attrs: kv{"http.status_code": "500", "session.id": "sess", "enduser.id": "u1", "http.route": "/pay"},
+				attrs:      kv{"http.status_code": "500", "session.id": "sess", "enduser.id": "u1", "http.route": "/pay"},
 				statusCode: 2, statusMsg: "bad"},
 			{traceID: "t1", spanID: "s2", parentID: "s1", name: "charge", kind: 3, start: ts + 1e6, end: ts + 2e6,
 				events: []rawEvent{
@@ -77,7 +77,7 @@ func TestMetricsFromProtoGolden(t *testing.T) {
 			m("cpu", &metrics.Metric_Gauge{Gauge: &metrics.Gauge{DataPoints: []*metrics.NumberDataPoint{gaugePoint(0.5, ts), gaugePoint(math.NaN(), ts)}}}),
 			m("reqs", &metrics.Metric_Sum{Sum: &metrics.Sum{IsMonotonic: true,
 				AggregationTemporality: metrics.AggregationTemporality_AGGREGATION_TEMPORALITY_CUMULATIVE,
-				DataPoints: []*metrics.NumberDataPoint{{TimeUnixNano: ts, Value: &metrics.NumberDataPoint_AsInt{AsInt: 12}}}}}),
+				DataPoints:             []*metrics.NumberDataPoint{{TimeUnixNano: ts, Value: &metrics.NumberDataPoint_AsInt{AsInt: 12}}}}}),
 			m("latency", &metrics.Metric_Histogram{Histogram: &metrics.Histogram{
 				AggregationTemporality: metrics.AggregationTemporality_AGGREGATION_TEMPORALITY_DELTA,
 				DataPoints: []*metrics.HistogramDataPoint{

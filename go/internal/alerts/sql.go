@@ -5,7 +5,6 @@ import (
 	"strings"
 	"time"
 
-
 	"github.com/Mutiur03/pulse/internal/logquery"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 )

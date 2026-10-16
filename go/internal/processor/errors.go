@@ -20,14 +20,6 @@ type IssueRecorder interface {
 	Record(ctx context.Context, o issues.Occurrence) (issues.Issue, issues.Kind, error)
 }
 
-// GroupErrors fingerprints each raw error, records it against its issue in
-// Postgres and returns the rows to write to ClickHouse. Recording queues
-// new-issue and regression events in the issue outbox in the same
-// transaction; the outbox relay publishes them.
-func GroupErrors(ctx context.Context, raw []map[string]interface{}, rec IssueRecorder) ([]ch.ErrorRow, error) {
-	return GroupErrorsWith(ctx, raw, rec, nil)
-}
-
 // MaxDebugIDs caps how many file to debug id pairs an error may carry.
 const MaxDebugIDs = 100
 
@@ -43,8 +35,11 @@ func debugIDs(e map[string]interface{}) map[string]string {
 	return out
 }
 
-// GroupErrorsWith also symbolicates JavaScript stacks with uploaded source
-// maps first, so issues group by original code. sym may be nil.
+// GroupErrorsWith fingerprints each raw error, records it against its issue
+// in Postgres and returns the rows to write to ClickHouse. Recording queues
+// new-issue and regression events in the issue outbox in the same
+// transaction. JavaScript stacks are symbolicated with uploaded source maps
+// first, so issues group by original code; sym may be nil.
 func GroupErrorsWith(ctx context.Context, raw []map[string]interface{}, rec IssueRecorder, sym *symbolicate.Symbolicator) ([]ch.ErrorRow, error) {
 	rows := make([]ch.ErrorRow, 0, len(raw))
 	for _, e := range raw {

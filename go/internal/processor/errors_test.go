@@ -53,7 +53,7 @@ func TestGroupErrorsNewThenRegression(t *testing.T) {
 	mem := &memIssues{byFP: map[string]*issues.Issue{}}
 	t0 := time.Date(2026, 10, 1, 0, 0, 0, 0, time.UTC)
 
-	rows, err := GroupErrors(ctx, []map[string]interface{}{errAt(t0, "1"), errAt(t0.Add(time.Second), "2")}, mem)
+	rows, err := GroupErrorsWith(ctx, []map[string]interface{}{errAt(t0, "1"), errAt(t0.Add(time.Second), "2")}, mem, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -72,13 +72,13 @@ func TestGroupErrorsNewThenRegression(t *testing.T) {
 	resolved := t0.Add(time.Hour)
 	iss.Status, iss.ResolvedAt = issues.Resolved, &resolved
 
-	if _, err := GroupErrors(ctx, []map[string]interface{}{errAt(t0.Add(30*time.Minute), "3")}, mem); err != nil {
+	if _, err := GroupErrorsWith(ctx, []map[string]interface{}{errAt(t0.Add(30*time.Minute), "3")}, mem, nil); err != nil {
 		t.Fatal(err)
 	}
 	if iss.Status != issues.Resolved || len(mem.events) != 1 {
 		t.Fatal("an event from before the fix must not reopen the issue")
 	}
-	if _, err := GroupErrors(ctx, []map[string]interface{}{errAt(t0.Add(2*time.Hour), "4")}, mem); err != nil {
+	if _, err := GroupErrorsWith(ctx, []map[string]interface{}{errAt(t0.Add(2*time.Hour), "4")}, mem, nil); err != nil {
 		t.Fatal(err)
 	}
 	if iss.Status != issues.Unresolved || iss.TimesRegressed != 1 || iss.Count != 4 {

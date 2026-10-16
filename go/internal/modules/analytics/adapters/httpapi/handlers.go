@@ -52,8 +52,6 @@ func mapErr(err error) error {
 	return err
 }
 
-func bad(err error) error { return apikit.Err(http.StatusBadRequest, err.Error()) }
-
 func (h *Handlers) peopleReady() error {
 	if !h.svc.PeopleEnabled() {
 		return mapErr(domain.ErrAnalyticsOff)
@@ -122,7 +120,7 @@ func (h *Handlers) QueryFunnel(ctx context.Context, req oapi.QueryFunnelRequestO
 	}
 	q.From, q.To = domain.Range(h.clock.Now().UTC(), body.From, body.To, domain.FunnelWindow)
 	if err := q.Validate(); err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	d, err := h.svc.Funnel(ctx, q)
 	if err != nil {
@@ -139,7 +137,7 @@ func (h *Handlers) QueryTrend(ctx context.Context, req oapi.QueryTrendRequestObj
 	}
 	q, f, err := TrendQuery(h.clock.Now(), p, *req.Body)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	data, err := h.svc.Trend(ctx, q)
 	if err != nil {
@@ -241,7 +239,7 @@ func (h *Handlers) QueryRetention(ctx context.Context, req oapi.QueryRetentionRe
 	}
 	q.From, q.To = domain.Range(now, from, to, domain.RetentionWindow(q.Period))
 	if err := q.Validate(); err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	d, err := h.svc.Retention(ctx, q)
 	if err != nil {
@@ -277,7 +275,7 @@ func (h *Handlers) QueryPaths(ctx context.Context, req oapi.QueryPathsRequestObj
 		q.From = body.From.UTC()
 	}
 	if err := q.Validate(); err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	rows, err := h.svc.Paths(ctx, q)
 	if err != nil {

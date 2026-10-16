@@ -63,9 +63,3 @@ func New(d Deps) *Module {
 func (m *Module) Register(r chi.Router) {
 	oapi.HandlerFromMux(m.handlers.Handler(), r)
 }
-
-// ObjectKey is the storage key of a map's contents.
-func ObjectKey(project int64, sha string) string { return domain.ObjectKey(project, sha) }
-
-// SHA256 is the hex digest used to name stored maps.
-func SHA256(data []byte) string { return domain.SHA256(data) }

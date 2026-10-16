@@ -38,13 +38,6 @@ func (h *Handlers) Handler() oapi.ServerInterface {
 	return oapi.NewStrictHandlerWithOptions(h, []oapi.StrictMiddlewareFunc{apikit.WithRequest}, oapi.StrictHTTPServerOptions(apikit.Strict("invalid JSON body")))
 }
 
-func readable(ctx context.Context, project int64) error {
-	if !apikit.CanRead(ctx, project) {
-		return apikit.Err(http.StatusNotFound, "project not found")
-	}
-	return nil
-}
-
 func (h *Handlers) ready() error {
 	if !h.svc.Enabled() {
 		return apikit.Err(http.StatusServiceUnavailable, domain.ErrOff.Error())
@@ -54,7 +47,7 @@ func (h *Handlers) ready() error {
 
 // read checks read access, then that governance is configured.
 func (h *Handlers) read(ctx context.Context, project int64) error {
-	if err := readable(ctx, project); err != nil {
+	if err := apikit.Readable(ctx, project); err != nil {
 		return err
 	}
 	return h.ready()
@@ -67,8 +60,6 @@ func (h *Handlers) own(ctx context.Context, project int64) error {
 	}
 	return h.ready()
 }
-
-func bad(err error) error { return apikit.Err(http.StatusBadRequest, err.Error()) }
 
 // GetDataSettings implements GET /v1/projects/{project_id}/data-settings.
 func (h *Handlers) GetDataSettings(ctx context.Context, req oapi.GetDataSettingsRequestObject) (oapi.GetDataSettingsResponseObject, error) {
@@ -90,7 +81,7 @@ func (h *Handlers) UpdateDataSettings(ctx context.Context, req oapi.UpdateDataSe
 	in := req.Body
 	st := governance.Settings{ProjectID: req.ProjectId, Rules: rulesIn(in.Scrubbing), Retention: retentionIn(in.Retention)}
 	if err := st.Validate(); err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	saved, err := h.svc.Store.SaveSettings(ctx, st)
 	if err != nil {
@@ -103,12 +94,12 @@ func (h *Handlers) UpdateDataSettings(ctx context.Context, req oapi.UpdateDataSe
 
 // PreviewScrubbing implements POST /v1/projects/{project_id}/data-settings/preview.
 func (h *Handlers) PreviewScrubbing(ctx context.Context, req oapi.PreviewScrubbingRequestObject) (oapi.PreviewScrubbingResponseObject, error) {
-	if err := readable(ctx, req.ProjectId); err != nil {
+	if err := apikit.Readable(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
 	out, err := h.svc.Scrub(rulesIn(req.Body.Scrubbing), req.Body.Sample)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	return oapi.PreviewScrubbing200JSONResponse(gen.ScrubPreview{Scrubbed: out}), nil
 }
@@ -151,7 +142,7 @@ func (h *Handlers) CreateDeletionRequest(ctx context.Context, req oapi.CreateDel
 	}
 	id, reason, err := domain.DeletionInput(req.Body.DistinctId, req.Body.Reason)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	var by *int64
 	if p := auth.FromContext(ctx); p != nil {

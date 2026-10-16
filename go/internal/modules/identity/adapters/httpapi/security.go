@@ -12,6 +12,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/httpx"
 	"github.com/Mutiur03/pulse/internal/modules/identity/domain"
 	"github.com/Mutiur03/pulse/internal/orgs"
 )
@@ -24,7 +25,7 @@ func (s *Handlers) ip(r *http.Request) string {
 
 func tooMany(w http.ResponseWriter, wait time.Duration, msg string) {
 	w.Header().Set("Retry-After", strconv.Itoa(int(math.Max(1, math.Ceil(wait.Seconds())))))
-	writeErr(w, http.StatusTooManyRequests, msg)
+	httpx.WriteError(w, http.StatusTooManyRequests, msg)
 }
 
 // record writes an audit entry, filling in the actor and address. Failures
@@ -58,11 +59,11 @@ func (s *Handlers) record(r *http.Request, e audit.Entry) {
 func (s *Handlers) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	if p == nil {
-		writeErr(w, http.StatusUnauthorized, "not logged in")
+		httpx.WriteError(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
 	if s.Sessions == nil {
-		writeErr(w, http.StatusServiceUnavailable, "sessions are not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "sessions are not configured")
 		return
 	}
 	n, err := s.Sessions.LogoutAll(r.Context(), p.User.ID)
@@ -72,7 +73,7 @@ func (s *Handlers) LogoutAll(w http.ResponseWriter, r *http.Request) {
 	}
 	s.record(r, audit.Entry{Action: audit.LogoutAll, Details: map[string]any{"sessions": n}})
 	auth.ClearCookie(w, s.SecureCookie)
-	writeJSON(w, http.StatusOK, gen.LogoutAllResult{SessionsEnded: n})
+	httpx.WriteJSON(w, http.StatusOK, gen.LogoutAllResult{SessionsEnded: n})
 }
 
 func (s *Handlers) SetMemberRole(w http.ResponseWriter, r *http.Request, org gen.OrgPath, user int64) {
@@ -84,19 +85,19 @@ func (s *Handlers) SetMemberRole(w http.ResponseWriter, r *http.Request, org gen
 		return
 	}
 	if !domain.ValidRole(string(body.Role)) {
-		writeErr(w, http.StatusBadRequest, "role must be owner or member")
+		httpx.WriteError(w, http.StatusBadRequest, "role must be owner or member")
 		return
 	}
 	if s.Roles == nil {
-		writeErr(w, http.StatusServiceUnavailable, "roles are not configured")
+		httpx.WriteError(w, http.StatusServiceUnavailable, "roles are not configured")
 		return
 	}
 	err := s.Roles.SetRole(r.Context(), org, user, string(body.Role))
 	switch {
 	case errors.Is(err, orgs.ErrNotFound):
-		writeErr(w, http.StatusNotFound, "member not found")
+		httpx.WriteError(w, http.StatusNotFound, "member not found")
 	case errors.Is(err, orgs.ErrLastOwner):
-		writeErr(w, http.StatusConflict, "the organization needs at least one owner")
+		httpx.WriteError(w, http.StatusConflict, "the organization needs at least one owner")
 	case err != nil:
 		internal(w, err)
 	default:

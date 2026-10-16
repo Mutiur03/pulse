@@ -5,8 +5,6 @@
 package governance
 
 import (
-	"net/http"
-
 	"github.com/go-chi/chi/v5"
 
 	"github.com/Mutiur03/pulse/internal/apikit"
@@ -47,12 +45,5 @@ func New(d Deps) *Module {
 
 // Register mounts the module's routes on r.
 func (m *Module) Register(r chi.Router) {
-	oapi.HandlerWithOptions(m.handlers.Handler(), oapi.ChiServerOptions{BaseRouter: r.With(maxBody)})
-}
-
-func maxBody(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		r.Body = http.MaxBytesReader(w, r.Body, httpapi.MaxBody)
-		next.ServeHTTP(w, r)
-	})
+	oapi.HandlerWithOptions(m.handlers.Handler(), oapi.ChiServerOptions{BaseRouter: r.With(apikit.LimitBody(httpapi.MaxBody))})
 }

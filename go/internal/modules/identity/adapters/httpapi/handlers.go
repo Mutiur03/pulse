@@ -15,7 +15,6 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/clientip"
-	"github.com/Mutiur03/pulse/internal/httpx"
 	"github.com/Mutiur03/pulse/internal/mail"
 )
 
@@ -42,9 +41,5 @@ type Handlers struct {
 }
 
 var _ oapi.ServerInterface = (*Handlers)(nil)
-
-func writeJSON(w http.ResponseWriter, code int, v interface{}) { httpx.WriteJSON(w, code, v) }
-
-func writeErr(w http.ResponseWriter, code int, msg string) { httpx.WriteError(w, code, msg) }
 
 func internal(w http.ResponseWriter, err error) { apikit.WriteError(w, err) }

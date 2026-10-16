@@ -7,6 +7,11 @@
 *.test
 *.out
 go/bin/
+# Binaries from `go build` inside a cmd directory
+/go/cmd/*/*
+!/go/cmd/*/*.go
+!/go/cmd/*/*.yaml
+!/go/cmd/*/testdata/
 vendor/
 
 # Node / TypeScript

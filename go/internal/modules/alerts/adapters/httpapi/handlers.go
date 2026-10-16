@@ -66,8 +66,6 @@ func storeErr(err error) error {
 	return err
 }
 
-func bad(err error) error { return apikit.Err(http.StatusBadRequest, err.Error()) }
-
 // ListAlerts implements GET /v1/projects/{project_id}/alerts.
 func (h *Handlers) ListAlerts(ctx context.Context, req oapi.ListAlertsRequestObject) (oapi.ListAlertsResponseObject, error) {
 	if err := h.ready(ctx, req.ProjectId); err != nil {
@@ -91,7 +89,7 @@ func (h *Handlers) CreateAlert(ctx context.Context, req oapi.CreateAlertRequestO
 	}
 	rule, err := ruleFromInput(req.ProjectId, *req.Body)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	created, err := h.svc.Store.CreateRule(ctx, rule)
 	if err != nil {
@@ -130,7 +128,7 @@ func (h *Handlers) UpdateAlert(ctx context.Context, req oapi.UpdateAlertRequestO
 	}
 	rule, err := ruleFromInput(req.ProjectId, *req.Body)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	rule.ID = req.AlertId
 	updated, err := h.svc.Store.UpdateRule(ctx, rule)
@@ -158,7 +156,7 @@ func (h *Handlers) MuteAlert(ctx context.Context, req oapi.MuteAlertRequestObjec
 	}
 	until, err := domain.MuteUntil(h.clock.Now(), req.Body.Minutes)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	rule, err := h.svc.Store.Mute(ctx, req.ProjectId, req.AlertId, until)
 	if err != nil {
@@ -174,7 +172,7 @@ func (h *Handlers) PreviewAlert(ctx context.Context, req oapi.PreviewAlertReques
 	}
 	rule, err := ruleFromInput(req.ProjectId, *req.Body)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	p, err := h.svc.Preview(ctx, rule, h.clock.Now().UTC())
 	if err != nil {
@@ -212,7 +210,7 @@ func (h *Handlers) CreateAlertChannel(ctx context.Context, req oapi.CreateAlertC
 	in := req.Body
 	c := alerts.Channel{ProjectID: req.ProjectId, Name: in.Name, Kind: alerts.ChannelKind(in.Kind), Target: in.Target}
 	if err := c.Validate(); err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	if err := h.svc.CheckTarget(ctx, c); err != nil {
 		return nil, apikit.Err(http.StatusBadRequest, "target is not allowed: "+err.Error())

@@ -11,6 +11,7 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/httpx"
 	"github.com/Mutiur03/pulse/internal/mail"
 	"github.com/Mutiur03/pulse/internal/modules/identity/domain"
 )
@@ -41,7 +42,7 @@ func (s *Handlers) sendVerification(ctx context.Context, u auth.User) {
 
 func decode(w http.ResponseWriter, r *http.Request, v any) bool {
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(v); err != nil {
-		writeErr(w, http.StatusBadRequest, "invalid JSON body")
+		httpx.WriteError(w, http.StatusBadRequest, "invalid JSON body")
 		return false
 	}
 	return true
@@ -85,9 +86,9 @@ func (s *Handlers) ConfirmPasswordReset(w http.ResponseWriter, r *http.Request) 
 	var verr *auth.ValidationError
 	switch {
 	case errors.As(err, &verr):
-		writeErr(w, http.StatusBadRequest, verr.Msg)
+		httpx.WriteError(w, http.StatusBadRequest, verr.Msg)
 	case errors.Is(err, auth.ErrBadToken):
-		writeErr(w, http.StatusBadRequest, "the reset link is invalid or has expired")
+		httpx.WriteError(w, http.StatusBadRequest, "the reset link is invalid or has expired")
 	case err != nil:
 		internal(w, err)
 	default:
@@ -105,7 +106,7 @@ func (s *Handlers) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 	err := s.Accounts.VerifyEmail(r.Context(), body.Token)
 	switch {
 	case errors.Is(err, auth.ErrBadToken):
-		writeErr(w, http.StatusBadRequest, "the verification link is invalid or has expired")
+		httpx.WriteError(w, http.StatusBadRequest, "the verification link is invalid or has expired")
 	case err != nil:
 		internal(w, err)
 	default:
@@ -116,7 +117,7 @@ func (s *Handlers) VerifyEmail(w http.ResponseWriter, r *http.Request) {
 func (s *Handlers) ResendVerification(w http.ResponseWriter, r *http.Request) {
 	p := auth.FromContext(r.Context())
 	if p == nil {
-		writeErr(w, http.StatusUnauthorized, "not logged in")
+		httpx.WriteError(w, http.StatusUnauthorized, "not logged in")
 		return
 	}
 	if !p.User.EmailVerified {

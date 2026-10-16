@@ -59,15 +59,6 @@ func principal(ctx context.Context) (*auth.Principal, error) {
 	return p, nil
 }
 
-func readable(ctx context.Context, project int64) error {
-	if !apikit.CanRead(ctx, project) {
-		return apikit.Err(http.StatusNotFound, "project not found")
-	}
-	return nil
-}
-
-func bad(err error) error { return apikit.Err(http.StatusBadRequest, err.Error()) }
-
 // ListProjects implements GET /v1/projects.
 func (h *Handlers) ListProjects(ctx context.Context, _ oapi.ListProjectsRequestObject) (oapi.ListProjectsResponseObject, error) {
 	p, err := principal(ctx)
@@ -93,7 +84,7 @@ func (h *Handlers) CreateProject(ctx context.Context, req oapi.CreateProjectRequ
 	}
 	name, err := projects.CleanName(req.Body.Name)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	var org int64
 	if req.Body.OrgId != nil {
@@ -124,7 +115,7 @@ func (h *Handlers) UpdateProject(ctx context.Context, req oapi.UpdateProjectRequ
 	}
 	name, err := projects.CleanName(req.Body.Name)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	name, err = h.svc.Projects.Rename(ctx, req.ProjectId, name)
 	if errors.Is(err, projects.ErrNotFound) {
@@ -138,7 +129,7 @@ func (h *Handlers) UpdateProject(ctx context.Context, req oapi.UpdateProjectRequ
 
 // ListKeys implements GET /v1/projects/{project_id}/keys.
 func (h *Handlers) ListKeys(ctx context.Context, req oapi.ListKeysRequestObject) (oapi.ListKeysResponseObject, error) {
-	if err := readable(ctx, req.ProjectId); err != nil {
+	if err := apikit.Readable(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
 	list, err := h.svc.Keys.List(ctx, req.ProjectId)
@@ -198,7 +189,7 @@ func (h *Handlers) RevokeKey(ctx context.Context, req oapi.RevokeKeyRequestObjec
 
 // GetAllowedOrigins implements GET /v1/projects/{project_id}/allowed-origins.
 func (h *Handlers) GetAllowedOrigins(ctx context.Context, req oapi.GetAllowedOriginsRequestObject) (oapi.GetAllowedOriginsResponseObject, error) {
-	if err := readable(ctx, req.ProjectId); err != nil {
+	if err := apikit.Readable(ctx, req.ProjectId); err != nil {
 		return nil, err
 	}
 	list, err := h.svc.AllowedOrigins(ctx, req.ProjectId)
@@ -215,7 +206,7 @@ func (h *Handlers) SetAllowedOrigins(ctx context.Context, req oapi.SetAllowedOri
 	}
 	clean, err := keys.CleanOrigins(req.Body.Origins)
 	if err != nil {
-		return nil, bad(err)
+		return nil, apikit.BadRequest(err)
 	}
 	saved, err := h.svc.SetAllowedOrigins(ctx, req.ProjectId, clean)
 	if errors.Is(err, domain.ErrOriginsOff) {

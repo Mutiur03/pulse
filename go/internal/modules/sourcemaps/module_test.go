@@ -15,6 +15,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
+	"github.com/Mutiur03/pulse/internal/modules/sourcemaps/domain"
 	"github.com/go-chi/chi/v5"
 )
 
@@ -107,7 +108,7 @@ func TestUploadSourcemaps(t *testing.T) {
 	if len(out) != 1 || out[0].Name != "~/static/app.min.js.map" || len(objs) != 1 {
 		t.Fatalf("stored %+v %d", out, len(objs))
 	}
-	if _, ok := objs[sourcemaps.ObjectKey(1, sourcemaps.SHA256(m))]; !ok {
+	if _, ok := objs[domain.ObjectKey(1, domain.SHA256(m))]; !ok {
 		t.Error("object key")
 	}
 
