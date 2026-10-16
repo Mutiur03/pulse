@@ -344,8 +344,10 @@ test('a recorded demo session with an error replays and is linked from its issue
   await app.locator('#email').pressSequentially('jane@private.example', { delay: 60 });
   await app.locator('a[data-route]').first().click();
   await app.waitForTimeout(3000);
+  // Listen before clicking: the response can arrive before a later wait starts.
+  const replaySent = app.waitForResponse((r) => r.url().includes('/v1/replay') && r.status() === 202, { timeout: 20_000 });
   await app.locator('#boom').click();
-  await app.waitForResponse((r) => r.url().includes('/v1/replay') && r.status() === 202, { timeout: 20_000 });
+  await replaySent;
   await app.waitForTimeout(1000);
   await ctx.close();
 
@@ -571,8 +573,10 @@ test('minified demo errors show original source after uploading source maps', as
   const app = await ctx.newPage();
   await app.goto(`${demo}/?replay=0&release=${encodeURIComponent(release)}`);
   await app.waitForFunction(() => Object.keys((globalThis as { __pulseDebugIds?: object }).__pulseDebugIds ?? {}).length > 0);
+  // Listen before clicking: the error is sent at once and can be answered before a later wait starts.
+  const errorSent = app.waitForResponse((r) => r.url().includes('/v1/errors') && r.status() < 300, { timeout: 20_000 });
   await app.locator('#boom').click();
-  await app.waitForResponse((r) => r.url().includes('/v1/errors') && r.status() < 300, { timeout: 20_000 });
+  await errorSent;
   await ctx.close();
 
   // The issue groups on the original function and shows the original line.
