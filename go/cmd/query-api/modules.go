@@ -3,6 +3,7 @@ package main
 import (
 	"github.com/Mutiur03/pulse/internal/api"
 	"github.com/Mutiur03/pulse/internal/modules/dashboards"
+	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/go-chi/chi/v5"
 
 	"github.com/Mutiur03/pulse/internal/config"
@@ -19,6 +20,18 @@ func mountModules(r chi.Router, cfg *config.Config, d deps, srv *api.Server) {
 		rd.Objects = objects
 	}
 	replay.New(rd).Register(r)
+
+	sd := sourcemaps.Deps{Audit: srv.Audit, ClientIP: d.proxies}
+	if d.db != nil {
+		sd.Repository = sourcemaps.NewStore(d.db)
+	}
+	if d.artifacts != nil {
+		sd.Objects = d.artifacts
+	}
+	if d.sym != nil {
+		sd.Uploaded = d.sym.Forget
+	}
+	sourcemaps.New(sd).Register(r)
 
 	dashboards.New(dashboards.Deps{DB: d.db, CheckWidget: srv.CheckWidget}).Register(r)
 }

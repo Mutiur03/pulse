@@ -1,6 +1,5 @@
-// Package artifacts stores releases, their source maps and the upload tokens
-// that CI uses to send them.
-package artifacts
+// Package postgres stores releases, artifacts and upload tokens.
+package postgres
 
 import (
 	"context"
@@ -8,93 +7,49 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
-	"fmt"
 	"net/url"
 	"path"
-	"regexp"
 	"strings"
 	"time"
 
+	"github.com/Mutiur03/pulse/internal/modules/sourcemaps/domain"
+	"github.com/Mutiur03/pulse/internal/symbolicate"
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-
-	"github.com/Mutiur03/pulse/internal/symbolicate"
 )
-
-// ErrNotFound is returned for releases, artifacts or tokens outside the project.
-var ErrNotFound = errors.New("not found")
-
-// Release is a version of a project's code.
-type Release struct {
-	ID        int64
-	ProjectID int64
-	Version   string
-	CreatedAt time.Time
-	Artifacts int64
-	Bytes     int64
-}
-
-// Artifact is one uploaded source map.
-type Artifact struct {
-	ID        int64
-	ReleaseID int64
-	ProjectID int64
-	Name      string
-	DebugID   string
-	ObjectKey string
-	Size      int64
-	SHA256    string
-	CreatedAt time.Time
-}
-
-// Token is an upload token. The secret is only known when it is created.
-type Token struct {
-	ID         int64
-	ProjectID  int64
-	Name       string
-	Hint       string
-	CreatedAt  time.Time
-	LastUsedAt *time.Time
-	RevokedAt  *time.Time
-}
-
-var reVersion = regexp.MustCompile(`^[\w.@+\-]{1,200}$`)
-
-// ValidVersion checks a release name: letters, digits and . _ - + @.
-func ValidVersion(v string) bool { return reVersion.MatchString(v) }
 
 // Store keeps it all in Postgres.
 type Store struct{ DB *pgxpool.Pool }
 
 // EnsureRelease returns the release, creating it on first use.
-func (s *Store) EnsureRelease(ctx context.Context, project int64, version string) (Release, error) {
-	var r Release
+func (s *Store) EnsureRelease(ctx context.Context, project int64, version string) (domain.Release, error) {
+	var r domain.Release
 	err := s.DB.QueryRow(ctx, `INSERT INTO releases (project_id, version) VALUES ($1, $2)
 		ON CONFLICT (project_id, version) DO UPDATE SET version = EXCLUDED.version
 		RETURNING id, project_id, version, created_at`, project, version).Scan(&r.ID, &r.ProjectID, &r.Version, &r.CreatedAt)
 	return r, err
 }
 
-func (s *Store) ListReleases(ctx context.Context, project int64, limit int) ([]Release, error) {
+func (s *Store) ListReleases(ctx context.Context, project int64, limit int) ([]domain.Release, error) {
 	rows, err := s.DB.Query(ctx, `SELECT r.id, r.project_id, r.version, r.created_at, count(a.id), coalesce(sum(a.size), 0)
 		FROM releases r LEFT JOIN release_artifacts a ON a.release_id = r.id
 		WHERE r.project_id = $1 GROUP BY r.id ORDER BY r.created_at DESC, r.id DESC LIMIT $2`, project, limit)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Release, error) {
-		var r Release
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Release, error) {
+		var r domain.Release
 		err := row.Scan(&r.ID, &r.ProjectID, &r.Version, &r.CreatedAt, &r.Artifacts, &r.Bytes)
 		return r, err
 	})
 }
 
-func (s *Store) GetRelease(ctx context.Context, project int64, version string) (Release, []Artifact, error) {
-	var r Release
+func (s *Store) GetRelease(ctx context.Context, project int64, version string) (domain.Release, []domain.Artifact, error) {
+	var r domain.Release
 	err := s.DB.QueryRow(ctx, `SELECT id, project_id, version, created_at FROM releases WHERE project_id = $1 AND version = $2`,
 		project, version).Scan(&r.ID, &r.ProjectID, &r.Version, &r.CreatedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return r, nil, ErrNotFound
+		return r, nil, domain.ErrNotFound
 	}
 	if err != nil {
 		return r, nil, err
@@ -113,14 +68,14 @@ func (s *Store) GetRelease(ctx context.Context, project int64, version string) (
 
 const artifactCols = `id, release_id, project_id, name, coalesce(debug_id::text, ''), object_key, size, sha256, created_at`
 
-func scanArtifact(row pgx.CollectableRow) (Artifact, error) {
-	var a Artifact
+func scanArtifact(row pgx.CollectableRow) (domain.Artifact, error) {
+	var a domain.Artifact
 	err := row.Scan(&a.ID, &a.ReleaseID, &a.ProjectID, &a.Name, &a.DebugID, &a.ObjectKey, &a.Size, &a.SHA256, &a.CreatedAt)
 	return a, err
 }
 
 // PutArtifact records an uploaded map, replacing one with the same name.
-func (s *Store) PutArtifact(ctx context.Context, a Artifact) (Artifact, error) {
+func (s *Store) PutArtifact(ctx context.Context, a domain.Artifact) (domain.Artifact, error) {
 	var debug *string
 	if a.DebugID != "" {
 		debug = &a.DebugID
@@ -217,52 +172,19 @@ func likeEscape(s string) string {
 	return strings.NewReplacer(`\`, `\\`, `%`, `\%`, `_`, `\_`).Replace(s)
 }
 
-// ArtifactName normalizes an uploaded file name: "~/" plus the URL path for
-// relative names, kept as is for absolute URLs.
-func ArtifactName(name string) (string, error) {
-	name = strings.TrimSpace(strings.ReplaceAll(name, "\\", "/"))
-	switch {
-	case name == "" || len(name) > 1000 || strings.ContainsAny(name, "\r\n\x00"):
-		return "", errors.New("invalid file name")
-	case strings.HasPrefix(name, "http://") || strings.HasPrefix(name, "https://"):
-		return name, nil
-	}
-	name = strings.TrimPrefix(name, "~")
-	clean := path.Clean("/" + name)
-	if strings.Contains(clean, "/../") {
-		return "", errors.New("invalid file name")
-	}
-	return "~" + clean, nil
-}
-
-// ObjectKey is where an artifact's bytes live in object storage.
-func ObjectKey(project int64, sha string) string {
-	return fmt.Sprintf("sourcemaps/%d/%s/%s.map", project, sha[:2], sha)
-}
-
-// SHA256 hex-encodes the digest of data.
-func SHA256(data []byte) string {
-	sum := sha256.Sum256(data)
-	return hex.EncodeToString(sum[:])
-}
-
-// TokenPrefix marks upload tokens so they are easy to spot in config and
-// secret scanners, and never confused with public ingest keys (pk_).
-const TokenPrefix = "pul_"
-
 func hashToken(t string) []byte {
 	sum := sha256.Sum256([]byte(t))
 	return sum[:]
 }
 
 // CreateToken makes a token and returns it with its one-time secret.
-func (s *Store) CreateToken(ctx context.Context, project int64, name string, by int64) (Token, string, error) {
+func (s *Store) CreateToken(ctx context.Context, project int64, name string, by int64) (domain.Token, string, error) {
 	b := make([]byte, 24)
 	if _, err := rand.Read(b); err != nil {
-		return Token{}, "", err
+		return domain.Token{}, "", err
 	}
-	secret := TokenPrefix + hex.EncodeToString(b)
-	var t Token
+	secret := domain.TokenPrefix + hex.EncodeToString(b)
+	var t domain.Token
 	var creator *int64
 	if by > 0 {
 		creator = &by
@@ -274,40 +196,40 @@ func (s *Store) CreateToken(ctx context.Context, project int64, name string, by 
 	return t, secret, err
 }
 
-func (s *Store) ListTokens(ctx context.Context, project int64) ([]Token, error) {
+func (s *Store) ListTokens(ctx context.Context, project int64) ([]domain.Token, error) {
 	rows, err := s.DB.Query(ctx, `SELECT id, project_id, name, hint, created_at, last_used_at, revoked_at FROM upload_tokens
 		WHERE project_id = $1 ORDER BY revoked_at IS NULL DESC, created_at DESC LIMIT 100`, project)
 	if err != nil {
 		return nil, err
 	}
-	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (Token, error) {
-		var t Token
+	return pgx.CollectRows(rows, func(row pgx.CollectableRow) (domain.Token, error) {
+		var t domain.Token
 		err := row.Scan(&t.ID, &t.ProjectID, &t.Name, &t.Hint, &t.CreatedAt, &t.LastUsedAt, &t.RevokedAt)
 		return t, err
 	})
 }
 
-func (s *Store) RevokeToken(ctx context.Context, project, id int64) (Token, error) {
-	var t Token
+func (s *Store) RevokeToken(ctx context.Context, project, id int64) (domain.Token, error) {
+	var t domain.Token
 	err := s.DB.QueryRow(ctx, `UPDATE upload_tokens SET revoked_at = coalesce(revoked_at, now())
 		WHERE project_id = $1 AND id = $2 RETURNING id, project_id, name, hint, created_at, last_used_at, revoked_at`, project, id).
 		Scan(&t.ID, &t.ProjectID, &t.Name, &t.Hint, &t.CreatedAt, &t.LastUsedAt, &t.RevokedAt)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return t, ErrNotFound
+		return t, domain.ErrNotFound
 	}
 	return t, err
 }
 
 // Authenticate returns the project of an active upload token.
 func (s *Store) Authenticate(ctx context.Context, secret string) (int64, error) {
-	if !strings.HasPrefix(secret, TokenPrefix) || len(secret) > 100 {
-		return 0, ErrNotFound
+	if !strings.HasPrefix(secret, domain.TokenPrefix) || len(secret) > 100 {
+		return 0, domain.ErrNotFound
 	}
 	var project int64
 	err := s.DB.QueryRow(ctx, `UPDATE upload_tokens SET last_used_at = now()
 		WHERE token_hash = $1 AND revoked_at IS NULL RETURNING project_id`, hashToken(secret)).Scan(&project)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return 0, ErrNotFound
+		return 0, domain.ErrNotFound
 	}
 	return project, err
 }

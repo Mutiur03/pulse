@@ -1,4 +1,4 @@
-package api
+package sourcemaps_test
 
 import (
 	"bytes"
@@ -12,66 +12,64 @@ import (
 	"testing"
 	"time"
 
-	"github.com/Mutiur03/pulse/internal/api/legacy"
-
 	"github.com/Mutiur03/pulse/internal/api/gen"
-	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/go-chi/chi/v5"
 )
 
 type fakeReleases struct {
-	arts    []artifacts.Artifact
+	arts    []sourcemaps.Artifact
 	revoked int64
 }
 
-func (f *fakeReleases) ListReleases(context.Context, int64, int) ([]artifacts.Release, error) {
-	return []artifacts.Release{{ID: 1, Version: "v1", Artifacts: int64(len(f.arts))}}, nil
+func (f *fakeReleases) ListReleases(context.Context, int64, int) ([]sourcemaps.Release, error) {
+	return []sourcemaps.Release{{ID: 1, Version: "v1", Artifacts: int64(len(f.arts))}}, nil
 }
 
-func (f *fakeReleases) GetRelease(_ context.Context, _ int64, v string) (artifacts.Release, []artifacts.Artifact, error) {
+func (f *fakeReleases) GetRelease(_ context.Context, _ int64, v string) (sourcemaps.Release, []sourcemaps.Artifact, error) {
 	if v != "v1" {
-		return artifacts.Release{}, nil, artifacts.ErrNotFound
+		return sourcemaps.Release{}, nil, sourcemaps.ErrNotFound
 	}
-	return artifacts.Release{ID: 1, Version: v}, f.arts, nil
+	return sourcemaps.Release{ID: 1, Version: v}, f.arts, nil
 }
 
-func (f *fakeReleases) EnsureRelease(_ context.Context, p int64, v string) (artifacts.Release, error) {
-	return artifacts.Release{ID: 1, ProjectID: p, Version: v}, nil
+func (f *fakeReleases) EnsureRelease(_ context.Context, p int64, v string) (sourcemaps.Release, error) {
+	return sourcemaps.Release{ID: 1, ProjectID: p, Version: v}, nil
 }
 
-func (f *fakeReleases) PutArtifact(_ context.Context, a artifacts.Artifact) (artifacts.Artifact, error) {
+func (f *fakeReleases) PutArtifact(_ context.Context, a sourcemaps.Artifact) (sourcemaps.Artifact, error) {
 	a.ID = int64(len(f.arts) + 1)
 	a.CreatedAt = time.Now()
 	f.arts = append(f.arts, a)
 	return a, nil
 }
 
-func (f *fakeReleases) CreateToken(_ context.Context, p int64, name string, _ int64) (artifacts.Token, string, error) {
-	return artifacts.Token{ID: 9, ProjectID: p, Name: name, Hint: "abcd"}, "pul_secretabcd", nil
+func (f *fakeReleases) CreateToken(_ context.Context, p int64, name string, _ int64) (sourcemaps.Token, string, error) {
+	return sourcemaps.Token{ID: 9, ProjectID: p, Name: name, Hint: "abcd"}, "pul_secretabcd", nil
 }
 
-func (f *fakeReleases) ListTokens(context.Context, int64) ([]artifacts.Token, error) {
+func (f *fakeReleases) ListTokens(context.Context, int64) ([]sourcemaps.Token, error) {
 	return nil, nil
 }
 
-func (f *fakeReleases) RevokeToken(_ context.Context, _, id int64) (artifacts.Token, error) {
+func (f *fakeReleases) RevokeToken(_ context.Context, _, id int64) (sourcemaps.Token, error) {
 	f.revoked = id
-	return artifacts.Token{ID: id}, nil
+	return sourcemaps.Token{ID: id}, nil
 }
 
 func (f *fakeReleases) Authenticate(_ context.Context, secret string) (int64, error) {
 	if secret == "pul_good" {
 		return 1, nil
 	}
-	return 0, artifacts.ErrNotFound
+	return 0, sourcemaps.ErrNotFound
 }
 
 type memObjects map[string][]byte
 
 func (m memObjects) Put(_ context.Context, k string, d []byte) error { m[k] = d; return nil }
 
-func upload(t *testing.T, s *Server, token, path string, files map[string][]byte) *httptest.ResponseRecorder {
+func upload(t *testing.T, s *sourcemaps.Module, token, path string, files map[string][]byte) *httptest.ResponseRecorder {
 	t.Helper()
 	var buf bytes.Buffer
 	mw := multipart.NewWriter(&buf)
@@ -86,19 +84,19 @@ func upload(t *testing.T, s *Server, token, path string, files map[string][]byte
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	r := chi.NewRouter()
-	h := auth.Middleware(nil, auth.CSRF{})(legacy.HandlerFromMux(s, r))
+	h := auth.Middleware(nil, auth.CSRF{})(register(s, r))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec
 }
 
 func TestUploadSourcemaps(t *testing.T) {
-	m, err := os.ReadFile("../symbolicate/testdata/app.min.js.map")
+	m, err := os.ReadFile("../../symbolicate/testdata/app.min.js.map")
 	if err != nil {
 		t.Fatal(err)
 	}
 	rel, objs := &fakeReleases{}, memObjects{}
-	s := &Server{Releases: rel, ArtifactObjects: objs}
+	s := sourcemaps.New(sourcemaps.Deps{Repository: rel, Objects: objs})
 
 	rec := upload(t, s, "pul_good", "/v1/projects/1/releases/web@1.0/sourcemaps", map[string][]byte{"~/static/app.min.js.map": m})
 	if rec.Code != http.StatusCreated {
@@ -109,7 +107,7 @@ func TestUploadSourcemaps(t *testing.T) {
 	if len(out) != 1 || out[0].Name != "~/static/app.min.js.map" || len(objs) != 1 {
 		t.Fatalf("stored %+v %d", out, len(objs))
 	}
-	if _, ok := objs[artifacts.ObjectKey(1, artifacts.SHA256(m))]; !ok {
+	if _, ok := objs[sourcemaps.ObjectKey(1, sourcemaps.SHA256(m))]; !ok {
 		t.Error("object key")
 	}
 
@@ -133,7 +131,7 @@ func TestUploadSourcemaps(t *testing.T) {
 
 func TestUploadTokens(t *testing.T) {
 	rel := &fakeReleases{}
-	s := &Server{Releases: rel}
+	s := sourcemaps.New(sourcemaps.Deps{Repository: rel})
 	owner := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "owner"}}}
 	member := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "member"}}}
 
@@ -161,5 +159,38 @@ func TestUploadTokens(t *testing.T) {
 	}
 	if rec := call(t, s, member, "GET", "/v1/projects/2/releases", ""); rec.Code != http.StatusNotFound {
 		t.Errorf("other project: %d", rec.Code)
+	}
+}
+
+func register(m *sourcemaps.Module, r chi.Router) http.Handler {
+	m.Register(r)
+	return r
+}
+
+func call(t *testing.T, m *sourcemaps.Module, p *auth.Principal, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := chi.NewRouter()
+	m.Register(r)
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if p != nil {
+		req = req.WithContext(auth.WithPrincipal(req.Context(), p))
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
+
+func TestReleasesDisabled(t *testing.T) {
+	member := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "member"}}}
+	m := sourcemaps.New(sourcemaps.Deps{})
+	if rec := call(t, m, member, "GET", "/v1/projects/1/releases", ""); rec.Code != 404 || !strings.Contains(rec.Body.String(), "releases are not enabled") {
+		t.Errorf("disabled: %d %s", rec.Code, rec.Body)
+	}
+	owner := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "owner"}}}
+	m = sourcemaps.New(sourcemaps.Deps{Repository: &fakeReleases{}})
+	big := `{"name":"` + strings.Repeat("x", 1<<14) + `"}`
+	if rec := call(t, m, owner, "POST", "/v1/projects/1/upload-tokens", big); rec.Code != 400 || strings.TrimSpace(rec.Body.String()) != `{"error":"invalid JSON"}` {
+		t.Errorf("oversized: %d %s", rec.Code, rec.Body)
 	}
 }

@@ -13,7 +13,6 @@ import (
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api"
 	"github.com/Mutiur03/pulse/internal/api/legacy"
-	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/clientip"
@@ -23,6 +22,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/logging"
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/orgs"
 	"github.com/Mutiur03/pulse/internal/projects"
@@ -57,6 +57,10 @@ type deps struct {
 	redis    *redis.Client
 	proxies  *clientip.Resolver
 	outbound *safehttp.Policy
+	// artifacts stores source maps; nil without object storage.
+	artifacts *replay.S3
+	// sym resolves minified frames; nil without object storage.
+	sym *symbolicate.Symbolicator
 }
 
 // run connects to every dependency and serves the API until ctx ends.
@@ -101,6 +105,12 @@ func run(ctx context.Context, cfg *config.Config) error {
 	defer d.db.Close()
 	d.redis = redis.NewClient(redisOpts)
 	defer func() { _ = d.redis.Close() }()
+
+	// Releases and upload tokens work without object storage; uploads and
+	// symbolication need it.
+	if d.artifacts = replay.ConnectArtifacts(cfg.S3, cfg.ArtifactBucket); d.artifacts != nil {
+		d.sym = &symbolicate.Symbolicator{Artifacts: sourcemaps.NewStore(d.db), Objects: d.artifacts}
+	}
 
 	srv, accounts := newServer(cfg, d)
 	r := newRouter(cfg, accounts)
@@ -167,14 +177,7 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 	srv.Alerts, srv.AlertMetrics = &alerts.Store{DB: db}, chClient
 	srv.AlertSender = &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL, Policy: outbound}
 
-	// Releases and upload tokens work without object storage; uploads and
-	// symbolication need it.
-	rel := &artifacts.Store{DB: db}
-	srv.Releases = rel
-	if objects := replay.ConnectArtifacts(cfg.S3, cfg.ArtifactBucket); objects != nil {
-		srv.ArtifactObjects = objects
-		srv.Symbolicator = &symbolicate.Symbolicator{Artifacts: rel, Objects: objects}
-	}
+	srv.Symbolicator = d.sym
 
 	return srv, accounts
 }

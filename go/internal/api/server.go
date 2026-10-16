@@ -119,11 +119,8 @@ type Server struct {
 	AlertSender interface {
 		Send(ctx context.Context, c alerts.Channel, p alerts.Payload) error
 	}
-	// Releases, ArtifactObjects and Symbolicator serve source maps; nil
-	// Releases disables them.
-	Releases        ReleaseStore
-	ArtifactObjects ObjectPutter
-	Symbolicator    *symbolicate.Symbolicator
+	// Symbolicator resolves minified stack frames; nil skips it.
+	Symbolicator *symbolicate.Symbolicator
 	// Insights runs trend and trace stats queries; nil disables it.
 	Insights InsightReader
 	// Analytics serves persons, retention and paths; nil disables them.

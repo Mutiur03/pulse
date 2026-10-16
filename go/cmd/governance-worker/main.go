@@ -16,11 +16,11 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
-	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/governance"
 	"github.com/Mutiur03/pulse/internal/logging"
+	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
@@ -54,7 +54,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 	w := &governance.Worker{
 		Store:     &governance.Store{DB: db},
 		Analytics: chClient,
-		Artifacts: &artifacts.Store{DB: db},
+		Artifacts: sourcemaps.NewStore(db),
 		Audit:     &audit.Store{DB: db},
 	}
 	// Without object storage, rows are still deleted; objects are left to

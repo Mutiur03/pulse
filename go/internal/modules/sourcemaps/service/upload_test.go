@@ -1,4 +1,4 @@
-package artifacts
+package service
 
 import (
 	"bytes"
@@ -7,6 +7,8 @@ import (
 	"mime/multipart"
 	"strings"
 	"testing"
+
+	"github.com/Mutiur03/pulse/internal/modules/sourcemaps/domain"
 )
 
 const validMap = `{"version":3,"sources":["a.ts"],"names":[],"mappings":"AAAA","debugId":"85314830-023f-4cf1-a267-535f4e37bb17"}`
@@ -54,7 +56,7 @@ func TestReadUploads(t *testing.T) {
 	}
 	for name, c := range cases {
 		_, err := ReadUploads(form(t, c.files), c.maxFiles, c.maxSize)
-		var ue *UploadError
+		var ue *domain.UploadError
 		if !errors.As(err, &ue) || !strings.HasPrefix(ue.Msg, c.msg) || ue.TooLarge != c.tooLarge || ue.Error() != ue.Msg {
 			t.Errorf("%s: %v", name, err)
 		}
@@ -62,20 +64,20 @@ func TestReadUploads(t *testing.T) {
 }
 
 type memReleases struct {
-	arts   []Artifact
+	arts   []domain.Artifact
 	failOn string
 }
 
-func (m *memReleases) EnsureRelease(_ context.Context, project int64, version string) (Release, error) {
+func (m *memReleases) EnsureRelease(_ context.Context, project int64, version string) (domain.Release, error) {
 	if m.failOn == "release" {
-		return Release{}, errors.New("db down")
+		return domain.Release{}, errors.New("db down")
 	}
-	return Release{ID: 9, ProjectID: project, Version: version}, nil
+	return domain.Release{ID: 9, ProjectID: project, Version: version}, nil
 }
 
-func (m *memReleases) PutArtifact(_ context.Context, a Artifact) (Artifact, error) {
+func (m *memReleases) PutArtifact(_ context.Context, a domain.Artifact) (domain.Artifact, error) {
 	if m.failOn == "artifact" {
-		return Artifact{}, errors.New("db down")
+		return domain.Artifact{}, errors.New("db down")
 	}
 	a.ID = int64(len(m.arts) + 1)
 	m.arts = append(m.arts, a)
@@ -95,13 +97,13 @@ func (m memObjects) Put(_ context.Context, key string, data []byte) error {
 func TestPublish(t *testing.T) {
 	ctx := context.Background()
 	rs, objs := &memReleases{}, memObjects{}
-	ups := []Upload{{Name: "a.js.map", Data: []byte(validMap), DebugID: "d"}}
+	ups := []domain.Upload{{Name: "a.js.map", Data: []byte(validMap), DebugID: "d"}}
 	arts, err := Publish(ctx, rs, objs, 3, "v1", ups)
 	if err != nil || len(arts) != 1 {
 		t.Fatalf("%v %v", arts, err)
 	}
 	a := arts[0]
-	if a.ReleaseID != 9 || a.ProjectID != 3 || a.SHA256 != SHA256(ups[0].Data) || a.ObjectKey != ObjectKey(3, a.SHA256) ||
+	if a.ReleaseID != 9 || a.ProjectID != 3 || a.SHA256 != domain.SHA256(ups[0].Data) || a.ObjectKey != domain.ObjectKey(3, a.SHA256) ||
 		a.Size != int64(len(validMap)) || string(objs[a.ObjectKey]) != validMap {
 		t.Fatalf("%+v", a)
 	}

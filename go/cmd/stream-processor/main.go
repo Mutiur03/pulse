@@ -11,12 +11,12 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Mutiur03/pulse/internal/artifacts"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/httpx"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/kafka"
 	"github.com/Mutiur03/pulse/internal/logging"
+	"github.com/Mutiur03/pulse/internal/modules/sourcemaps"
 	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/processor"
 	"github.com/Mutiur03/pulse/internal/replay"
@@ -65,7 +65,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 	// Source maps live in object storage; without it stacks stay minified.
 	var sym *symbolicate.Symbolicator
 	if obj := replay.ConnectArtifacts(cfg.S3, cfg.ArtifactBucket); obj != nil {
-		sym = &symbolicate.Symbolicator{Artifacts: &artifacts.Store{DB: issueStore.Pool()}, Objects: obj}
+		sym = &symbolicate.Symbolicator{Artifacts: sourcemaps.NewStore(issueStore.Pool()), Objects: obj}
 	}
 
 	producer, err := kafka.NewProducer(cfg.KafkaBootstrapServers, cfg.Kafka)
