@@ -137,9 +137,6 @@ jobs:
           go-version: '1.26.x'
           cache-dependency-path: go/go.sum
 
-      - name: Install oapi-codegen
-        run: go install github.com/deepmap/oapi-codegen/cmd/oapi-codegen@v1.16.3
-
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -156,7 +153,9 @@ jobs:
 
       - name: Check for changes
         run: |
-          if ! git diff --exit-code go/internal/api/gen/ packages/api-client/src/generated/; then
+          dirs="go/internal/api/gen/ go/internal/modules/ packages/api-client/src/generated/"
+          if [ -n "$(git status --porcelain $dirs)" ]; then
+            git status --porcelain $dirs
             echo "Generated code is out of date. Run 'make generate' and commit the changes."
             exit 1
           fi

@@ -1,3 +1,5 @@
+OAPI_CODEGEN ?= go run github.com/oapi-codegen/oapi-codegen/v2/cmd/oapi-codegen@v2.4.1
+
 .PHONY: help generate build test lint clean docker-build compose-up compose-down smoke-test e2e demo-web seed e2e-web
 
 help: ## Show this help
@@ -5,7 +7,7 @@ help: ## Show this help
 
 generate: ## Generate all code (OpenAPI, sqlc, buf)
 	@echo "==> Generating OpenAPI Go server code..."
-	cd schemas/openapi && ~/go/bin/oapi-codegen -package gen -generate chi-server,models,embedded-spec -o ../../go/internal/api/gen/server.go api.yaml
+	cd schemas/openapi && for c in oapi-codegen.yaml $$(ls modules/*.yaml 2>/dev/null); do $(OAPI_CODEGEN) -config $$c api.yaml || exit 1; done
 	@echo "==> Generating TypeScript client..."
 	cd packages/api-client && pnpm run generate
 	@echo "==> Generation complete"

@@ -17,6 +17,7 @@ paths:
     get:
       summary: Health check
       operationId: getHealth
+      tags: [system]
       security: []
       responses:
         '200':
@@ -30,6 +31,7 @@ paths:
       summary: Log in with email and password
       description: Sets an HTTP-only `pulse_session` cookie on success.
       operationId: login
+      tags: [identity]
       security: []
       requestBody:
         required: true
@@ -65,6 +67,7 @@ paths:
         Creates the user and their organization and logs them in by setting
         the `pulse_session` cookie. Projects are created afterwards.
       operationId: signup
+      tags: [identity]
       security: []
       requestBody:
         required: true
@@ -95,6 +98,7 @@ paths:
         cannot be used to find accounts. Limited to 5 requests per email and
         address per hour (429 after that).
       operationId: requestPasswordReset
+      tags: [identity]
       security: []
       requestBody:
         required: true
@@ -118,6 +122,7 @@ paths:
         Tokens are single use and expire after one hour. Every existing
         session of the user is ended.
       operationId: confirmPasswordReset
+      tags: [identity]
       security: []
       requestBody:
         required: true
@@ -134,6 +139,7 @@ paths:
     post:
       summary: Confirm the email address with the token from the verification email
       operationId: verifyEmail
+      tags: [identity]
       security: []
       requestBody:
         required: true
@@ -150,6 +156,7 @@ paths:
     post:
       summary: Send the verification email again
       operationId: resendVerification
+      tags: [identity]
       responses:
         '204':
           description: Done
@@ -157,6 +164,7 @@ paths:
     get:
       summary: Members of the organization
       operationId: listMembers
+      tags: [identity]
       parameters:
         - $ref: '#/components/parameters/OrgPath'
       responses:
@@ -175,6 +183,7 @@ paths:
       summary: Remove a member from the organization
       description: Owners only. The last owner cannot be removed.
       operationId: removeMember
+      tags: [identity]
       parameters:
         - $ref: '#/components/parameters/OrgPath'
         - name: user_id
@@ -201,6 +210,7 @@ paths:
       summary: Change a member's role
       description: Owners only. The last owner cannot be demoted.
       operationId: setMemberRole
+      tags: [identity]
       parameters:
         - $ref: '#/components/parameters/OrgPath'
         - name: user_id
@@ -235,6 +245,7 @@ paths:
       summary: Security audit log of the organization
       description: Owners only. Includes logins of current members.
       operationId: listAuditLog
+      tags: [governance]
       parameters:
         - $ref: '#/components/parameters/OrgPath'
         - name: limit
@@ -264,6 +275,7 @@ paths:
     get:
       summary: Pending invites
       operationId: listInvites
+      tags: [identity]
       parameters:
         - $ref: '#/components/parameters/OrgPath'
       responses:
@@ -283,6 +295,7 @@ paths:
       summary: Invite someone by email
       description: Owners only. The link expires after 7 days.
       operationId: createInvite
+      tags: [identity]
       parameters:
         - $ref: '#/components/parameters/OrgPath'
       requestBody:
@@ -314,6 +327,7 @@ paths:
     post:
       summary: Revoke a pending invite
       operationId: revokeInvite
+      tags: [identity]
       parameters:
         - $ref: '#/components/parameters/OrgPath'
         - name: invite_id
@@ -333,6 +347,7 @@ paths:
     post:
       summary: Describe an invite from its token
       operationId: lookupInvite
+      tags: [identity]
       security: []
       requestBody:
         required: true
@@ -354,6 +369,7 @@ paths:
       summary: Accept an invite as the logged-in user
       description: The invite must be addressed to the user's email.
       operationId: acceptInvite
+      tags: [identity]
       requestBody:
         required: true
         content:
@@ -375,6 +391,7 @@ paths:
     post:
       summary: End the current session
       operationId: logout
+      tags: [identity]
       responses:
         '204':
           description: Logged out
@@ -382,6 +399,7 @@ paths:
     post:
       summary: End every session of the current user, on all devices
       operationId: logoutAll
+      tags: [identity]
       responses:
         '200':
           description: Sessions ended
@@ -395,6 +413,7 @@ paths:
     get:
       summary: Current user and their projects
       operationId: getMe
+      tags: [identity]
       responses:
         '200':
           description: Current user
@@ -408,6 +427,7 @@ paths:
     get:
       summary: Projects the user is a member of
       operationId: listProjects
+      tags: [projects]
       responses:
         '200':
           description: Projects
@@ -421,6 +441,7 @@ paths:
       summary: Create a project in the user's organization
       description: The creator becomes its owner and gets a first ingest key.
       operationId: createProject
+      tags: [projects]
       requestBody:
         required: true
         content:
@@ -440,6 +461,7 @@ paths:
     patch:
       summary: Rename a project
       operationId: updateProject
+      tags: [projects]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -465,6 +487,7 @@ paths:
     get:
       summary: Browser origins allowed to send data with the project's ingest keys
       operationId: getAllowedOrigins
+      tags: [projects]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -480,6 +503,7 @@ paths:
       summary: Replace the allowed browser origins
       description: Owners only.
       operationId: setAllowedOrigins
+      tags: [projects]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -506,6 +530,7 @@ paths:
       summary: Add an ingest key
       description: Existing keys stay active, so apps can move over gradually.
       operationId: createKey
+      tags: [projects]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -522,6 +547,7 @@ paths:
     get:
       summary: List the project's ingest keys
       operationId: listKeys
+      tags: [projects]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -542,6 +568,7 @@ paths:
         Creates a new public key and revokes every previous one. Revoked keys
         stop working immediately on this gateway's cache.
       operationId: rotateKey
+      tags: [projects]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -557,6 +584,7 @@ paths:
     post:
       summary: Revoke one ingest key
       operationId: revokeKey
+      tags: [projects]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - name: key_id
@@ -580,6 +608,7 @@ paths:
     get:
       summary: Search traces
       operationId: listTraces
+      tags: [telemetry]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - name: service
@@ -623,6 +652,7 @@ paths:
     get:
       summary: Services that sent spans in the time range
       operationId: listServices
+      tags: [telemetry]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - $ref: '#/components/parameters/From'
@@ -640,6 +670,7 @@ paths:
     get:
       summary: Explore product events
       operationId: listEvents
+      tags: [analytics]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - name: event
@@ -668,6 +699,7 @@ paths:
     get:
       summary: Event names with counts
       operationId: listEventNames
+      tags: [analytics]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - $ref: '#/components/parameters/From'
@@ -691,6 +723,7 @@ paths:
         p95 latency seen in their sessions, next to the same numbers for
         users who went on to the next step.
       operationId: queryFunnel
+      tags: [analytics]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
       requestBody:
@@ -717,6 +750,7 @@ paths:
         happened in. Spans whose parent was never received are returned as
         extra roots with `orphan: true`.
       operationId: getTrace
+      tags: [telemetry]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - name: trace_id
@@ -738,6 +772,7 @@ paths:
     get:
       summary: Recorded sessions
       operationId: listReplays
+      tags: [replay]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - $ref: '#/components/parameters/From'
@@ -775,6 +810,7 @@ paths:
     get:
       summary: A recorded session with its errors and traces
       operationId: getReplay
+      tags: [replay]
       parameters:
         - $ref: '#/components/parameters/SessionPath'
         - $ref: '#/components/parameters/ProjectID'
@@ -792,6 +828,7 @@ paths:
       summary: All rrweb events of the session in playback order
       description: Streams the stored chunks as one JSON array.
       operationId: getReplayEvents
+      tags: [replay]
       parameters:
         - $ref: '#/components/parameters/SessionPath'
         - $ref: '#/components/parameters/ProjectID'
@@ -810,6 +847,7 @@ paths:
     get:
       summary: List issues
       operationId: listIssues
+      tags: [issues]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - name: status
@@ -857,6 +895,7 @@ paths:
     get:
       summary: Get an issue with its most recent events
       operationId: getIssue
+      tags: [issues]
       parameters:
         - $ref: '#/components/parameters/IssueID'
         - name: events_limit
@@ -885,6 +924,7 @@ paths:
     patch:
       summary: Change an issue's status
       operationId: updateIssue
+      tags: [issues]
       parameters:
         - $ref: '#/components/parameters/IssueID'
       requestBody:
@@ -909,6 +949,7 @@ paths:
       summary: List alert rules with their current state
       description: Alerting rules come first, then no-data, then OK.
       operationId: listAlerts
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -925,6 +966,7 @@ paths:
     post:
       summary: Create an alert rule
       operationId: createAlert
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -952,6 +994,7 @@ paths:
         most 7 days). Event-driven metrics (new_issue, issue_regression) have
         no chart and return supported false.
       operationId: previewAlert
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -975,6 +1018,7 @@ paths:
     get:
       summary: Get a rule with its recent history
       operationId: getAlert
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/AlertPath'
@@ -991,6 +1035,7 @@ paths:
       summary: Update a rule
       description: Changing the condition or disabling the rule resets its state to OK.
       operationId: updateAlert
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/AlertPath'
@@ -1014,6 +1059,7 @@ paths:
     delete:
       summary: Delete a rule and its history
       operationId: deleteAlert
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/AlertPath'
@@ -1029,6 +1075,7 @@ paths:
         A muted rule keeps evaluating and recording history but sends
         nothing until the mute ends. Minutes 0 unmutes.
       operationId: muteAlert
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/AlertPath'
@@ -1054,6 +1101,7 @@ paths:
       summary: List notification channels
       description: Webhook signing secrets are only returned when a channel is created.
       operationId: listAlertChannels
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -1074,6 +1122,7 @@ paths:
         Each webhook request carries X-Pulse-Signature "t=<unix>,v1=<hex>",
         where v1 is HMAC-SHA256(secret, "<unix>.<body>").
       operationId: createAlertChannel
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -1097,6 +1146,7 @@ paths:
     delete:
       summary: Delete a channel and remove it from rules
       operationId: deleteAlertChannel
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/ChannelPath'
@@ -1109,6 +1159,7 @@ paths:
     post:
       summary: Send a test notification
       operationId: testAlertChannel
+      tags: [alerts]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/ChannelPath'
@@ -1125,6 +1176,7 @@ paths:
     get:
       summary: List the project's releases, newest first
       operationId: listReleases
+      tags: [sourcemaps]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/Limit'
@@ -1143,6 +1195,7 @@ paths:
     get:
       summary: Get a release and its uploaded artifacts
       operationId: getRelease
+      tags: [sourcemaps]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/ReleasePath'
@@ -1165,6 +1218,7 @@ paths:
         "~/dist/main.js.map"). The release is created on first upload. Maps with
         a debugId are matched by it; the rest by URL.
       operationId: uploadSourcemaps
+      tags: [sourcemaps]
       security:
         - uploadToken: []
       parameters:
@@ -1198,6 +1252,7 @@ paths:
     get:
       summary: The project's PII scrubbing rules and retention periods
       operationId: getDataSettings
+      tags: [governance]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -1216,6 +1271,7 @@ paths:
         ingest gateway picks it up within 30 seconds). Retention can only be
         shortened below the limits; the governance worker deletes older data.
       operationId: updateDataSettings
+      tags: [governance]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -1241,6 +1297,7 @@ paths:
     post:
       summary: Show what scrubbing rules do to a sample text
       operationId: previewScrubbing
+      tags: [governance]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -1264,6 +1321,7 @@ paths:
     get:
       summary: Deletion requests of the project, newest first
       operationId: listDeletionRequests
+      tags: [governance]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -1285,6 +1343,7 @@ paths:
         and objects), errors, spans and logs of their sessions and traces,
         and the links. The request and its outcome are in the audit log.
       operationId: createDeletionRequest
+      tags: [governance]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -1310,6 +1369,7 @@ paths:
     get:
       summary: One deletion request and its outcome
       operationId: getDeletionRequest
+      tags: [governance]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - name: request_id
@@ -1331,6 +1391,7 @@ paths:
     get:
       summary: List the project's source map upload tokens
       operationId: listUploadTokens
+      tags: [sourcemaps]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -1348,6 +1409,7 @@ paths:
       summary: Create an upload token
       description: The secret is returned only in this response.
       operationId: createUploadToken
+      tags: [sourcemaps]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -1373,6 +1435,7 @@ paths:
     post:
       summary: Revoke an upload token
       operationId: revokeUploadToken
+      tags: [sourcemaps]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - name: token_id
@@ -1396,6 +1459,7 @@ paths:
     get:
       summary: Metrics received in the time range
       operationId: listMetricNames
+      tags: [telemetry]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - $ref: '#/components/parameters/From'
@@ -1417,6 +1481,7 @@ paths:
         average, delta sums add up, cumulative sums take the latest total and
         histograms report p95 from their buckets.
       operationId: queryMetric
+      tags: [telemetry]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - $ref: '#/components/parameters/From'
@@ -1467,6 +1532,7 @@ paths:
         property (top 10 terms, the rest as $other) and an optional formula
         over the series letters (A, B, ...).
       operationId: queryTrend
+      tags: [analytics]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
       requestBody:
@@ -1488,6 +1554,7 @@ paths:
     get:
       summary: Request volume, errors and latency of root spans over time
       operationId: traceStats
+      tags: [telemetry]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - $ref: '#/components/parameters/From'
@@ -1514,6 +1581,7 @@ paths:
       summary: List the dashboards you can see
       description: Shared dashboards and your own private ones, most recently updated first.
       operationId: listDashboards
+      tags: [dashboards]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       responses:
@@ -1530,6 +1598,7 @@ paths:
     post:
       summary: Create a dashboard
       operationId: createDashboard
+      tags: [dashboards]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
       requestBody:
@@ -1553,6 +1622,7 @@ paths:
     get:
       summary: Get a dashboard
       operationId: getDashboard
+      tags: [dashboards]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/DashboardPath'
@@ -1569,6 +1639,7 @@ paths:
       summary: Update a dashboard
       description: Allowed for its creator, and for project owners when it is shared.
       operationId: updateDashboard
+      tags: [dashboards]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/DashboardPath'
@@ -1594,6 +1665,7 @@ paths:
     delete:
       summary: Delete a dashboard
       operationId: deleteDashboard
+      tags: [dashboards]
       parameters:
         - $ref: '#/components/parameters/ProjectPath'
         - $ref: '#/components/parameters/DashboardPath'
@@ -1614,6 +1686,7 @@ paths:
         key:value, and -term to exclude. Page back with before set to
         next_before; poll with after set to the newest timestamp for live tail.
       operationId: searchLogs
+      tags: [telemetry]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - name: q
@@ -1650,6 +1723,7 @@ paths:
     get:
       summary: Log volume over time and by service and level
       operationId: logStats
+      tags: [telemetry]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - name: q
@@ -1679,6 +1753,7 @@ paths:
         active first. Anonymous and identified ids linked by $identify or
         $create_alias count as one person. Search matches ids and traits.
       operationId: listPersons
+      tags: [analytics]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - name: search
@@ -1699,6 +1774,7 @@ paths:
     get:
       summary: A person with their sessions and recent events
       operationId: getPerson
+      tags: [analytics]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
         - name: id
@@ -1725,6 +1801,7 @@ paths:
         Groups persons by the day or week they first did the start event
         and counts how many did the return event in each following period.
       operationId: queryRetention
+      tags: [analytics]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
       requestBody:
@@ -1749,6 +1826,7 @@ paths:
         Follows sessions page by page (or event by event), optionally from a
         start page, and returns the flows between steps.
       operationId: queryPaths
+      tags: [analytics]
       parameters:
         - $ref: '#/components/parameters/ProjectID'
       requestBody:
