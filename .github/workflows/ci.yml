@@ -25,7 +25,7 @@ jobs:
 
       - name: Run tests
         working-directory: go
-        run: go test -v ./...
+        run: go test -race ./...
 
       - name: Vet and build the Go demo API
         working-directory: examples/go-demo-api
@@ -58,6 +58,17 @@ jobs:
         with:
           version: v2.14.0
           working-directory: go
+
+      - name: Complexity gate
+        working-directory: go
+        run: |
+          go install github.com/fzipp/gocyclo/cmd/gocyclo@v0.6.0
+          files=$(find . -name '*.go' -not -path './internal/api/gen/*' -not -name '*_test.go')
+          echo "Functions over 20 (warning):"
+          "$(go env GOPATH)/bin/gocyclo" -over 20 $files || true
+          # Fail only when a function goes past the ceiling. Lower it as
+          # hotspots are split.
+          "$(go env GOPATH)/bin/gocyclo" -over 40 $files
 
   security-audit:
     name: Dependency Audit
