@@ -139,113 +139,136 @@ type TraceBatch struct {
 
 func mapTraces(resources []rawResource, defaultProject string) TraceBatch {
 	var b TraceBatch
-	// Errors usually bubble up: the span that threw records an exception and
-	// its ancestors only set an ERROR status. Traces that already carry an
-	// exception event do not get extra status-only errors.
-	hasException := map[string]bool{}
-	// Session and user ids usually sit only on the server span (copied from
-	// baggage); child spans and the errors they record inherit them from any
-	// span of the same trace in this export.
-	traceSession, traceUser := map[string]string{}, map[string]string{}
+	tc := scanTraces(resources)
 	for _, r := range resources {
+		meta := newResourceMeta(r.attrs, defaultProject)
 		for _, s := range r.spans {
-			if v := first(s.attrs, "session.id", "pulse.session_id"); v != "" {
-				traceSession[s.traceID] = v
-			}
-			if v := first(s.attrs, "enduser.id", "pulse.distinct_id"); v != "" {
-				traceUser[s.traceID] = v
-			}
-			for _, e := range s.events {
-				if e.name == "exception" {
-					hasException[s.traceID] = true
-				}
-			}
-		}
-	}
-	for _, r := range resources {
-		// Any project claimed in the payload is ignored: the project always
-		// comes from the authenticated ingest key.
-		project := defaultProject
-		service := r.attrs["service.name"]
-		plat := platform(r.attrs)
-		release := first(r.attrs, "service.version")
-		env := first(r.attrs, "deployment.environment.name", "deployment.environment")
-		// Browser errors already arrive through /v1/errors with full context,
-		// so only backend spans are turned into error rows.
-		deriveErrors := plat != "webjs"
-
-		for _, s := range r.spans {
-			var dur uint64
-			if s.end > s.start {
-				dur = s.end - s.start
-			}
-			status, _ := strconv.ParseUint(first(s.attrs, "http.response.status_code", "http.status_code"), 10, 16)
-			session := first(s.attrs, "session.id", "pulse.session_id")
-			if session == "" {
-				session = traceSession[s.traceID]
-			}
-			b.Spans = append(b.Spans, Span{
-				ProjectID:     project,
-				TraceID:       s.traceID,
-				SpanID:        s.spanID,
-				ParentSpanID:  s.parentID,
-				Name:          s.name,
-				Kind:          name(kindNames, s.kind),
-				ServiceName:   service,
-				Platform:      r.attrs["telemetry.sdk.language"],
-				Timestamp:     nanos(s.start),
-				DurationNs:    dur,
-				StatusCode:    name(statusNames, s.statusCode),
-				StatusMessage: s.statusMsg,
-				HTTPRoute:     first(s.attrs, "http.route", "url.path", "http.target", "http.url", "url.full"),
-				HTTPStatus:    uint16(status),
-				DBSystem:      first(s.attrs, "db.system.name", "db.system"),
-				DBStatement:   first(s.attrs, "db.query.text", "db.statement"),
-				SessionID:     session,
-				Attributes:    spanAttributes(s.attrs, r.attrs),
-				Events:        spanEvents(s.events),
-			})
-			if !deriveErrors {
-				continue
-			}
-			base := ErrorEvent{
-				ProjectID: project, Platform: plat, Release: release, Environment: env, ServiceName: service,
-				TraceID: s.traceID, SpanID: s.spanID, SessionID: session,
-				DistinctID: orDefault(first(s.attrs, "enduser.id", "pulse.distinct_id"), traceUser[s.traceID]),
-				URL:        first(s.attrs, "url.full", "http.url", "http.route", "url.path"),
-			}
-			found := false
-			for _, e := range s.events {
-				if e.name != "exception" {
-					continue
-				}
-				found = true
-				ev := base
-				ev.Timestamp = nanos(e.time)
-				ev.ExceptionType = first(e.attrs, "exception.type")
-				ev.Message = first(e.attrs, "exception.message")
-				ev.Stack = first(e.attrs, "exception.stacktrace")
-				if ev.ExceptionType == "" && ev.Message == "" {
-					ev.Message = s.name
-				}
-				b.Errors = append(b.Errors, ev)
-			}
-			if !found && s.statusCode == 2 && !hasException[s.traceID] {
-				ev := base
-				ev.Timestamp = nanos(s.end)
-				ev.ExceptionType = first(s.attrs, "error.type", "exception.type")
-				if ev.ExceptionType == "" {
-					ev.ExceptionType = "SpanError"
-				}
-				ev.Message = s.statusMsg
-				if ev.Message == "" {
-					ev.Message = s.name + " failed"
-				}
-				b.Errors = append(b.Errors, ev)
+			span := meta.span(s, tc)
+			b.Spans = append(b.Spans, span)
+			// Browser errors already arrive through /v1/errors with full
+			// context, so only backend spans are turned into error rows.
+			if meta.platform != "webjs" {
+				b.Errors = append(b.Errors, meta.spanErrors(s, span.SessionID, tc)...)
 			}
 		}
 	}
 	return b
+}
+
+// traceContext is what spans of one trace share within an export.
+type traceContext struct {
+	// Errors usually bubble up: the span that threw records an exception
+	// and its ancestors only set an ERROR status. Traces that already carry
+	// an exception event do not get extra status-only errors.
+	hasException map[string]bool
+	// Session and user ids usually sit only on the server span (copied from
+	// baggage); child spans and the errors they record inherit them from any
+	// span of the same trace in this export.
+	session, user map[string]string
+}
+
+func scanTraces(resources []rawResource) traceContext {
+	tc := traceContext{hasException: map[string]bool{}, session: map[string]string{}, user: map[string]string{}}
+	for _, r := range resources {
+		for _, s := range r.spans {
+			if v := first(s.attrs, "session.id", "pulse.session_id"); v != "" {
+				tc.session[s.traceID] = v
+			}
+			if v := first(s.attrs, "enduser.id", "pulse.distinct_id"); v != "" {
+				tc.user[s.traceID] = v
+			}
+			for _, e := range s.events {
+				if e.name == "exception" {
+					tc.hasException[s.traceID] = true
+				}
+			}
+		}
+	}
+	return tc
+}
+
+// resourceMeta is what every span of a resource has in common.
+type resourceMeta struct {
+	attrs                                                 kv
+	project, service, platform, sdkLanguage, release, env string
+}
+
+func newResourceMeta(attrs kv, defaultProject string) resourceMeta {
+	return resourceMeta{
+		attrs: attrs,
+		// Any project claimed in the payload is ignored: the project always
+		// comes from the authenticated ingest key.
+		project:     defaultProject,
+		service:     attrs["service.name"],
+		platform:    platform(attrs),
+		sdkLanguage: attrs["telemetry.sdk.language"],
+		release:     first(attrs, "service.version"),
+		env:         first(attrs, "deployment.environment.name", "deployment.environment"),
+	}
+}
+
+func (m resourceMeta) span(s rawSpan, tc traceContext) Span {
+	var dur uint64
+	if s.end > s.start {
+		dur = s.end - s.start
+	}
+	status, _ := strconv.ParseUint(first(s.attrs, "http.response.status_code", "http.status_code"), 10, 16)
+	session := orDefault(first(s.attrs, "session.id", "pulse.session_id"), tc.session[s.traceID])
+	return Span{
+		ProjectID:     m.project,
+		TraceID:       s.traceID,
+		SpanID:        s.spanID,
+		ParentSpanID:  s.parentID,
+		Name:          s.name,
+		Kind:          name(kindNames, s.kind),
+		ServiceName:   m.service,
+		Platform:      m.sdkLanguage,
+		Timestamp:     nanos(s.start),
+		DurationNs:    dur,
+		StatusCode:    name(statusNames, s.statusCode),
+		StatusMessage: s.statusMsg,
+		HTTPRoute:     first(s.attrs, "http.route", "url.path", "http.target", "http.url", "url.full"),
+		HTTPStatus:    uint16(status),
+		DBSystem:      first(s.attrs, "db.system.name", "db.system"),
+		DBStatement:   first(s.attrs, "db.query.text", "db.statement"),
+		SessionID:     session,
+		Attributes:    spanAttributes(s.attrs, m.attrs),
+		Events:        spanEvents(s.events),
+	}
+}
+
+// spanErrors turns the span's exception events into errors or, when the
+// span failed without one and its trace has none, a status-only error.
+func (m resourceMeta) spanErrors(s rawSpan, session string, tc traceContext) []ErrorEvent {
+	base := ErrorEvent{
+		ProjectID: m.project, Platform: m.platform, Release: m.release, Environment: m.env, ServiceName: m.service,
+		TraceID: s.traceID, SpanID: s.spanID, SessionID: session,
+		DistinctID: orDefault(first(s.attrs, "enduser.id", "pulse.distinct_id"), tc.user[s.traceID]),
+		URL:        first(s.attrs, "url.full", "http.url", "http.route", "url.path"),
+	}
+	var out []ErrorEvent
+	for _, e := range s.events {
+		if e.name != "exception" {
+			continue
+		}
+		ev := base
+		ev.Timestamp = nanos(e.time)
+		ev.ExceptionType = first(e.attrs, "exception.type")
+		ev.Message = first(e.attrs, "exception.message")
+		ev.Stack = first(e.attrs, "exception.stacktrace")
+		if ev.ExceptionType == "" && ev.Message == "" {
+			ev.Message = s.name
+		}
+		out = append(out, ev)
+	}
+	if len(out) == 0 && s.statusCode == 2 && !tc.hasException[s.traceID] {
+		ev := base
+		ev.Timestamp = nanos(s.end)
+		ev.ExceptionType = orDefault(first(s.attrs, "error.type", "exception.type"), "SpanError")
+		ev.Message = orDefault(s.statusMsg, s.name+" failed")
+		out = append(out, ev)
+	}
+	return out
 }
 
 func mapLogs(resources []rawResource, defaultProject string) []LogRecord {

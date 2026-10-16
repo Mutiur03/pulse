@@ -77,99 +77,110 @@ func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 // MetricsFromProto flattens an export into data points.
 func MetricsFromProto(req *colmetrics.ExportMetricsServiceRequest, project string) MetricBatch {
 	var b MetricBatch
-	reject := func(n int, why string) {
-		b.Rejected += n
-		b.Reason = why
-	}
 	for _, rm := range req.GetResourceMetrics() {
-		res := pbAttrs(rm.GetResource().GetAttributes())
-		service := first(res, "service.name")
+		service := first(pbAttrs(rm.GetResource().GetAttributes()), "service.name")
 		for _, sm := range rm.GetScopeMetrics() {
 			for _, m := range sm.GetMetrics() {
-				base := MetricPoint{
+				b.addMetric(m, MetricPoint{
 					ProjectID: project, ServiceName: service, Name: m.GetName(),
 					Description: clip(m.GetDescription()), Unit: m.GetUnit(),
-				}
-				add := func(p MetricPoint, ts uint64, attrs kv) {
-					p.Timestamp = pointTime(ts)
-					p.Attributes = make(map[string]string, len(attrs))
-					for k, v := range attrs {
-						p.Attributes[k] = clip(v)
-					}
-					if !finite(p.Value) || !finite(p.Sum) {
-						reject(1, "non-finite value in "+p.Name)
-						return
-					}
-					b.Points = append(b.Points, p)
-				}
-				number := func(dp *metrics.NumberDataPoint) float64 {
-					if v, ok := dp.GetValue().(*metrics.NumberDataPoint_AsInt); ok {
-						return float64(v.AsInt)
-					}
-					return dp.GetAsDouble()
-				}
-				if m.GetName() == "" || len(m.GetName()) > 255 {
-					reject(dataPoints(m), "metric name must be 1 to 255 characters")
-					continue
-				}
-				switch d := m.GetData().(type) {
-				case *metrics.Metric_Gauge:
-					for _, dp := range d.Gauge.GetDataPoints() {
-						p := base
-						p.Type, p.Value = "gauge", number(dp)
-						add(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
-					}
-				case *metrics.Metric_Sum:
-					for _, dp := range d.Sum.GetDataPoints() {
-						p := base
-						p.Type, p.Value = "sum", number(dp)
-						p.Temporality, p.Monotonic = temporalities[d.Sum.GetAggregationTemporality()], d.Sum.GetIsMonotonic()
-						add(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
-					}
-				case *metrics.Metric_Histogram:
-					for _, dp := range d.Histogram.GetDataPoints() {
-						if len(dp.GetBucketCounts()) > 0 && len(dp.GetBucketCounts()) != len(dp.GetExplicitBounds())+1 {
-							reject(1, "histogram bucket counts must be one more than bounds in "+m.GetName())
-							continue
-						}
-						p := base
-						p.Type = "histogram"
-						p.Temporality = temporalities[d.Histogram.GetAggregationTemporality()]
-						p.Count, p.Sum, p.Min, p.Max = dp.GetCount(), dp.GetSum(), dp.GetMin(), dp.GetMax()
-						p.Bounds, p.Buckets = dp.GetExplicitBounds(), dp.GetBucketCounts()
-						if p.Count > 0 {
-							p.Value = p.Sum / float64(p.Count)
-						}
-						add(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
-					}
-				case *metrics.Metric_ExponentialHistogram:
-					// Kept as count, sum and mean; buckets are not stored.
-					for _, dp := range d.ExponentialHistogram.GetDataPoints() {
-						p := base
-						p.Type = "exponential_histogram"
-						p.Temporality = temporalities[d.ExponentialHistogram.GetAggregationTemporality()]
-						p.Count, p.Sum, p.Min, p.Max = dp.GetCount(), dp.GetSum(), dp.GetMin(), dp.GetMax()
-						if p.Count > 0 {
-							p.Value = p.Sum / float64(p.Count)
-						}
-						add(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
-					}
-				case *metrics.Metric_Summary:
-					for _, dp := range d.Summary.GetDataPoints() {
-						p := base
-						p.Type, p.Count, p.Sum = "summary", dp.GetCount(), dp.GetSum()
-						if p.Count > 0 {
-							p.Value = p.Sum / float64(p.Count)
-						}
-						add(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
-					}
-				default:
-					reject(0, "metric "+m.GetName()+" has no data")
-				}
+				})
 			}
 		}
 	}
 	return b
+}
+
+func (b *MetricBatch) reject(n int, why string) {
+	b.Rejected += n
+	b.Reason = why
+}
+
+// addPoint stamps and validates one point built from base.
+func (b *MetricBatch) addPoint(p MetricPoint, ts uint64, attrs kv) {
+	p.Timestamp = pointTime(ts)
+	p.Attributes = make(map[string]string, len(attrs))
+	for k, v := range attrs {
+		p.Attributes[k] = clip(v)
+	}
+	if !finite(p.Value) || !finite(p.Sum) {
+		b.reject(1, "non-finite value in "+p.Name)
+		return
+	}
+	b.Points = append(b.Points, p)
+}
+
+func numberValue(dp *metrics.NumberDataPoint) float64 {
+	if v, ok := dp.GetValue().(*metrics.NumberDataPoint_AsInt); ok {
+		return float64(v.AsInt)
+	}
+	return dp.GetAsDouble()
+}
+
+// withMean sets count, sum and their mean as the point's value.
+func withMean(p MetricPoint, count uint64, sum float64) MetricPoint {
+	p.Count, p.Sum = count, sum
+	if count > 0 {
+		p.Value = sum / float64(count)
+	}
+	return p
+}
+
+// addMetric flattens one metric of any OTLP type into points.
+func (b *MetricBatch) addMetric(m *metrics.Metric, base MetricPoint) {
+	if m.GetName() == "" || len(m.GetName()) > 255 {
+		b.reject(dataPoints(m), "metric name must be 1 to 255 characters")
+		return
+	}
+	switch d := m.GetData().(type) {
+	case *metrics.Metric_Gauge:
+		for _, dp := range d.Gauge.GetDataPoints() {
+			p := base
+			p.Type, p.Value = "gauge", numberValue(dp)
+			b.addPoint(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
+		}
+	case *metrics.Metric_Sum:
+		for _, dp := range d.Sum.GetDataPoints() {
+			p := base
+			p.Type, p.Value = "sum", numberValue(dp)
+			p.Temporality, p.Monotonic = temporalities[d.Sum.GetAggregationTemporality()], d.Sum.GetIsMonotonic()
+			b.addPoint(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
+		}
+	case *metrics.Metric_Histogram:
+		b.addHistogram(d.Histogram, base)
+	case *metrics.Metric_ExponentialHistogram:
+		// Kept as count, sum and mean; buckets are not stored.
+		for _, dp := range d.ExponentialHistogram.GetDataPoints() {
+			p := withMean(base, dp.GetCount(), dp.GetSum())
+			p.Type = "exponential_histogram"
+			p.Temporality = temporalities[d.ExponentialHistogram.GetAggregationTemporality()]
+			p.Min, p.Max = dp.GetMin(), dp.GetMax()
+			b.addPoint(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
+		}
+	case *metrics.Metric_Summary:
+		for _, dp := range d.Summary.GetDataPoints() {
+			p := withMean(base, dp.GetCount(), dp.GetSum())
+			p.Type = "summary"
+			b.addPoint(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
+		}
+	default:
+		b.reject(0, "metric "+m.GetName()+" has no data")
+	}
+}
+
+func (b *MetricBatch) addHistogram(h *metrics.Histogram, base MetricPoint) {
+	for _, dp := range h.GetDataPoints() {
+		if len(dp.GetBucketCounts()) > 0 && len(dp.GetBucketCounts()) != len(dp.GetExplicitBounds())+1 {
+			b.reject(1, "histogram bucket counts must be one more than bounds in "+base.Name)
+			continue
+		}
+		p := withMean(base, dp.GetCount(), dp.GetSum())
+		p.Type = "histogram"
+		p.Temporality = temporalities[h.GetAggregationTemporality()]
+		p.Min, p.Max = dp.GetMin(), dp.GetMax()
+		p.Bounds, p.Buckets = dp.GetExplicitBounds(), dp.GetBucketCounts()
+		b.addPoint(p, dp.GetTimeUnixNano(), pbAttrs(dp.GetAttributes()))
+	}
 }
 
 func dataPoints(m *metrics.Metric) int {

@@ -1,0 +1,197 @@
+{
+  "Spans": [
+    {
+      "project_id": "42",
+      "trace_id": "t1",
+      "span_id": "s1",
+      "name": "GET /pay",
+      "kind": "server",
+      "service_name": "api",
+      "platform": "go",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "duration_ns": 5000000,
+      "status_code": "error",
+      "status_message": "bad",
+      "http_route": "/pay",
+      "http_status": 500,
+      "session_id": "sess",
+      "attributes": {
+        "enduser.id": "u1",
+        "http.route": "/pay",
+        "http.status_code": "500",
+        "resource.deployment.environment": "prod",
+        "resource.service.name": "api",
+        "resource.service.version": "1.2.3",
+        "resource.telemetry.sdk.language": "go",
+        "session.id": "sess"
+      }
+    },
+    {
+      "project_id": "42",
+      "trace_id": "t1",
+      "span_id": "s2",
+      "parent_span_id": "s1",
+      "name": "charge",
+      "kind": "client",
+      "service_name": "api",
+      "platform": "go",
+      "timestamp": "2025-10-15T03:46:40.001Z",
+      "duration_ns": 1000000,
+      "status_code": "unset",
+      "session_id": "sess",
+      "attributes": {
+        "resource.deployment.environment": "prod",
+        "resource.service.name": "api",
+        "resource.service.version": "1.2.3",
+        "resource.telemetry.sdk.language": "go"
+      },
+      "events": [
+        {
+          "name": "log",
+          "time": "2025-10-15T03:46:40.0017Z",
+          "attributes": {
+            "k": "v"
+          }
+        }
+      ]
+    },
+    {
+      "project_id": "42",
+      "trace_id": "t2",
+      "span_id": "s3",
+      "name": "SELECT",
+      "kind": "client",
+      "service_name": "api",
+      "platform": "go",
+      "timestamp": "2025-10-15T03:46:40.009Z",
+      "status_code": "error",
+      "db_system": "postgresql",
+      "db_statement": "SELECT 1",
+      "attributes": {
+        "db.statement": "SELECT 1",
+        "db.system": "postgresql",
+        "error.type": "DeadlockError",
+        "resource.deployment.environment": "prod",
+        "resource.service.name": "api",
+        "resource.service.version": "1.2.3",
+        "resource.telemetry.sdk.language": "go"
+      }
+    },
+    {
+      "project_id": "42",
+      "trace_id": "t3",
+      "span_id": "s4",
+      "name": "worker",
+      "service_name": "api",
+      "platform": "go",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "duration_ns": 1,
+      "status_code": "error",
+      "http_route": "https://x/y?z=1",
+      "session_id": "s-alt",
+      "attributes": {
+        "pulse.distinct_id": "d-alt",
+        "pulse.session_id": "s-alt",
+        "resource.deployment.environment": "prod",
+        "resource.service.name": "api",
+        "resource.service.version": "1.2.3",
+        "resource.telemetry.sdk.language": "go",
+        "url.full": "https://x/y?z=1"
+      }
+    },
+    {
+      "project_id": "42",
+      "trace_id": "t3",
+      "span_id": "s5",
+      "parent_span_id": "s4",
+      "name": "child",
+      "kind": "unspecified",
+      "service_name": "api",
+      "platform": "go",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "duration_ns": 2,
+      "status_code": "ok",
+      "session_id": "s-alt",
+      "attributes": {
+        "resource.deployment.environment": "prod",
+        "resource.service.name": "api",
+        "resource.service.version": "1.2.3",
+        "resource.telemetry.sdk.language": "go"
+      }
+    },
+    {
+      "project_id": "42",
+      "trace_id": "t1",
+      "span_id": "w1",
+      "name": "click",
+      "kind": "unspecified",
+      "service_name": "web",
+      "platform": "webjs",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "duration_ns": 1000000,
+      "status_code": "error",
+      "session_id": "sess",
+      "attributes": {
+        "resource.service.name": "web",
+        "resource.telemetry.sdk.language": "webjs"
+      }
+    }
+  ],
+  "Errors": [
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40.0015Z",
+      "platform": "go",
+      "exception_type": "CardError",
+      "message": "declined",
+      "stack": "at charge",
+      "release": "1.2.3",
+      "environment": "prod",
+      "service_name": "api",
+      "trace_id": "t1",
+      "span_id": "s2",
+      "session_id": "sess",
+      "distinct_id": "u1"
+    },
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40.0016Z",
+      "platform": "go",
+      "message": "charge",
+      "release": "1.2.3",
+      "environment": "prod",
+      "service_name": "api",
+      "trace_id": "t1",
+      "span_id": "s2",
+      "session_id": "sess",
+      "distinct_id": "u1"
+    },
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40.001Z",
+      "platform": "go",
+      "exception_type": "DeadlockError",
+      "message": "SELECT failed",
+      "release": "1.2.3",
+      "environment": "prod",
+      "service_name": "api",
+      "trace_id": "t2",
+      "span_id": "s3"
+    },
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40.000000001Z",
+      "platform": "go",
+      "exception_type": "SpanError",
+      "message": "worker failed",
+      "release": "1.2.3",
+      "environment": "prod",
+      "service_name": "api",
+      "trace_id": "t3",
+      "span_id": "s4",
+      "session_id": "s-alt",
+      "distinct_id": "d-alt",
+      "url": "https://x/y?z=1"
+    }
+  ]
+}

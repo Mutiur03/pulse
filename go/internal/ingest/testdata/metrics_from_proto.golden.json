@@ -1,0 +1,100 @@
+{
+  "Points": [
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "service_name": "api",
+      "name": "cpu",
+      "description": "d",
+      "unit": "1",
+      "type": "gauge",
+      "value": 0.5,
+      "attributes": {
+        "host": "h1"
+      }
+    },
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "service_name": "api",
+      "name": "reqs",
+      "description": "d",
+      "unit": "1",
+      "type": "sum",
+      "temporality": "cumulative",
+      "monotonic": true,
+      "value": 12
+    },
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "service_name": "api",
+      "name": "latency",
+      "description": "d",
+      "unit": "1",
+      "type": "histogram",
+      "temporality": "delta",
+      "value": 2.5,
+      "count": 4,
+      "sum": 10,
+      "min": 1,
+      "max": 4,
+      "bounds": [
+        1,
+        2
+      ],
+      "buckets": [
+        1,
+        2,
+        1
+      ]
+    },
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "service_name": "api",
+      "name": "latency",
+      "description": "d",
+      "unit": "1",
+      "type": "histogram",
+      "temporality": "delta",
+      "value": 0
+    },
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "service_name": "api",
+      "name": "exp",
+      "description": "d",
+      "unit": "1",
+      "type": "exponential_histogram",
+      "value": 1.5,
+      "count": 2,
+      "sum": 3
+    },
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "service_name": "api",
+      "name": "exp",
+      "description": "d",
+      "unit": "1",
+      "type": "exponential_histogram",
+      "value": 0
+    },
+    {
+      "project_id": "42",
+      "timestamp": "2025-10-15T03:46:40Z",
+      "service_name": "api",
+      "name": "sum",
+      "description": "d",
+      "unit": "1",
+      "type": "summary",
+      "value": 3,
+      "count": 3,
+      "sum": 9
+    }
+  ],
+  "Rejected": 6,
+  "Reason": "metric empty has no data"
+}
