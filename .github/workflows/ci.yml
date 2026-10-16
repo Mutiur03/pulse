@@ -168,6 +168,51 @@ jobs:
       - name: SDK bundle size
         run: pnpm --filter @pulse/browser size | tee -a "$GITHUB_STEP_SUMMARY"
 
+  deploy-check:
+    name: Deployment Config Check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.18.4
+
+      - name: Install kubeconform
+        run: |
+          curl -fsSL https://github.com/yannh/kubeconform/releases/download/v0.7.0/kubeconform-linux-amd64.tar.gz | tar xz -C /usr/local/bin kubeconform
+
+      - name: Lint and validate the Helm chart
+        run: |
+          helm lint deploy/helm
+          helm template pulse deploy/helm | kubeconform -strict -summary -
+          helm template pulse deploy/helm --set ingress.enabled=true --set metrics.serviceMonitor.enabled=true \
+            --set existingSecret=pulse-secrets | kubeconform -strict -summary -skip ServiceMonitor -
+
+      - name: Set up Terraform
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: 1.13.3
+
+      - name: Validate Terraform
+        working-directory: deploy/terraform
+        run: |
+          terraform fmt -check -recursive
+          terraform init -backend=false -input=false
+          terraform validate
+
+      - name: Check Prometheus rules and the Grafana dashboard
+        run: |
+          docker run --rm -v "$PWD/deploy/monitoring:/m" --entrypoint promtool prom/prometheus:v3.5.0 check rules /m/alerts.yml
+          python3 -m json.tool deploy/monitoring/grafana/dashboards/pulse-overview.json > /dev/null
+
+      - name: Check backup and load scripts
+        run: bash -n tools/backup/*.sh deploy/migrate/migrate.sh load/run.sh
+
+      - name: Build the migration image
+        run: docker build -f deploy/migrate/Dockerfile -t pulse-migrate:ci .
+
   docker-build:
     name: Docker Build
     runs-on: ubuntu-latest

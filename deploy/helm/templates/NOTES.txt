@@ -1,0 +1,12 @@
+Pulse {{ .Chart.AppVersion }} is installed as {{ include "pulse.fullname" . }}.
+
+Web app:      service {{ include "pulse.fullname" . }}-web:{{ .Values.web.port }}
+Ingest HTTP:  service {{ include "pulse.fullname" . }}-ingest-gateway:{{ .Values.ingestGateway.port }}
+OTLP/gRPC:    service {{ include "pulse.fullname" . }}-ingest-gateway:{{ .Values.ingestGateway.grpcPort }}
+{{- if .Values.ingress.enabled }}
+Ingress hosts: {{ .Values.ingress.webHost }} (web), {{ .Values.ingress.ingestHost }} (ingest)
+{{- end }}
+
+Prometheus metrics are on each Go service's "metrics" port (ingest gateway,
+query API) or "http" port (workers) at /metrics. Import
+deploy/monitoring/grafana/dashboards/pulse-overview.json into Grafana.

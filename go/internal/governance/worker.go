@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/audit"
+	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 )
@@ -89,6 +90,7 @@ func (w *Worker) RunDeletions(ctx context.Context) (int, error) {
 		if err != nil {
 			return n, err
 		}
+		monitor.GovernanceDeletions.WithLabelValues(done.Status).Inc()
 		details := map[string]any{"request_id": r.ID, "ids": len(ids)}
 		for k, v := range result {
 			details[k] = v
@@ -228,6 +230,7 @@ func (w *Worker) EnforceRetention(ctx context.Context) (map[int64]map[string]int
 			details := map[string]any{}
 			for k, v := range counts {
 				details[k] = v
+				monitor.GovernanceRetainedRows.WithLabelValues(k).Add(float64(v))
 			}
 			w.record(ctx, audit.Entry{ProjectID: s.ProjectID, Action: ActionRetention, Target: "retention", Details: details})
 		}

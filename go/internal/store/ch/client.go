@@ -2,8 +2,10 @@ package ch
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strconv"
 	"time"
 
@@ -15,15 +17,27 @@ type Client struct {
 	conn driver.Conn
 }
 
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
+}
+
 func NewClient(addr string) (*Client, error) {
-	conn, err := clickhouse.Open(&clickhouse.Options{
+	opts := &clickhouse.Options{
 		Addr: []string{addr},
 		Auth: clickhouse.Auth{
-			Database: "default",
-			Username: "default",
-			Password: "",
+			Database: envOr("CLICKHOUSE_DB", "default"),
+			Username: envOr("CLICKHOUSE_USER", "default"),
+			Password: os.Getenv("CLICKHOUSE_PASSWORD"),
 		},
-	})
+	}
+	// Managed ClickHouse services require TLS (usually on port 9440).
+	if os.Getenv("CLICKHOUSE_SECURE") == "true" {
+		opts.TLS = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+	conn, err := clickhouse.Open(opts)
 	if err != nil {
 		return nil, fmt.Errorf("failed to connect to ClickHouse: %w", err)
 	}

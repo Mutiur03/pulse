@@ -2,22 +2,55 @@ package kafka
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log"
+	"os"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
+	"github.com/twmb/franz-go/pkg/sasl/plain"
+	"github.com/twmb/franz-go/pkg/sasl/scram"
 )
+
+// securityOpts configures TLS and SASL for managed Kafka from the
+// environment: KAFKA_TLS=true, KAFKA_SASL_MECHANISM (SCRAM-SHA-512,
+// SCRAM-SHA-256 or PLAIN), KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD.
+func securityOpts() ([]kgo.Opt, error) {
+	var opts []kgo.Opt
+	if os.Getenv("KAFKA_TLS") == "true" {
+		opts = append(opts, kgo.DialTLSConfig(&tls.Config{MinVersion: tls.VersionTLS12}))
+	}
+	user, pass := os.Getenv("KAFKA_SASL_USERNAME"), os.Getenv("KAFKA_SASL_PASSWORD")
+	if user == "" {
+		return opts, nil
+	}
+	switch mech := os.Getenv("KAFKA_SASL_MECHANISM"); mech {
+	case "", "SCRAM-SHA-512":
+		opts = append(opts, kgo.SASL(scram.Auth{User: user, Pass: pass}.AsSha512Mechanism()))
+	case "SCRAM-SHA-256":
+		opts = append(opts, kgo.SASL(scram.Auth{User: user, Pass: pass}.AsSha256Mechanism()))
+	case "PLAIN":
+		opts = append(opts, kgo.SASL(plain.Auth{User: user, Pass: pass}.AsMechanism()))
+	default:
+		return nil, fmt.Errorf("unsupported KAFKA_SASL_MECHANISM %q", mech)
+	}
+	return opts, nil
+}
 
 type Producer struct {
 	client *kgo.Client
 }
 
 func NewProducer(brokers []string) (*Producer, error) {
-	client, err := kgo.NewClient(
+	sec, err := securityOpts()
+	if err != nil {
+		return nil, err
+	}
+	client, err := kgo.NewClient(append([]kgo.Opt{
 		kgo.SeedBrokers(brokers...),
 		kgo.AllowAutoTopicCreation(),
-	)
+	}, sec...)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka client: %w", err)
 	}
@@ -40,6 +73,18 @@ func (p *Producer) Produce(ctx context.Context, topic string, key, value []byte)
 	return nil
 }
 
+// ProduceBatch writes the records concurrently and waits for all of them.
+func (p *Producer) ProduceBatch(ctx context.Context, topic string, keys, values [][]byte) error {
+	records := make([]*kgo.Record, len(values))
+	for i := range values {
+		records[i] = &kgo.Record{Topic: topic, Key: keys[i], Value: values[i]}
+	}
+	if err := p.client.ProduceSync(ctx, records...).FirstErr(); err != nil {
+		return fmt.Errorf("failed to produce messages: %w", err)
+	}
+	return nil
+}
+
 func (p *Producer) Close() {
 	p.client.Close()
 }
@@ -49,7 +94,11 @@ type Consumer struct {
 }
 
 func NewConsumer(brokers []string, groupID string, topics []string) (*Consumer, error) {
-	client, err := kgo.NewClient(
+	sec, err := securityOpts()
+	if err != nil {
+		return nil, err
+	}
+	client, err := kgo.NewClient(append([]kgo.Opt{
 		kgo.SeedBrokers(brokers...),
 		kgo.ConsumerGroup(groupID),
 		kgo.ConsumeTopics(topics...),
@@ -58,9 +107,9 @@ func NewConsumer(brokers []string, groupID string, topics []string) (*Consumer, 
 		kgo.ConsumeResetOffset(kgo.NewOffset().AtStart()),
 		// Topics are auto-created by the producer; refresh metadata often so
 		// the consumer picks them up quickly after first produce.
-		kgo.MetadataMaxAge(5*time.Second),
+		kgo.MetadataMaxAge(5 * time.Second),
 		kgo.DisableAutoCommit(),
-	)
+	}, sec...)...)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create kafka consumer: %w", err)
 	}

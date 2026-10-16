@@ -1,0 +1,53 @@
+{{- $c := .Values.config }}
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "pulse.fullname" . }}-config
+  labels: {{- include "pulse.labels" . | nindent 4 }}
+data:
+  KAFKA_BOOTSTRAP_SERVERS: {{ $c.kafkaBootstrapServers | quote }}
+  KAFKA_TLS: {{ $c.kafkaTLS | quote }}
+  KAFKA_SASL_MECHANISM: {{ $c.kafkaSaslMechanism | quote }}
+  CLICKHOUSE_ADDR: {{ $c.clickhouseAddr | quote }}
+  CLICKHOUSE_DB: {{ $c.clickhouseDatabase | quote }}
+  CLICKHOUSE_USER: {{ $c.clickhouseUser | quote }}
+  CLICKHOUSE_SECURE: {{ $c.clickhouseSecure | quote }}
+  REDIS_ADDR: {{ $c.redisAddr | quote }}
+  S3_ENDPOINT: {{ $c.s3Endpoint | quote }}
+  S3_REGION: {{ $c.s3Region | quote }}
+  S3_USE_SSL: {{ $c.s3UseSSL | quote }}
+  S3_BUCKET: {{ $c.s3ReplayBucket | quote }}
+  S3_ARTIFACT_BUCKET: {{ $c.s3ArtifactBucket | quote }}
+  SMTP_ADDR: {{ $c.smtpAddr | quote }}
+  SMTP_FROM: {{ $c.smtpFrom | quote }}
+  APP_URL: {{ .Values.appUrl | quote }}
+  {{- with $c.countryHeader }}
+  COUNTRY_HEADER: {{ . | quote }}
+  {{- end }}
+  {{- with $c.trustedProxies }}
+  TRUSTED_PROXIES: {{ . | quote }}
+  {{- end }}
+  {{- range $k, $v := $c.extraEnv }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+---
+{{- if not .Values.existingSecret }}
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "pulse.secretName" . }}
+  labels: {{- include "pulse.labels" . | nindent 4 }}
+  annotations:
+    # Created before the migration Job, which needs it. Hook resources are
+    # kept on uninstall; delete the Secret by hand if needed.
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "-5"
+    helm.sh/hook-delete-policy: before-hook-creation
+type: Opaque
+stringData:
+  {{- range $k, $v := .Values.secrets }}
+  {{- if $v }}
+  {{ $k }}: {{ $v | quote }}
+  {{- end }}
+  {{- end }}
+{{- end }}

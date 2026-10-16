@@ -14,6 +14,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/kafka"
+	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/processor"
 	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
@@ -68,6 +69,7 @@ func main() {
 
 	go func() {
 		mux := http.NewServeMux()
+		mux.Handle("/metrics", monitor.Handler())
 		mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.WriteHeader(http.StatusOK)
 			_, _ = w.Write([]byte(`{"status":"healthy","service":"stream-processor"}`))
@@ -91,6 +93,7 @@ func main() {
 		cancel()
 	}()
 
+	monitor.Service("stream-processor")
 	log.Println("Stream processor started")
 
 	for {
@@ -118,9 +121,15 @@ func main() {
 			var logs []map[string]interface{}
 			var metrics []map[string]interface{}
 
+			newest := map[string]time.Time{}
 			for _, record := range records {
+				monitor.ProcessorRecords.WithLabelValues(record.Topic).Inc()
+				if record.Timestamp.After(newest[record.Topic]) {
+					newest[record.Topic] = record.Timestamp
+				}
 				var data map[string]interface{}
 				if err := json.Unmarshal(record.Value, &data); err != nil {
+					monitor.ProcessorDecodeErrors.WithLabelValues(record.Topic).Inc()
 					log.Printf("Failed to unmarshal record: %v", err)
 					continue
 				}
@@ -141,7 +150,7 @@ func main() {
 			ok := true
 			if len(events) > 0 {
 				log.Printf("Processing %d events", len(events))
-				if err := retry(ctx, func() error { return chClient.InsertEvents(ctx, events) }); err != nil {
+				if err := write(ctx, "events", len(events), func() error { return chClient.InsertEvents(ctx, events) }); err != nil {
 					log.Printf("Failed to insert events: %v", err)
 					ok = false
 				} else {
@@ -156,7 +165,7 @@ func main() {
 
 			if len(spans) > 0 {
 				log.Printf("Processing %d spans", len(spans))
-				if err := retry(ctx, func() error { return chClient.InsertSpans(ctx, spans) }); err != nil {
+				if err := write(ctx, "spans", len(spans), func() error { return chClient.InsertSpans(ctx, spans) }); err != nil {
 					log.Printf("Failed to insert spans: %v", err)
 					ok = false
 				} else {
@@ -174,7 +183,7 @@ func main() {
 					log.Printf("Failed to group errors: %v", err)
 					return
 				}
-				if err := retry(ctx, func() error { return chClient.InsertErrors(ctx, rows) }); err != nil {
+				if err := write(ctx, "errors", len(rows), func() error { return chClient.InsertErrors(ctx, rows) }); err != nil {
 					log.Printf("Failed to insert errors: %v", err)
 					ok = false
 				} else {
@@ -183,7 +192,7 @@ func main() {
 			}
 
 			if len(logs) > 0 {
-				if err := retry(ctx, func() error { return chClient.InsertLogs(ctx, logs) }); err != nil {
+				if err := write(ctx, "logs", len(logs), func() error { return chClient.InsertLogs(ctx, logs) }); err != nil {
 					log.Printf("Failed to insert logs: %v", err)
 					ok = false
 				} else {
@@ -192,7 +201,7 @@ func main() {
 			}
 
 			if len(metrics) > 0 {
-				if err := retry(ctx, func() error { return chClient.InsertMetrics(ctx, metrics) }); err != nil {
+				if err := write(ctx, "metrics", len(metrics), func() error { return chClient.InsertMetrics(ctx, metrics) }); err != nil {
 					log.Printf("Failed to insert metrics: %v", err)
 					ok = false
 				} else {
@@ -204,6 +213,10 @@ func main() {
 				// Only reached on shutdown: leave offsets uncommitted so the
 				// batch is redelivered on the next start.
 				return
+			}
+			monitor.ProcessorLastBatch.SetToCurrentTime()
+			for topic, ts := range newest {
+				monitor.ProcessorDelay.WithLabelValues(topic).Set(time.Since(ts).Seconds())
 			}
 			if err := consumer.Commit(ctx); err != nil {
 				log.Printf("Failed to commit: %v", err)
@@ -230,6 +243,19 @@ func connectIssues(url string) (*issues.Store, error) {
 
 // retry runs fn until it succeeds or ctx is cancelled, backing off up to 30s.
 // Blocking here keeps offsets uncommitted, so no batch is skipped.
+// write stores one batch with retries and records its metrics.
+func write(ctx context.Context, kind string, n int, fn func() error) error {
+	start := time.Now()
+	err := retry(ctx, fn)
+	monitor.ProcessorWriteLatency.WithLabelValues(kind).Observe(time.Since(start).Seconds())
+	if err != nil {
+		monitor.ProcessorWriteErrors.WithLabelValues(kind).Inc()
+		return err
+	}
+	monitor.ProcessorRowsWritten.WithLabelValues(kind).Add(float64(n))
+	return nil
+}
+
 func retry(ctx context.Context, fn func() error) error {
 	backoff := time.Second
 	for {

@@ -22,6 +22,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/Mutiur03/pulse/internal/governance"
+	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/redis/go-redis/v9"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials"
@@ -51,7 +52,11 @@ func main() {
 		log.Fatalf("Failed to configure Postgres: %v", err)
 	}
 	defer db.Close()
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	redisOpts, err := cfg.RedisOptions()
+	if err != nil {
+		log.Fatalf("Invalid REDIS_URL: %v", err)
+	}
+	rdb := redis.NewClient(redisOpts)
 	defer func() { _ = rdb.Close() }()
 	auth := &ingest.KeyAuth{
 		Resolver: &keys.Resolver{Redis: rdb, Source: &keys.Store{DB: db}},
@@ -73,10 +78,13 @@ func main() {
 	if h := os.Getenv("COUNTRY_HEADER"); h != "" {
 		opts = append(opts, ingest.WithCountryHeader(h))
 	}
+	// Metrics are served on their own port, not the public one.
+	monitor.Service("ingest-gateway")
+	monitor.Serve(envOr("METRICS_ADDR", ":9101"))
 	addr := fmt.Sprintf(":%d", cfg.IngestGatewayPort)
 	server := &http.Server{
 		Addr:              addr,
-		Handler:           ingest.NewHandler(producer, auth, opts...),
+		Handler:           monitor.Middleware("ingest-gateway", ingestRoute)(ingest.NewHandler(producer, auth, opts...)),
 		ReadHeaderTimeout: 10 * time.Second,
 	}
 
@@ -147,4 +155,22 @@ func startGRPC(p ingest.Producer, auth ingest.Authenticator, scrub ingest.ScrubS
 		}
 	}()
 	return s, lis
+}
+
+var ingestRoutes = map[string]bool{"/v1/events": true, "/v1/traces": true, "/v1/errors": true, "/v1/logs": true,
+	"/v1/metrics": true, "/v1/replay": true, "/health": true}
+
+// ingestRoute keeps the route label bounded.
+func ingestRoute(r *http.Request) string {
+	if ingestRoutes[r.URL.Path] {
+		return r.URL.Path
+	}
+	return "other"
+}
+
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
+	}
+	return def
 }

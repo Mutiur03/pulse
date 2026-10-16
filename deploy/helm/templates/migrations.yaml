@@ -1,0 +1,44 @@
+{{- if .Values.migrations.enabled }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "pulse.fullname" . }}-migrate-{{ .Release.Revision }}
+  labels: {{- include "pulse.labels" . | nindent 4 }}
+  annotations:
+    # Runs before the new services start; the Secret is created first.
+    helm.sh/hook: pre-install,pre-upgrade
+    helm.sh/hook-weight: "0"
+    helm.sh/hook-delete-policy: before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrations.backoffLimit }}
+  template:
+    metadata:
+      labels:
+        {{- include "pulse.labels" . | nindent 8 }}
+        app.kubernetes.io/name: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: migrate
+          image: {{ include "pulse.image" (dict "root" . "name" "migrate") }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          env:
+            - name: DATABASE_URL
+              valueFrom:
+                secretKeyRef: {name: {{ include "pulse.secretName" . }}, key: POSTGRES_URL}
+            - name: CLICKHOUSE_HOST
+              value: {{ (splitList ":" .Values.config.clickhouseAddr) | first | quote }}
+            - name: CLICKHOUSE_PORT
+              value: {{ (splitList ":" .Values.config.clickhouseAddr) | last | quote }}
+            - name: CLICKHOUSE_USER
+              value: {{ .Values.config.clickhouseUser | quote }}
+            - name: CLICKHOUSE_SECURE
+              value: {{ .Values.config.clickhouseSecure | quote }}
+            - name: CLICKHOUSE_PASSWORD
+              valueFrom:
+                secretKeyRef: {name: {{ include "pulse.secretName" . }}, key: CLICKHOUSE_PASSWORD, optional: true}
+          resources: {{- toYaml .Values.migrations.resources | nindent 12 }}
+{{- end }}

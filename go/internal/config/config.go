@@ -3,6 +3,8 @@ package config
 import (
 	"os"
 	"strconv"
+
+	"github.com/redis/go-redis/v9"
 )
 
 type Config struct {
@@ -49,4 +51,13 @@ func getEnvInt(key string, defaultValue int) int {
 		}
 	}
 	return defaultValue
+}
+
+// RedisOptions reads REDIS_URL (redis:// or rediss:// with credentials) when
+// set, else REDIS_ADDR with an optional REDIS_PASSWORD.
+func (c *Config) RedisOptions() (*redis.Options, error) {
+	if u := os.Getenv("REDIS_URL"); u != "" {
+		return redis.ParseURL(u)
+	}
+	return &redis.Options{Addr: c.RedisAddr, Password: os.Getenv("REDIS_PASSWORD")}, nil
 }

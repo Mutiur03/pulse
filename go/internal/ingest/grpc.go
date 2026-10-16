@@ -19,6 +19,8 @@ import (
 	"google.golang.org/grpc/metadata"
 	"google.golang.org/grpc/status"
 	"google.golang.org/protobuf/types/known/durationpb"
+
+	"github.com/Mutiur03/pulse/internal/monitor"
 )
 
 // DefaultGRPCMaxRecv is the largest export accepted over gRPC. Collectors
@@ -75,16 +77,19 @@ func (h *handler) authorize(ctx context.Context, req interface{}, info *grpc.Una
 	}
 	key := grpcKey(ctx)
 	if key == "" {
+		monitor.IngestRejected.WithLabelValues("missing_key").Inc()
 		return nil, status.Error(codes.Unauthenticated, "missing ingest key: set x-pulse-key metadata")
 	}
 	project, err := h.auth.Authenticate(ctx, key)
 	if errors.Is(err, ErrUnauthorized) {
+		monitor.IngestRejected.WithLabelValues("invalid_key").Inc()
 		return nil, status.Error(codes.Unauthenticated, "invalid ingest key")
 	} else if err != nil {
 		log.Printf("key lookup failed: %v", err)
 		return nil, status.Error(codes.Unavailable, "key lookup unavailable")
 	}
 	if ok, retry := h.auth.Allow(ctx, key); !ok {
+		monitor.IngestRejected.WithLabelValues("rate_limit").Inc()
 		// RetryInfo tells OTLP exporters how long to back off.
 		st, derr := status.New(codes.ResourceExhausted, "rate limit exceeded").
 			WithDetails(&errdetails.RetryInfo{RetryDelay: durationpb.New(retry)})

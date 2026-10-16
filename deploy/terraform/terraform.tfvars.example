@@ -1,0 +1,6 @@
+region              = "us-east-1"
+environment         = "production"
+vpc_id              = "vpc-0123456789abcdef0"
+subnet_ids          = ["subnet-aaaa", "subnet-bbbb", "subnet-cccc"]
+allowed_cidr_blocks = ["10.0.0.0/16"]
+clickhouse_host     = "abc123.us-east-1.aws.clickhouse.cloud"

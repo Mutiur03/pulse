@@ -19,6 +19,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/governance"
+	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/replay"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 )
@@ -68,6 +69,7 @@ func main() {
 		defer t.Stop()
 		for {
 			if n, err := w.RunDeletions(ctx); err != nil {
+				monitor.GovernanceRuns.WithLabelValues("deletions", "error").Inc()
 				log.Printf("deletions: %v", err)
 			} else if n > 0 {
 				log.Printf("processed %d deletion requests", n)
@@ -84,9 +86,12 @@ func main() {
 		defer t.Stop()
 		for {
 			out, err := w.EnforceRetention(ctx)
+			result := "ok"
 			if err != nil {
+				result = "error"
 				log.Printf("retention: %v", err)
 			}
+			monitor.GovernanceRuns.WithLabelValues("retention", result).Inc()
 			for p, counts := range out {
 				log.Printf("retention removed for project %d: %v", p, counts)
 			}
@@ -99,6 +104,8 @@ func main() {
 	}()
 
 	mux := http.NewServeMux()
+	mux.Handle("/metrics", monitor.Handler())
+	monitor.Service("governance-worker")
 	mux.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		_, _ = w.Write([]byte(`{"status":"healthy","service":"governance-worker"}`))
 	})

@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/safehttp"
 )
 
@@ -213,6 +214,16 @@ func (r *retryable) Unwrap() error { return r.err }
 
 // Send delivers one payload to one channel.
 func (n *Notifier) Send(ctx context.Context, c Channel, p Payload) error {
+	err := n.send(ctx, c, p)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	monitor.AlertNotifications.WithLabelValues(string(c.Kind), result).Inc()
+	return err
+}
+
+func (n *Notifier) send(ctx context.Context, c Channel, p Payload) error {
 	switch c.Kind {
 	case Email:
 		if n.Mail == nil {

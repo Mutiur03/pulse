@@ -1,49 +1,163 @@
-# Default values for pulse
-
-replicaCount:
-  ingestGateway: 2
-  streamProcessor: 1
-  queryApi: 2
-  alertingWorker: 1
+# Pulse runs against external (managed) Postgres, Redis, ClickHouse, Kafka and
+# S3-compatible storage. See deploy/terraform for a skeleton that creates them
+# and docs/deployment.md for the full list of settings.
 
 image:
-  repository: pulse
+  # Images are <registry>/<prefix><component>:<tag>, e.g.
+  # ghcr.io/mutiur03/pulse-query-api:0.2.0. Build them from
+  # deploy/compose/Dockerfile.go (one target per service),
+  # deploy/compose/Dockerfile.web and deploy/migrate/Dockerfile.
+  registry: ghcr.io/mutiur03
+  prefix: pulse-
+  tag: ""          # defaults to the chart appVersion
   pullPolicy: IfNotPresent
-  tag: "latest"
+imagePullSecrets: []
 
-service:
-  type: ClusterIP
-  ingestGateway:
-    port: 8080
-  queryApi:
-    port: 8081
+# Public URL of the web app (links in emails, CSRF origin check).
+appUrl: https://pulse.example.com
+
+# Connection settings shared by every service.
+config:
+  kafkaBootstrapServers: "kafka:9092"
+  kafkaTLS: false
+  kafkaSaslMechanism: SCRAM-SHA-512
+  clickhouseAddr: "clickhouse:9000"
+  clickhouseDatabase: default
+  clickhouseUser: default
+  clickhouseSecure: false
+  redisAddr: "redis:6379"
+  s3Endpoint: "s3.amazonaws.com"
+  s3Region: us-east-1
+  s3UseSSL: true
+  s3ReplayBucket: pulse-replays
+  s3ArtifactBucket: pulse-artifacts
+  smtpAddr: ""
+  smtpFrom: "Pulse <no-reply@pulse.example.com>"
+  # Header set by your CDN with the visitor's country (e.g. CF-IPCountry).
+  countryHeader: ""
+  # Proxies whose X-Forwarded-For is trusted (the web pods by default).
+  trustedProxies: ""
+  extraEnv: {}
+
+# Secrets. Either set existingSecret to a Secret with these keys, or fill the
+# values here (the chart then creates the Secret):
+#   POSTGRES_URL, CLICKHOUSE_PASSWORD, REDIS_PASSWORD (or REDIS_URL),
+#   KAFKA_SASL_USERNAME, KAFKA_SASL_PASSWORD, S3_ACCESS_KEY, S3_SECRET_KEY,
+#   SMTP_USER, SMTP_PASSWORD
+existingSecret: ""
+secrets:
+  POSTGRES_URL: "postgres://pulse:change-me@postgres:5432/pulse?sslmode=require"
+  CLICKHOUSE_PASSWORD: ""
+  REDIS_PASSWORD: ""
+  REDIS_URL: ""
+  KAFKA_SASL_USERNAME: ""
+  KAFKA_SASL_PASSWORD: ""
+  S3_ACCESS_KEY: ""
+  S3_SECRET_KEY: ""
+  SMTP_USER: ""
+  SMTP_PASSWORD: ""
+
+# Schema migrations run as a Job before every install and upgrade.
+migrations:
+  enabled: true
+  backoffLimit: 3
+  resources: {}
+
+ingestGateway:
+  replicas: 2
+  port: 8080
+  grpcPort: 4317
+  metricsPort: 9101
+  resources:
+    requests: {cpu: 200m, memory: 128Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  autoscaling: {enabled: true, minReplicas: 2, maxReplicas: 10, targetCPUUtilizationPercentage: 70}
+  pdb: {enabled: true, minAvailable: 1}
+  env: {}
+
+streamProcessor:
+  # Up to the number of partitions of the raw.* topics.
+  replicas: 2
+  port: 8082
+  resources:
+    requests: {cpu: 200m, memory: 256Mi}
+    limits: {cpu: "2", memory: 1Gi}
+  autoscaling: {enabled: false, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70}
+  pdb: {enabled: true, minAvailable: 1}
+  env: {}
+
+queryApi:
+  replicas: 2
+  port: 8081
+  metricsPort: 9102
+  resources:
+    requests: {cpu: 200m, memory: 256Mi}
+    limits: {cpu: "2", memory: 1Gi}
+  autoscaling: {enabled: true, minReplicas: 2, maxReplicas: 8, targetCPUUtilizationPercentage: 70}
+  pdb: {enabled: true, minAvailable: 1}
+  env: {}
+
+alertingWorker:
+  replicas: 1
+  port: 8083
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  autoscaling: {enabled: false}
+  pdb: {enabled: false}
+  env: {}
+
+governanceWorker:
+  replicas: 1
+  port: 8084
+  resources:
+    requests: {cpu: 50m, memory: 64Mi}
+    limits: {cpu: 500m, memory: 256Mi}
+  autoscaling: {enabled: false}
+  pdb: {enabled: false}
+  env:
+    RETENTION_INTERVAL: 1h
+    DELETION_POLL_INTERVAL: 5s
+
+web:
+  replicas: 2
+  port: 3000
+  resources:
+    requests: {cpu: 100m, memory: 192Mi}
+    limits: {cpu: "1", memory: 512Mi}
+  autoscaling: {enabled: false, minReplicas: 2, maxReplicas: 6, targetCPUUtilizationPercentage: 70}
+  pdb: {enabled: true, minAvailable: 1}
+  env:
+    HSTS_MAX_AGE: "31536000"
 
 ingress:
   enabled: false
+  className: ""
+  annotations: {}
+  # The web app (and its /api proxy) and the ingest endpoint usually live on
+  # separate hosts so ingest can be rate limited and cached separately.
+  webHost: pulse.example.com
+  ingestHost: ingest.pulse.example.com
+  tls: []
 
-resources:
-  ingestGateway:
-    limits:
-      cpu: 1000m
-      memory: 512Mi
-    requests:
-      cpu: 100m
-      memory: 128Mi
-  
-kafka:
-  enabled: true
-  bootstrapServers: "kafka:9092"
+# Adds prometheus.io/* annotations; enable serviceMonitor with the
+# Prometheus Operator.
+metrics:
+  podAnnotations: true
+  serviceMonitor:
+    enabled: false
+    interval: 30s
+    labels: {}
 
-clickhouse:
-  enabled: true
-  host: "clickhouse"
-  port: 9000
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 10001
+  fsGroup: 10001
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities: {drop: [ALL]}
 
-postgres:
-  enabled: true
-  url: "postgres://platform:platform@postgres:5432/platform"
-
-redis:
-  enabled: true
-  host: "redis"
-  port: 6379
+nodeSelector: {}
+tolerations: []
+affinity: {}

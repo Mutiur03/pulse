@@ -162,6 +162,8 @@ services:
       - "8080:8080"
       # OTLP/gRPC receiver (OTLP_GRPC_PORT; TLS with OTLP_GRPC_TLS_CERT/KEY).
       - "4317:4317"
+      # Prometheus metrics (METRICS_ADDR), kept off the public port.
+      - "9101:9101"
     environment:
       SERVICE_NAME: ingest-gateway
       # Read the visitor country from this header. Only set it behind a CDN or
@@ -253,6 +255,8 @@ services:
     container_name: query-api
     ports:
       - "8081:8081"
+      # Prometheus metrics (METRICS_ADDR), kept off the public port.
+      - "9102:9102"
     # Lets webhook channels reach receivers on the host (e.g. local tests).
     extra_hosts:
       - "host.docker.internal:host-gateway"
@@ -431,6 +435,37 @@ services:
     depends_on:
       query-api:
         condition: service_healthy
+    restart: unless-stopped
+
+  # Self-monitoring: `docker compose --profile monitoring up -d`.
+  prometheus:
+    image: prom/prometheus:v3.5.0
+    container_name: prometheus
+    profiles: ["monitoring"]
+    command: ["--config.file=/etc/prometheus/prometheus.yml", "--storage.tsdb.retention.time=7d"]
+    volumes:
+      - ../monitoring/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+      - ../monitoring/alerts.yml:/etc/prometheus/alerts.yml:ro
+    ports:
+      - "9090:9090"
+    restart: unless-stopped
+
+  grafana:
+    image: grafana/grafana:12.1.1
+    container_name: grafana
+    profiles: ["monitoring"]
+    environment:
+      GF_AUTH_ANONYMOUS_ENABLED: "true"
+      GF_AUTH_ANONYMOUS_ORG_ROLE: Viewer
+      # Local only: change before exposing Grafana anywhere.
+      GF_SECURITY_ADMIN_PASSWORD: pulse-local
+    volumes:
+      - ../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    ports:
+      - "3001:3000"
+    depends_on:
+      - prometheus
     restart: unless-stopped
 
 networks:

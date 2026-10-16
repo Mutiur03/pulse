@@ -21,6 +21,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/kafka"
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/processor"
 	"github.com/Mutiur03/pulse/internal/safehttp"
 	"github.com/Mutiur03/pulse/internal/store/ch"
@@ -52,7 +53,11 @@ func main() {
 		log.Fatalf("Failed to create ClickHouse client: %v", err)
 	}
 	defer func() { _ = chClient.Close() }()
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	redisOpts, err := cfg.RedisOptions()
+	if err != nil {
+		log.Fatalf("Invalid REDIS_URL: %v", err)
+	}
+	rdb := redis.NewClient(redisOpts)
 	defer func() { _ = rdb.Close() }()
 
 	appURL := os.Getenv("APP_URL")
@@ -85,6 +90,8 @@ func main() {
 	defer consumer.Close()
 
 	mux := http.NewServeMux()
+	mux.Handle("/metrics", monitor.Handler())
+	monitor.Service("alerting-worker")
 	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(map[string]string{"status": "healthy", "service": "alerting-worker"})

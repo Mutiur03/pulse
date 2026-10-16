@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/issues"
+	"github.com/Mutiur03/pulse/internal/monitor"
 )
 
 // RuleStore is the storage the engine needs.
@@ -96,6 +97,16 @@ func (e *Engine) Tick(ctx context.Context) (int, error) {
 
 // Evaluate runs one rule at now and records the result.
 func (e *Engine) Evaluate(ctx context.Context, r *Rule, now time.Time) error {
+	err := e.evaluate(ctx, r, now)
+	result := "ok"
+	if err != nil {
+		result = "error"
+	}
+	monitor.AlertEvaluations.WithLabelValues(result).Inc()
+	return err
+}
+
+func (e *Engine) evaluate(ctx context.Context, r *Rule, now time.Time) error {
 	if r.Metric.EventDriven() {
 		out, ok := Settle(r, now)
 		if !ok {

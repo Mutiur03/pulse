@@ -1,0 +1,197 @@
+{{- $root := . }}
+{{- range $name, $key := include "pulse.components" . | fromYaml }}
+{{- $v := index $root.Values $key }}
+{{- $ctx := dict "root" $root "name" $name }}
+{{- $metricsPort := $v.metricsPort | default $v.port }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "pulse.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "pulse.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: {{ $name }}
+spec:
+  {{- if not $v.autoscaling.enabled }}
+  replicas: {{ $v.replicas }}
+  {{- end }}
+  selector:
+    matchLabels: {{- include "pulse.selector" $ctx | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "pulse.labels" $root | nindent 8 }}
+        app.kubernetes.io/name: {{ $name }}
+      annotations:
+        checksum/config: {{ include (print $root.Template.BasePath "/config.yaml") $root | sha256sum }}
+        {{- if and $root.Values.metrics.podAnnotations (ne $name "web") }}
+        prometheus.io/scrape: "true"
+        prometheus.io/port: {{ $metricsPort | quote }}
+        prometheus.io/path: /metrics
+        {{- end }}
+    spec:
+      {{- with $root.Values.imagePullSecrets }}
+      imagePullSecrets: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext: {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: {{ $name }}
+          image: {{ include "pulse.image" $ctx }}
+          imagePullPolicy: {{ $root.Values.image.pullPolicy }}
+          securityContext: {{- toYaml $root.Values.securityContext | nindent 12 }}
+          {{- if eq $name "web" }}
+          env:
+            - name: QUERY_API_URL
+              value: http://{{ include "pulse.fullname" $root }}-query-api:{{ $root.Values.queryApi.port }}
+          {{- else }}
+          envFrom:
+            - configMapRef:
+                name: {{ include "pulse.fullname" $root }}-config
+            - secretRef:
+                name: {{ include "pulse.secretName" $root }}
+          env:
+            - name: SERVICE_NAME
+              value: {{ $name }}
+            {{- if eq $name "ingest-gateway" }}
+            - name: INGEST_GATEWAY_PORT
+              value: {{ $v.port | quote }}
+            - name: OTLP_GRPC_PORT
+              value: {{ $v.grpcPort | quote }}
+            - name: METRICS_ADDR
+              value: ":{{ $v.metricsPort }}"
+            {{- end }}
+            {{- if eq $name "query-api" }}
+            - name: QUERY_API_PORT
+              value: {{ $v.port | quote }}
+            - name: METRICS_ADDR
+              value: ":{{ $v.metricsPort }}"
+            {{- end }}
+          {{- end }}
+            {{- range $k, $val := $v.env }}
+            - name: {{ $k }}
+              value: {{ $val | quote }}
+            {{- end }}
+          ports:
+            - name: http
+              containerPort: {{ $v.port }}
+            {{- if $v.grpcPort }}
+            - name: grpc
+              containerPort: {{ $v.grpcPort }}
+            {{- end }}
+            {{- if $v.metricsPort }}
+            - name: metrics
+              containerPort: {{ $v.metricsPort }}
+            {{- end }}
+          {{- $probe := ternary "/login" "/health" (eq $name "web") }}
+          readinessProbe:
+            httpGet: {path: {{ $probe }}, port: http}
+            periodSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet: {path: {{ $probe }}, port: http}
+            initialDelaySeconds: 15
+            periodSeconds: 10
+            failureThreshold: 6
+          resources: {{- toYaml $v.resources | nindent 12 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            {{- if eq $name "web" }}
+            - name: next-cache
+              mountPath: /app/apps/web/.next/cache
+            {{- end }}
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        {{- if eq $name "web" }}
+        - name: next-cache
+          emptyDir: {}
+        {{- end }}
+      {{- with $root.Values.nodeSelector }}
+      nodeSelector: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.tolerations }}
+      tolerations: {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with $root.Values.affinity }}
+      affinity: {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "pulse.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "pulse.labels" $root | nindent 4 }}
+    app.kubernetes.io/name: {{ $name }}
+spec:
+  selector: {{- include "pulse.selector" $ctx | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ $v.port }}
+      targetPort: http
+    {{- if $v.grpcPort }}
+    - name: grpc
+      port: {{ $v.grpcPort }}
+      targetPort: grpc
+      appProtocol: grpc
+    {{- end }}
+    {{- if $v.metricsPort }}
+    - name: metrics
+      port: {{ $v.metricsPort }}
+      targetPort: metrics
+    {{- end }}
+{{- if $v.autoscaling.enabled }}
+---
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: {{ include "pulse.fullname" $root }}-{{ $name }}
+  labels: {{- include "pulse.labels" $root | nindent 4 }}
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: {{ include "pulse.fullname" $root }}-{{ $name }}
+  minReplicas: {{ $v.autoscaling.minReplicas }}
+  maxReplicas: {{ $v.autoscaling.maxReplicas }}
+  metrics:
+    - type: Resource
+      resource:
+        name: cpu
+        target:
+          type: Utilization
+          averageUtilization: {{ $v.autoscaling.targetCPUUtilizationPercentage }}
+{{- end }}
+{{- if $v.pdb.enabled }}
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: {{ include "pulse.fullname" $root }}-{{ $name }}
+  labels: {{- include "pulse.labels" $root | nindent 4 }}
+spec:
+  minAvailable: {{ $v.pdb.minAvailable }}
+  selector:
+    matchLabels: {{- include "pulse.selector" $ctx | nindent 6 }}
+{{- end }}
+{{- if and $root.Values.metrics.serviceMonitor.enabled (ne $name "web") }}
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: {{ include "pulse.fullname" $root }}-{{ $name }}
+  labels:
+    {{- include "pulse.labels" $root | nindent 4 }}
+    {{- with $root.Values.metrics.serviceMonitor.labels }}
+    {{- toYaml . | nindent 4 }}
+    {{- end }}
+spec:
+  selector:
+    matchLabels: {{- include "pulse.selector" $ctx | nindent 6 }}
+  endpoints:
+    - port: {{ ternary "metrics" "http" (hasKey $v "metricsPort") }}
+      path: /metrics
+      interval: {{ $root.Values.metrics.serviceMonitor.interval }}
+{{- end }}
+{{- end }}

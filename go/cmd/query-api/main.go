@@ -25,6 +25,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/orgs"
 	"github.com/Mutiur03/pulse/internal/projects"
 	"github.com/Mutiur03/pulse/internal/replay"
@@ -68,7 +69,11 @@ func main() {
 		log.Fatalf("Failed to configure Postgres: %v", err)
 	}
 	defer db.Close()
-	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
+	redisOpts, err := cfg.RedisOptions()
+	if err != nil {
+		log.Fatalf("Invalid REDIS_URL: %v", err)
+	}
+	rdb := redis.NewClient(redisOpts)
 	defer func() { _ = rdb.Close() }()
 	idle := auth.DefaultIdle
 	if h := envInt("SESSION_IDLE_HOURS", 0); h > 0 {
@@ -152,6 +157,12 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
+	r.Use(monitor.Middleware("query-api", func(r *http.Request) string {
+		if rc := chi.RouteContext(r.Context()); rc != nil && rc.RoutePattern() != "" {
+			return rc.RoutePattern()
+		}
+		return "other"
+	}))
 	// The standard logger prints full URLs; this one redacts tokens.
 	r.Use(api.RequestLogger)
 	r.Use(middleware.Recoverer)
@@ -173,6 +184,9 @@ func main() {
 
 	handler := gen.HandlerFromMux(srv, r)
 
+	// Metrics are served on their own port, not the public one.
+	monitor.Service("query-api")
+	monitor.Serve(envOr("METRICS_ADDR", ":9102"))
 	addr := fmt.Sprintf(":%d", cfg.QueryAPIPort)
 	server := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
@@ -199,6 +213,13 @@ func main() {
 func envInt(name string, def int) int {
 	if n, err := strconv.Atoi(os.Getenv(name)); err == nil && n >= 0 {
 		return n
+	}
+	return def
+}
+
+func envOr(k, def string) string {
+	if v := os.Getenv(k); v != "" {
+		return v
 	}
 	return def
 }

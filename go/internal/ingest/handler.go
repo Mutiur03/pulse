@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Mutiur03/pulse/internal/monitor"
 	"github.com/Mutiur03/pulse/internal/replay"
 )
 
@@ -100,17 +101,20 @@ func (h *handler) post(fn func(r *http.Request, body []byte, project string) (in
 		}
 		body, err := io.ReadAll(http.MaxBytesReader(w, r.Body, maxBody))
 		if err != nil {
+			monitor.IngestRejected.WithLabelValues("too_large").Inc()
 			http.Error(w, "body too large or unreadable", http.StatusRequestEntityTooLarge)
 			return
 		}
 		key := ingestKey(r)
 		if key == "" {
+			monitor.IngestRejected.WithLabelValues("missing_key").Inc()
 			http.Error(w, "missing ingest key", http.StatusUnauthorized)
 			return
 		}
 		project, err := h.auth.Authenticate(r.Context(), key)
 		if err != nil {
 			if errors.Is(err, ErrUnauthorized) {
+				monitor.IngestRejected.WithLabelValues("invalid_key").Inc()
 				http.Error(w, "invalid ingest key", http.StatusUnauthorized)
 			} else {
 				log.Printf("key lookup failed: %v", err)
@@ -120,16 +124,21 @@ func (h *handler) post(fn func(r *http.Request, body []byte, project string) (in
 		}
 		if origin := r.Header.Get("Origin"); origin != "" && !originAllowed(r.Context(), h.auth, key, origin) {
 			w.Header().Del("Access-Control-Allow-Origin")
+			monitor.IngestRejected.WithLabelValues("origin").Inc()
 			http.Error(w, "origin not allowed for this key", http.StatusForbidden)
 			return
 		}
 		if ok, retry := h.auth.Allow(r.Context(), key); !ok {
 			w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(retry.Seconds()))))
+			monitor.IngestRejected.WithLabelValues("rate_limit").Inc()
 			http.Error(w, "rate limit exceeded", http.StatusTooManyRequests)
 			return
 		}
 		n, aerr := fn(r, body, project)
 		if aerr != nil {
+			if aerr.code == http.StatusBadRequest {
+				monitor.IngestRejected.WithLabelValues("invalid").Inc()
+			}
 			http.Error(w, aerr.msg, aerr.code)
 			return
 		}
@@ -170,18 +179,44 @@ func decodeOneOrMany[T any](body []byte) ([]T, error) {
 	return []T{one}, nil
 }
 
+// BatchProducer writes several records in one round trip. Producers that
+// implement it get each request's records at once instead of one by one.
+type BatchProducer interface {
+	ProduceBatch(ctx context.Context, topic string, keys, values [][]byte) error
+}
+
 func (h *handler) produceAll(ctx context.Context, topic string, keys []string, vals []interface{}) *apiError {
+	if len(vals) == 0 {
+		return nil
+	}
+	bkeys := make([][]byte, len(vals))
+	bvals := make([][]byte, len(vals))
 	for i, v := range vals {
 		h.scrubRecord(ctx, v)
 		b, err := json.Marshal(v)
 		if err != nil {
 			return &apiError{http.StatusInternalServerError, "failed to encode record"}
 		}
-		if err := h.p.Produce(ctx, topic, []byte(keys[i]), b); err != nil {
-			log.Printf("produce to %s failed: %v", topic, err)
-			return &apiError{http.StatusServiceUnavailable, "failed to enqueue"}
+		bkeys[i], bvals[i] = []byte(keys[i]), b
+	}
+	start := time.Now()
+	var err error
+	if bp, ok := h.p.(BatchProducer); ok {
+		err = bp.ProduceBatch(ctx, topic, bkeys, bvals)
+	} else {
+		for i := range bvals {
+			if err = h.p.Produce(ctx, topic, bkeys[i], bvals[i]); err != nil {
+				break
+			}
 		}
 	}
+	monitor.IngestProduceLatency.WithLabelValues(topic).Observe(time.Since(start).Seconds())
+	if err != nil {
+		monitor.IngestProduceErrors.WithLabelValues(topic).Inc()
+		log.Printf("produce to %s failed: %v", topic, err)
+		return &apiError{http.StatusServiceUnavailable, "failed to enqueue"}
+	}
+	monitor.IngestRecords.WithLabelValues(topic).Add(float64(len(vals)))
 	return nil
 }
 
