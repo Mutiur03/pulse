@@ -1,10 +1,10 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { CohortHealth, FunnelResult } from '@pulse/api-client';
-import { api, handleAuthError } from '@/lib/api';
+import { api } from '@/lib/api';
 import { fromRange, pct } from '@/lib/format';
-import { useAsync } from '@/lib/hooks';
+import { useAsync, useRunner } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
 import { Badge, Button, Card, CardHeader, Empty, ErrorNote, PageHeader, Select, Spinner } from '@/components/ui';
 import { TimeRange } from '@/components/time-range';
@@ -23,36 +23,11 @@ export default function FunnelsPage() {
   const names = useAsync(() => api.listEventNames({ from: fromRange(range) }), [range]);
   const [steps, setSteps] = useState<string[]>(defaults);
   const [win, setWin] = useState(3600);
-  const [result, setResult] = useState<FunnelResult>();
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
   const [focus, setFocus] = useState(0);
-  const seq = useRef(0);
-
-  const run = async (s = steps) => {
-    const id = ++seq.current;
-    setBusy(true);
-    setError(undefined);
-    try {
-      const r = await api.queryFunnel({ steps: s, window_seconds: win, from: fromRange(range) });
-      if (id !== seq.current) return; // a newer run is in flight
-      setResult(r);
-      // Focus the step with the largest drop-off.
-      let worst = 0;
-      r.steps.slice(0, -1).forEach((st, i) => {
-        if ((st.dropped?.users ?? 0) > (r.steps[worst].dropped?.users ?? 0)) worst = i;
-      });
-      setFocus(worst);
-    } catch (e) {
-      handleAuthError(e);
-      if (id === seq.current) setError(e instanceof Error ? e.message : String(e));
-    }
-    if (id === seq.current) setBusy(false);
-  };
-  useEffect(() => {
-    void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { data: result, error, busy, run } = useRunner(
+    (s: string[] = steps) => api.queryFunnel({ steps: s, window_seconds: win, from: fromRange(range) }),
+    (r) => setFocus(worstStep(r)),
+  );
 
   const options = Array.from(new Set([...(names.data?.map((n) => n.name) ?? []), ...steps]));
   const top = result?.steps[0]?.users ?? 0;
@@ -164,6 +139,15 @@ export default function FunnelsPage() {
       )}
     </>
   );
+}
+
+/** The step with the largest drop-off, which the page focuses first. */
+function worstStep(r: FunnelResult): number {
+  let worst = 0;
+  r.steps.slice(0, -1).forEach((st, i) => {
+    if ((st.dropped?.users ?? 0) > (r.steps[worst].dropped?.users ?? 0)) worst = i;
+  });
+  return worst;
 }
 
 function DropOffs({ result, focus, setFocus }: { result: FunnelResult; focus: number; setFocus: (i: number) => void }) {

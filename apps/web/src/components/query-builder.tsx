@@ -192,7 +192,6 @@ export function TrendBuilder({ value, onChange, events }: { value: SavedTrend; o
 
 /** The request body for a saved trend over a dashboard time range. */
 export function trendRequest(q: SavedTrend, from: string, to?: string): TrendQuery {
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const { display, ...rest } = q;
   const clean = (fs?: PropertyFilter[]) => fs?.filter((f) => f.property.trim());
   return {

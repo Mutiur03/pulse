@@ -83,7 +83,6 @@ function Body({ widget, range }: { widget: DashboardWidget; range: string }) {
         return { kind: 'traces' as const, data: await api.traceStats({ from, interval: r.interval, service: t.service || undefined }) };
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key]);
   if (res.error) return <ErrorNote error={res.error} />;
   if (!res.data)

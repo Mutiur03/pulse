@@ -1,7 +1,8 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import type { PathsQuery, PathsResult } from '@pulse/api-client';
-import { api, handleAuthError } from '@/lib/api';
+import { api } from '@/lib/api';
+import { useRunner } from '@/lib/hooks';
 import { Button, Card, CardHeader, Empty, ErrorNote, Input, PageHeader, Select, Spinner, Toolbar } from '@/components/ui';
 import { palette } from '@/components/charts';
 
@@ -66,27 +67,9 @@ function Flow({ res }: { res: PathsResult }) {
 
 export default function PathsPage() {
   const [q, setQ] = useState<PathsQuery>({ mode: 'pageview', start: '', steps: 4 });
-  const [res, setRes] = useState<PathsResult>();
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-  const seq = useRef(0);
-  const run = async (query = q) => {
-    const id = ++seq.current;
-    setBusy(true);
-    setError(undefined);
-    try {
-      const r = await api.queryPaths({ ...query, start: query.start?.trim() || undefined });
-      if (id === seq.current) setRes(r);
-    } catch (e) {
-      handleAuthError(e);
-      if (id === seq.current) setError(e instanceof Error ? e.message : String(e));
-    }
-    if (id === seq.current) setBusy(false);
-  };
-  useEffect(() => {
-    void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { data: res, error, busy, run } = useRunner((query: PathsQuery = q) =>
+    api.queryPaths({ ...query, start: query.start?.trim() || undefined }),
+  );
   return (
     <>
       <PageHeader title="User paths" description="How sessions move through your app, page by page or event by event, over the last 7 days." />

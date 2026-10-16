@@ -1,9 +1,9 @@
 'use client';
 import Link from 'next/link';
-import { useEffect, useRef, useState } from 'react';
-import type { Dashboard, TrendResult } from '@pulse/api-client';
+import { useState } from 'react';
+import type { Dashboard } from '@pulse/api-client';
 import { api, currentProjectId, handleAuthError } from '@/lib/api';
-import { useAsync } from '@/lib/hooks';
+import { useAsync, useRunner } from '@/lib/hooks';
 import { TrendChart } from '@/components/charts';
 import { TrendBuilder, trendRequest, type SavedTrend } from '@/components/query-builder';
 import { dashboardRanges } from '@/components/widgets';
@@ -14,32 +14,13 @@ const initial: SavedTrend = { series: [{ event: '$pageview', math: 'total' }], i
 export default function InsightsPage() {
   const [q, setQ] = useState<SavedTrend>(initial);
   const [range, setRange] = useState('7d');
-  const [result, setResult] = useState<TrendResult>();
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-  const seq = useRef(0);
   const names = useAsync(() => api.listEventNames({ from: new Date(Date.now() - 30 * 86400e3).toISOString() }), []);
   const boards = useAsync(async () => api.listDashboards(await currentProjectId()), []);
-
-  const run = async (query = q, r = range) => {
-    const id = ++seq.current;
-    setBusy(true);
-    setError(undefined);
-    try {
-      const from = new Date(Date.now() - dashboardRanges[r].ms).toISOString();
-      const interval = r === '24h' ? 'hour' : query.interval;
-      const res = await api.queryTrend(trendRequest({ ...query, interval }, from));
-      if (id === seq.current) setResult(res);
-    } catch (e) {
-      handleAuthError(e);
-      if (id === seq.current) setError(e instanceof Error ? e.message : String(e));
-    }
-    if (id === seq.current) setBusy(false);
-  };
-  useEffect(() => {
-    void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { data: result, error, busy, run } = useRunner((query: SavedTrend = q, r: string = range) => {
+    const from = new Date(Date.now() - dashboardRanges[r].ms).toISOString();
+    const interval = r === '24h' ? 'hour' : query.interval;
+    return api.queryTrend(trendRequest({ ...query, interval }, from));
+  });
 
   return (
     <>

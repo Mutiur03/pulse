@@ -3,6 +3,7 @@ import '@rrweb/replay/dist/style.css';
 import { forwardRef, useEffect, useImperativeHandle, useRef, useState } from 'react';
 import type { Replayer as ReplayerType } from '@rrweb/replay';
 import { duration } from '@/lib/format';
+import { useLatest } from '@/lib/hooks';
 import { cn } from '@/lib/cn';
 
 export interface Marker {
@@ -33,6 +34,8 @@ export const ReplayPlayer = forwardRef<PlayerHandle, { events: unknown[]; marker
     const [playing, setPlaying] = useState(false);
     const [speed, setSpeed] = useState(1);
     const [error, setError] = useState<string>();
+    // Read when a recording loads; changing them does not reload it.
+    const latest = useLatest({ start, onTime });
 
     useEffect(() => {
       let alive = true;
@@ -70,13 +73,14 @@ export const ReplayPlayer = forwardRef<PlayerHandle, { events: unknown[]; marker
         r.on('finish', () => setPlaying(false));
         const m = r.getMetaData();
         setMeta(m);
+        const start = latest.current.start;
         const first = start ? Math.min(Math.max(0, start - m.startTime - 1500), m.totalTime) : 0;
         r.pause(first);
         setOffset(first);
         timer = setInterval(() => {
           const t = r.getCurrentTime();
           setOffset(t);
-          onTime?.(m.startTime + t);
+          latest.current.onTime?.(m.startTime + t);
         }, 200);
       })().catch((e: unknown) => setError(e instanceof Error ? e.message : String(e)));
       return () => {
@@ -85,8 +89,7 @@ export const ReplayPlayer = forwardRef<PlayerHandle, { events: unknown[]; marker
         rep.current?.destroy();
         rep.current = undefined;
       };
-      // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [events]);
+    }, [events, latest]);
 
     const seek = (at: number) => {
       const r = rep.current;

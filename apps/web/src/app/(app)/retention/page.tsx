@@ -1,8 +1,8 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
-import type { RetentionQuery, RetentionResult } from '@pulse/api-client';
-import { api, handleAuthError } from '@/lib/api';
-import { useAsync } from '@/lib/hooks';
+import { useState } from 'react';
+import type { RetentionQuery } from '@pulse/api-client';
+import { api } from '@/lib/api';
+import { useAsync, useRunner } from '@/lib/hooks';
 import { Button, Card, CardHeader, Empty, ErrorNote, PageHeader, Select, Spinner, Toolbar } from '@/components/ui';
 
 function cohortLabel(iso: string, period: string) {
@@ -14,27 +14,7 @@ function cohortLabel(iso: string, period: string) {
 export default function RetentionPage() {
   const names = useAsync(() => api.listEventNames({ from: new Date(Date.now() - 30 * 86400e3).toISOString() }), []);
   const [q, setQ] = useState<RetentionQuery>({ start_event: '$pageview', return_event: '$pageview', period: 'day', periods: 7 });
-  const [res, setRes] = useState<RetentionResult>();
-  const [error, setError] = useState<string>();
-  const [busy, setBusy] = useState(false);
-  const seq = useRef(0);
-  const run = async (query = q) => {
-    const id = ++seq.current;
-    setBusy(true);
-    setError(undefined);
-    try {
-      const r = await api.queryRetention(query);
-      if (id === seq.current) setRes(r);
-    } catch (e) {
-      handleAuthError(e);
-      if (id === seq.current) setError(e instanceof Error ? e.message : String(e));
-    }
-    if (id === seq.current) setBusy(false);
-  };
-  useEffect(() => {
-    void run();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  const { data: res, error, busy, run } = useRunner((query: RetentionQuery = q) => api.queryRetention(query));
   const events = Array.from(new Set([...(names.data?.map((n) => n.name) ?? []), q.start_event ?? '', q.return_event ?? ''].filter(Boolean)));
   const total = res?.cohorts.reduce((a, c) => a + c.size, 0) ?? 0;
   // Average retention per offset, weighted by cohort size, over cohorts that reached it.
