@@ -1,0 +1,36 @@
+# Example backend that sends traces, metrics and logs to the staging ingest
+# gateway over OTLP/gRPC. up.sh's caller creates the pulse-demo Secret with
+# the project key (see docs/staging.md).
+apiVersion: apps/v1
+kind: Deployment
+metadata: {name: go-demo-api}
+spec:
+  selector: {matchLabels: {app: go-demo-api}}
+  template:
+    metadata: {labels: {app: go-demo-api}}
+    spec:
+      containers:
+        - name: go-demo-api
+          image: ghcr.io/mutiur03/pulse-go-demo-api:staging
+          imagePullPolicy: Never
+          env:
+            - {name: OTEL_EXPORTER_OTLP_PROTOCOL, value: grpc}
+            - {name: OTEL_EXPORTER_OTLP_ENDPOINT, value: "http://pulse-ingest-gateway:4317"}
+            - {name: OTEL_EXPORTER_OTLP_COMPRESSION, value: gzip}
+            - {name: OTEL_EXPORTER_OTLP_METRICS_TEMPORALITY_PREFERENCE, value: delta}
+            - {name: OTEL_SERVICE_NAME, value: go-demo-api}
+            - name: PULSE_KEY
+              valueFrom: {secretKeyRef: {name: pulse-demo, key: key}}
+            - {name: OTEL_EXPORTER_OTLP_HEADERS, value: "X-Pulse-Key=$(PULSE_KEY)"}
+            - name: DATABASE_URL
+              valueFrom: {secretKeyRef: {name: pulse-secrets, key: POSTGRES_URL}}
+          ports: [{containerPort: 8090}]
+          readinessProbe:
+            httpGet: {path: /health, port: 8090}
+---
+apiVersion: v1
+kind: Service
+metadata: {name: go-demo-api}
+spec:
+  selector: {app: go-demo-api}
+  ports: [{port: 8090}]

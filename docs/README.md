@@ -18,6 +18,7 @@
 | Guide | What it covers |
 | --- | --- |
 | [Deployment](deployment.md) | Helm chart, managed data services and Terraform |
+| [Staging](staging.md) | The Helm chart on a local k3s cluster, with checks and results |
 | [Monitoring](monitoring.md) | Prometheus metrics, alert rules and the Grafana dashboard |
 | [Load testing](load-testing.md) | k6 scripts, measured ingest throughput, query latency and query limits |
 | [Backup and restore](backup-restore.md) | Postgres, ClickHouse and object storage |

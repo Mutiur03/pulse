@@ -21,6 +21,9 @@ else
   pg pg_restore --clean --if-exists --no-owner --dbname="$POSTGRES_URL" "$WORK/postgres.dump"
 fi
 
+# trace_summaries is filled by a materialized view as spans are inserted, so
+# empty it first rather than restoring it.
+ch --query "TRUNCATE TABLE IF EXISTS trace_summaries"
 for f in "$WORK"/clickhouse/*.native.gz; do
   t=$(basename "$f" .native.gz)
   log "clickhouse $t"

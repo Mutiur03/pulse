@@ -10,3 +10,9 @@ Ingress hosts: {{ .Values.ingress.webHost }} (web), {{ .Values.ingress.ingestHos
 Prometheus metrics are on each Go service's "metrics" port (ingest gateway,
 query API) or "http" port (workers) at /metrics. Import
 deploy/monitoring/grafana/dashboards/pulse-overview.json into Grafana.
+{{- if not .Values.config.trustedProxies }}
+
+WARNING: config.trustedProxies is empty, so the query API treats every user
+as coming from a web pod and login rate limits are shared. Set it to your pod
+CIDR (and the ingress controller's addresses if they are outside it).
+{{- end }}

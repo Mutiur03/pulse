@@ -35,7 +35,10 @@ config:
   smtpFrom: "Pulse <no-reply@pulse.example.com>"
   # Header set by your CDN with the visitor's country (e.g. CF-IPCountry).
   countryHeader: ""
-  # Proxies whose X-Forwarded-For is trusted (the web pods by default).
+  # Proxies whose X-Forwarded-For is trusted: the ingress controller and the
+  # web pods, usually the cluster's pod CIDR (e.g. "10.42.0.0/16" on k3s).
+  # Left empty, the query API sees every user as a web pod address, so login
+  # rate limits are shared by everyone.
   trustedProxies: ""
   extraEnv: {}
 
@@ -137,6 +140,9 @@ web:
   pdb: {enabled: true, minAvailable: 1}
   env:
     HSTS_MAX_AGE: "31536000"
+    # Forward the client address from the ingress controller to the query
+    # API. Turn off only if the web pods are reachable without a proxy.
+    TRUST_PROXY_HEADERS: "true"
 
 ingress:
   enabled: false
@@ -156,6 +162,10 @@ metrics:
     enabled: false
     interval: 30s
     labels: {}
+
+# Seconds a pod keeps serving after it is told to stop, so load balancers
+# can drain it during rolling updates (needs Kubernetes 1.30+). 0 disables.
+shutdownDelaySeconds: 10
 
 podSecurityContext:
   runAsNonRoot: true

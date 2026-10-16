@@ -83,6 +83,18 @@ Postgres, Redis, ClickHouse, Kafka and S3-compatible storage.
   with a gRPC-capable load balancer if you need it.
 - `prometheus.io/*` pod annotations, or ServiceMonitors with
   `metrics.serviceMonitor.enabled=true` (see [monitoring.md](monitoring.md)).
+- A `preStop` delay (`shutdownDelaySeconds`, default 10) so pods keep serving
+  while the ingress and Services stop routing to them. It uses the native
+  sleep hook, which needs Kubernetes 1.30 or later; set it to 0 on older
+  clusters.
+
+Set `config.trustedProxies` to the pod CIDR (plus the ingress controller's
+addresses if they are outside it). The web pods forward the client address
+they get from the ingress (`TRUST_PROXY_HEADERS`), and the query API only
+believes it from trusted peers. Left empty, every user appears to come from a
+web pod, so per-address login limits are shared by all users.
+
+See [staging](staging.md) for a full install on a local k3s cluster.
 
 Validate changes to the chart with
 `helm lint deploy/helm && helm template t deploy/helm | kubeconform -strict -summary`.

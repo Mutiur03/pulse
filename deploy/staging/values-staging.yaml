@@ -1,0 +1,28 @@
+# Staging on a local k3d/k3s cluster with the in-cluster data services from
+# data.yaml. Secrets live in the pulse-secrets Secret created by up.sh.
+image:
+  tag: staging
+  pullPolicy: Never
+appUrl: http://pulse.staging.localhost:8089
+existingSecret: pulse-secrets
+config:
+  kafkaBootstrapServers: "kafka:9092"
+  clickhouseAddr: "clickhouse:9000"
+  clickhouseUser: pulse
+  redisAddr: "redis:6379"
+  s3Endpoint: "objectstore:7070"
+  s3UseSSL: false
+  # k3s pod CIDR: the Traefik and web pods.
+  trustedProxies: "10.42.0.0/16"
+ingress:
+  enabled: true
+  className: traefik
+  webHost: pulse.staging.localhost
+  ingestHost: ingest.staging.localhost
+ingestGateway:
+  autoscaling: {enabled: false}
+queryApi:
+  autoscaling: {enabled: false}
+streamProcessor:
+  resources:
+    requests: {cpu: 100m, memory: 128Mi}

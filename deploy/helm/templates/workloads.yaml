@@ -34,6 +34,7 @@ spec:
       imagePullSecrets: {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext: {{- toYaml $root.Values.podSecurityContext | nindent 8 }}
+      terminationGracePeriodSeconds: {{ add $root.Values.shutdownDelaySeconds 30 }}
       containers:
         - name: {{ $name }}
           image: {{ include "pulse.image" $ctx }}
@@ -92,6 +93,12 @@ spec:
             initialDelaySeconds: 15
             periodSeconds: 10
             failureThreshold: 6
+          {{- with $root.Values.shutdownDelaySeconds }}
+          # Keep serving until the ingress and Services stop routing here.
+          lifecycle:
+            preStop:
+              sleep: {seconds: {{ . }}}
+          {{- end }}
           resources: {{- toYaml $v.resources | nindent 12 }}
           volumeMounts:
             - name: tmp
