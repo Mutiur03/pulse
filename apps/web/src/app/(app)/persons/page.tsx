@@ -67,7 +67,7 @@ export default function PersonsPage() {
                       <Badge>{p.distinct_ids.length}</Badge>
                       {p.distinct_ids.length > 1 && <span className="ml-1.5 text-xs text-muted">merged</span>}
                     </Td>
-                    <Td className="text-xs text-zinc-300">{[p.country, p.browser, p.os].filter(Boolean).join(' · ') || '—'}</Td>
+                    <Td className="text-xs text-fg-2">{[p.country, p.browser, p.os].filter(Boolean).join(' · ') || '—'}</Td>
                     <Td className="text-right tabular-nums">{p.sessions}</Td>
                     <Td className="text-right tabular-nums">{p.events}</Td>
                     <Td className="text-xs text-muted">{ago(p.last_seen)}</Td>

@@ -57,7 +57,7 @@ export default function SettingsPage() {
         title="Settings"
         description={project ? `Project: ${project.name}` : undefined}
         actions={
-          <Link href="/settings/governance" className="text-sm text-sky-300 hover:underline" data-testid="data-settings-link">
+          <Link href="/settings/governance" className="inline-flex h-8 items-center rounded-md border border-border bg-surface px-3 text-[13px] font-medium text-fg-2 shadow-sm hover:border-strong hover:bg-accent hover:text-fg" data-testid="data-settings-link">
             Data governance: scrubbing, retention, deletion
           </Link>
         }
@@ -137,11 +137,11 @@ export default function SettingsPage() {
         </Card>
         <Card>
           <CardHeader title="Browser SDK" description="Install @pulse/browser and initialise it once on page load." />
-          <pre className="overflow-auto p-4 font-mono text-xs leading-relaxed text-zinc-300" data-testid="sdk-snippet">
+          <pre className="overflow-auto p-4 font-mono text-xs leading-relaxed text-fg-2" data-testid="sdk-snippet">
             {snippet}
           </pre>
           <div className="border-t border-border px-4 py-3 text-xs text-muted">Backend services (any OpenTelemetry SDK):</div>
-          <pre className="overflow-auto px-4 pb-4 font-mono text-xs leading-relaxed text-zinc-300">{backend}</pre>
+          <pre className="overflow-auto px-4 pb-4 font-mono text-xs leading-relaxed text-fg-2">{backend}</pre>
         </Card>
       </div>
       {project && <AllowedOrigins project={project.id} owner={owner} />}

@@ -4,7 +4,7 @@ import { useEffect, useState } from 'react';
 import type { Dashboard, DashboardWidget } from '@pulse/api-client';
 import { api, currentProjectId, handleAuthError } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
-import { Badge, Button, Card, Empty, ErrorNote, Input, PageHeader, Select, Spinner } from '@/components/ui';
+import { Badge, Button, Card, Empty, ErrorNote, Input, PageHeader, Select, Spinner, Toolbar } from '@/components/ui';
 import { WidgetCard, WidgetEditor, dashboardRanges, defaultQuery } from '@/components/widgets';
 
 export default function DashboardPage() {
@@ -89,12 +89,12 @@ export default function DashboardPage() {
       />
       <ErrorNote error={error} />
       {editing && (
-        <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
+        <Toolbar>
           <Input aria-label="Rename dashboard" value={name} onChange={(e) => setName(e.target.value)} className="w-64" />
           <Button size="sm" variant="outline" onClick={() => save({ name })} data-testid="rename-dashboard">
             Rename
           </Button>
-          <label className="ml-2 flex items-center gap-1.5 text-sm text-zinc-300">
+          <label className="ml-2 flex items-center gap-1.5 text-sm text-fg-2">
             <input type="checkbox" checked={board.shared} onChange={(e) => save({ shared: e.target.checked })} data-testid="share-dashboard" />
             Share with organization
           </label>
@@ -110,7 +110,7 @@ export default function DashboardPage() {
               Delete
             </Button>
           </div>
-        </Card>
+        </Toolbar>
       )}
       {editor && (
         <WidgetEditor

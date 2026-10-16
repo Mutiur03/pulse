@@ -46,7 +46,7 @@ export default function ReplayPage({ params }: { params: Promise<{ id: string }>
         title="Session replay"
         description={s ? `${s.distinct_id} · ${time(s.start)} · ${duration(s.duration_ms)} · ${s.page_count} page${s.page_count === 1 ? '' : 's'}` : id}
         actions={
-          <Link href="/replays" className="text-sm text-muted hover:text-zinc-100">
+          <Link href="/replays" className="text-sm text-muted hover:text-fg">
             All replays
           </Link>
         }
@@ -77,7 +77,7 @@ export default function ReplayPage({ params }: { params: Promise<{ id: string }>
                   <button
                     key={k}
                     onClick={() => setTab(k)}
-                    className={cn('text-sm', tab === k ? 'text-zinc-100' : 'text-muted hover:text-zinc-300')}
+                    className={cn('text-sm', tab === k ? 'text-fg' : 'text-muted hover:text-fg-2')}
                     data-testid={`tab-${k}`}
                   >
                     {k === 'errors' ? `Errors (${detail.data?.errors.length ?? 0})` : `Traces (${detail.data?.traces.length ?? 0})`}
@@ -95,17 +95,17 @@ export default function ReplayPage({ params }: { params: Promise<{ id: string }>
                   className={cn('block w-full px-4 py-2.5 text-left text-sm hover:bg-accent/40', state(e.timestamp) === 'active' && 'bg-danger/10', state(e.timestamp) === 'future' && 'opacity-60')}
                   data-testid="replay-error"
                 >
-                  <div className="truncate font-medium text-red-300">{e.exception_type}</div>
-                  <div className="truncate text-xs text-zinc-300">{e.message}</div>
+                  <div className="truncate font-medium text-danger-fg">{e.exception_type}</div>
+                  <div className="truncate text-xs text-fg-2">{e.message}</div>
                   <div className="mt-0.5 flex gap-2 text-[11px] text-muted">
                     <span>{s ? duration(Date.parse(e.timestamp) - Date.parse(s.start)) : ''}</span>
                     {e.issue_id > 0 && (
-                      <Link href={`/issues/${e.issue_id}`} className="hover:text-zinc-200" onClick={(ev) => ev.stopPropagation()}>
+                      <Link href={`/issues/${e.issue_id}`} className="hover:text-fg" onClick={(ev) => ev.stopPropagation()}>
                         issue #{e.issue_id}
                       </Link>
                     )}
                     {e.trace_id && (
-                      <Link href={`/traces/${e.trace_id}`} className="hover:text-zinc-200" onClick={(ev) => ev.stopPropagation()}>
+                      <Link href={`/traces/${e.trace_id}`} className="hover:text-fg" onClick={(ev) => ev.stopPropagation()}>
                         trace
                       </Link>
                     )}
@@ -128,7 +128,7 @@ export default function ReplayPage({ params }: { params: Promise<{ id: string }>
                     <span>{tr.service_name}</span>
                     <span>{ms(tr.duration_ns)}</span>
                     <span>{tr.span_count} spans</span>
-                    <Link href={`/traces/${tr.trace_id}`} className="hover:text-zinc-200" onClick={(ev) => ev.stopPropagation()}>
+                    <Link href={`/traces/${tr.trace_id}`} className="hover:text-fg" onClick={(ev) => ev.stopPropagation()}>
                       open
                     </Link>
                   </div>

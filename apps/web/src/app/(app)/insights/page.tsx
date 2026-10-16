@@ -129,7 +129,7 @@ function SaveToDashboard({ query, boards, onSaved }: { query: SavedTrend; boards
       <Button size="sm" onClick={save} data-testid="confirm-save-insight">
         Save
       </Button>
-      {error && <span className="text-xs text-red-300">{error}</span>}
+      {error && <span className="text-xs text-danger-fg">{error}</span>}
     </div>
   );
 }

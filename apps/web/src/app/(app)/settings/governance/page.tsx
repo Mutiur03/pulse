@@ -109,7 +109,7 @@ export default function DataSettingsPage() {
         title="Data governance"
         description="PII scrubbing at ingest, retention periods and deletion requests for this project."
         actions={
-          <Link href="/settings" className="text-sm text-muted hover:text-zinc-100">
+          <Link href="/settings" className="text-sm text-muted hover:text-fg">
             Back to settings
           </Link>
         }
@@ -180,7 +180,7 @@ export default function DataSettingsPage() {
                   Preview
                 </Button>
                 {preview !== undefined && (
-                  <pre className="overflow-auto rounded-md bg-black/30 p-2 font-mono text-xs" data-testid="scrub-result">
+                  <pre className="overflow-auto rounded-md bg-raised p-2 font-mono text-xs" data-testid="scrub-result">
                     {preview}
                   </pre>
                 )}
@@ -264,7 +264,7 @@ export default function DataSettingsPage() {
                     <Badge tone={tone(r.status)} data-testid="deletion-status">
                       {r.status}
                     </Badge>
-                    {r.error && <div className="text-xs text-red-400">{r.error}</div>}
+                    {r.error && <div className="text-xs text-danger-fg">{r.error}</div>}
                   </Td>
                   <Td className="text-xs text-muted">
                     {Object.entries(r.result)

@@ -49,7 +49,7 @@ export function Members({ org, me }: { org: Org; me: number }) {
         {members.data?.map((m) => (
           <div key={m.user_id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm" data-testid="member-row">
             <div className="min-w-0">
-              <div className="truncate text-zinc-200">
+              <div className="truncate text-fg">
                 {m.name} <span className="text-muted">· {m.email}</span>
               </div>
               <div className="text-xs text-muted">Joined {time(m.joined_at)}</div>
@@ -86,13 +86,13 @@ export function Members({ org, me }: { org: Org; me: number }) {
       </div>
       {owner && (
         <>
-          <div className="border-t border-border px-4 py-3 text-xs font-medium text-zinc-300">Pending invites</div>
+          <div className="border-t border-border px-4 py-3 text-xs font-medium text-fg-2">Pending invites</div>
           <div className="divide-y divide-border">
             {invites.data?.length === 0 && <div className="px-4 pb-3 text-xs text-muted">None.</div>}
             {invites.data?.map((i) => (
               <div key={i.id} className="flex items-center justify-between gap-3 px-4 py-2.5 text-sm" data-testid="invite-row">
                 <div className="min-w-0">
-                  <div className="truncate text-zinc-200">{i.email}</div>
+                  <div className="truncate text-fg">{i.email}</div>
                   <div className="text-xs text-muted">
                     {i.role} · expires {time(i.expires_at)}
                   </div>
@@ -120,7 +120,7 @@ export function Members({ org, me }: { org: Org; me: number }) {
             <Button type="submit" size="sm" disabled={busy || !email.trim()}>
               Send invite
             </Button>
-            {note && <span className="text-xs text-emerald-400" data-testid="members-note">{note}</span>}
+            {note && <span className="text-xs text-ok-fg" data-testid="members-note">{note}</span>}
           </form>
         </>
       )}

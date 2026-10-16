@@ -2,7 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { PathsQuery, PathsResult } from '@pulse/api-client';
 import { api, handleAuthError } from '@/lib/api';
-import { Button, Card, CardHeader, Empty, ErrorNote, Input, PageHeader, Select, Spinner } from '@/components/ui';
+import { Button, Card, CardHeader, Empty, ErrorNote, Input, PageHeader, Select, Spinner, Toolbar } from '@/components/ui';
 import { palette } from '@/components/charts';
 
 /** Steps as columns, nodes as bars sized by sessions, links as curves. */
@@ -53,9 +53,9 @@ function Flow({ res }: { res: PathsResult }) {
             <rect x={p.x} y={p.y} width={nodeW} height={p.h} rx={2} fill={colorOf(n.name)}>
               <title>{`${n.name}: ${n.sessions} sessions, ${n.dropoff} ended here`}</title>
             </rect>
-            <text x={p.x + nodeW + 6} y={p.y + Math.min(p.h / 2, 14) + 4} className="fill-zinc-200 text-[11px]">
+            <text x={p.x + nodeW + 6} y={p.y + Math.min(p.h / 2, 14) + 4} className="fill-fg text-[11px]">
               {n.name.length > 26 ? `${n.name.slice(0, 25)}…` : n.name}
-              <tspan className="fill-zinc-500"> {n.sessions}</tspan>
+              <tspan className="fill-subtle"> {n.sessions}</tspan>
             </text>
           </g>
         );
@@ -90,7 +90,7 @@ export default function PathsPage() {
   return (
     <>
       <PageHeader title="User paths" description="How sessions move through your app, page by page or event by event, over the last 7 days." />
-      <Card className="mb-4 flex flex-wrap items-end gap-2 p-4">
+      <Toolbar className="items-end">
         <label className="flex flex-col gap-1 text-xs text-muted">
           Follow
           <Select aria-label="Path mode" value={q.mode} onChange={(e) => setQ({ ...q, mode: e.target.value as PathsQuery['mode'] })}>
@@ -114,7 +114,7 @@ export default function PathsPage() {
           {busy ? 'Running…' : 'Run'}
         </Button>
         {busy && <Spinner />}
-      </Card>
+      </Toolbar>
       <ErrorNote error={error} />
       {res && res.total_sessions === 0 && (
         <Card>
@@ -134,7 +134,7 @@ export default function PathsPage() {
             <ol className="divide-y divide-border text-sm" data-testid="top-paths">
               {res.top_paths.map((p, i) => (
                 <li key={i} className="flex items-center justify-between gap-3 px-4 py-2">
-                  <span className="font-mono text-xs text-zinc-300">{p.path.join('  →  ')}</span>
+                  <span className="font-mono text-xs text-fg-2">{p.path.join('  →  ')}</span>
                   <span className="tabular-nums text-muted">{p.sessions}</span>
                 </li>
               ))}

@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import type { RetentionQuery, RetentionResult } from '@pulse/api-client';
 import { api, handleAuthError } from '@/lib/api';
 import { useAsync } from '@/lib/hooks';
-import { Button, Card, CardHeader, Empty, ErrorNote, PageHeader, Select, Spinner } from '@/components/ui';
+import { Button, Card, CardHeader, Empty, ErrorNote, PageHeader, Select, Spinner, Toolbar } from '@/components/ui';
 
 function cohortLabel(iso: string, period: string) {
   const d = new Date(iso);
@@ -59,7 +59,7 @@ export default function RetentionPage() {
   return (
     <>
       <PageHeader title="Retention" description="Do people come back? Each row is the people who first did the start event in that period, and the share who returned in each later period." />
-      <Card className="mb-4 flex flex-wrap items-end gap-2 p-4">
+      <Toolbar className="items-end">
         {sel('Start event', q.start_event, (v) => setQ({ ...q, start_event: v }))}
         {sel('Return event', q.return_event, (v) => setQ({ ...q, return_event: v }))}
         <label className="flex flex-col gap-1 text-xs text-muted">
@@ -73,7 +73,7 @@ export default function RetentionPage() {
           {busy ? 'Running…' : 'Run'}
         </Button>
         {busy && <Spinner />}
-      </Card>
+      </Toolbar>
       <ErrorNote error={error} />
       {res && (
         <Card>
@@ -104,7 +104,7 @@ export default function RetentionPage() {
                   </tr>
                   {res.cohorts.map((c) => (
                     <tr key={c.start} data-testid="retention-row">
-                      <td className="whitespace-nowrap px-2 py-1.5 text-zinc-300">{cohortLabel(c.start, res.period)}</td>
+                      <td className="whitespace-nowrap px-2 py-1.5 text-fg-2">{cohortLabel(c.start, res.period)}</td>
                       <td className="px-2 py-1.5 text-right tabular-nums">{c.size}</td>
                       {avg.map((_, k) => (
                         <Cell key={k} rate={k < c.values.length && c.size ? c.values[k] / c.size : undefined} count={c.values[k]} />
@@ -122,7 +122,7 @@ export default function RetentionPage() {
 }
 
 function Cell({ rate, count }: { rate?: number; count?: number }) {
-  if (rate === undefined) return <td className="rounded bg-zinc-900/40 px-2 py-1.5" />;
+  if (rate === undefined) return <td className="rounded bg-raised/40 px-2 py-1.5" />;
   return (
     <td
       className="rounded px-2 py-1.5 text-center tabular-nums"

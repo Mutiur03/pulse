@@ -16,7 +16,7 @@ const noticeLabel: Record<string, string> = { firing: 'Notified: alerting', stil
 function Entry({ e, unit }: { e: AlertHistoryEntry; unit: string }) {
   return (
     <li className="relative pb-5 pl-6 last:pb-0" data-testid="history-entry" data-state={e.state} data-notice={e.notice}>
-      <span className={`absolute left-0 top-1 h-2.5 w-2.5 rounded-full ${e.state === 'alerting' ? 'bg-red-400' : e.state === 'ok' ? 'bg-green-400' : 'bg-amber-400'}`} />
+      <span className={`absolute left-0 top-1 h-2.5 w-2.5 rounded-full ${e.state === 'alerting' ? 'bg-danger' : e.state === 'ok' ? 'bg-ok' : 'bg-warn'}`} />
       <div className="flex flex-wrap items-center gap-2 text-sm">
         <Badge tone={stateTone[e.state]}>{stateLabel[e.state]}</Badge>
         <span className="text-xs text-muted">from {stateLabel[e.previous]}</span>
@@ -24,10 +24,10 @@ function Entry({ e, unit }: { e: AlertHistoryEntry; unit: string }) {
         <span className="text-xs text-muted">{time(e.at)}</span>
       </div>
       <div className="mt-1 flex flex-wrap gap-3 text-xs">
-        {e.notice && !e.suppressed && <span className="text-zinc-300">{noticeLabel[e.notice] ?? e.notice}</span>}
-        {e.suppressed && <span className="text-amber-300">Not sent ({e.suppressed})</span>}
-        {e.failures && <span className="text-red-300">Failed: {e.failures}</span>}
-        {e.message && <span className="text-zinc-400">{e.message}</span>}
+        {e.notice && !e.suppressed && <span className="text-fg-2">{noticeLabel[e.notice] ?? e.notice}</span>}
+        {e.suppressed && <span className="text-warn-fg">Not sent ({e.suppressed})</span>}
+        {e.failures && <span className="text-danger-fg">Failed: {e.failures}</span>}
+        {e.message && <span className="text-muted">{e.message}</span>}
         {e.issue_id ? (
           <Link href={`/issues/${e.issue_id}`} className="text-primary hover:underline" data-testid="history-issue">
             Issue #{e.issue_id} →
@@ -80,7 +80,7 @@ export default function AlertPage({ params }: { params: Promise<{ id: string }> 
   return (
     <>
       <div className="mb-2 text-xs text-muted">
-        <Link href="/alerts" className="hover:text-zinc-100">
+        <Link href="/alerts" className="hover:text-fg">
           Alerts
         </Link>{' '}
         / <span>{r?.name ?? id}</span>
@@ -130,19 +130,19 @@ export default function AlertPage({ params }: { params: Promise<{ id: string }> 
       {r && d && (
         <div className="grid gap-4 xl:grid-cols-[1fr_420px]">
           <div className="flex flex-col gap-4">
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+            <div className="grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-4">
               {[
                 ['State since', ago(r.state_since)],
                 ['Last value', value(r.last_value, r.unit)],
                 ['Checked', r.last_evaluated_at ? ago(r.last_evaluated_at) : 'not yet'],
                 ['Notifications', muted ? `muted until ${new Date(r.muted_until!).toLocaleTimeString()}` : r.renotify_seconds ? `repeat every ${span(r.renotify_seconds)}` : 'on change'],
               ].map(([k, v]) => (
-                <Card key={k} className="p-3">
-                  <div className="text-xs text-muted">{k}</div>
+                <div key={k} className="bg-surface px-4 py-3">
+                  <div className="text-[11px] font-medium uppercase tracking-wider text-subtle">{k}</div>
                   <div className="mt-1 text-sm font-medium" data-testid={k === 'Notifications' ? 'alert-notifications' : undefined}>
                     {v}
                   </div>
-                </Card>
+                </div>
               ))}
             </div>
             <Card>

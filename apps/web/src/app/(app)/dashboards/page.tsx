@@ -32,7 +32,7 @@ export default function DashboardsPage() {
       <Card className="mb-4 p-4">
         <form onSubmit={create} className="flex flex-wrap items-center gap-2">
           <Input aria-label="Dashboard name" value={name} onChange={(e) => setName(e.target.value)} placeholder="Dashboard name" className="w-72" required />
-          <label className="flex items-center gap-1.5 text-sm text-zinc-300">
+          <label className="flex items-center gap-1.5 text-sm text-fg-2">
             <input type="checkbox" checked={shared} onChange={(e) => setShared(e.target.checked)} aria-label="Share with organization" />
             Share with organization
           </label>

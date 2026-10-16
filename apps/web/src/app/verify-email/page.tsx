@@ -20,13 +20,13 @@ function Verify() {
   }, [token]);
   return (
     <AuthCard title="Confirm your email">
-      <div className="text-sm text-zinc-300" data-testid="verify-result">
+      <div className="text-sm text-fg-2" data-testid="verify-result">
         {state === 'busy' && <Spinner />}
         {state === 'ok' && 'Your email address is confirmed.'}
         {state === 'error' && 'This link is invalid or has expired. Sign in and use "Resend email" to get a new one.'}
       </div>
       <p className="mt-4 text-xs">
-        <Link href="/traces" className="text-zinc-200 underline-offset-2 hover:underline">
+        <Link href="/traces" className="text-fg underline-offset-2 hover:underline">
           Continue to Pulse
         </Link>
       </p>

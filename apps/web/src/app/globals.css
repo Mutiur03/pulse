@@ -2,7 +2,145 @@
 @tailwind components;
 @tailwind utilities;
 
-:root { color-scheme: dark; }
-body { @apply bg-background text-zinc-100 antialiased; }
-* { @apply border-border; }
-::selection { @apply bg-primary/40; }
+/*
+ * Design tokens. Colors are RGB channels so Tailwind can apply opacity
+ * (bg-primary/10). The light theme is the default palette; .dark swaps it, and
+ * html.system follows the operating system preference.
+ */
+@layer base {
+  :root,
+  .light {
+    color-scheme: light;
+    --bg: 250 250 251;
+    --surface: 255 255 255;
+    --surface-2: 244 244 246;
+    --border: 228 228 232;
+    --border-strong: 208 208 214;
+    --accent: 240 240 243;
+    --fg: 17 17 22;
+    --fg-2: 55 55 64;
+    --muted: 105 105 117;
+    --subtle: 145 145 156;
+    --primary: 79 70 229;
+    --primary-fg: 255 255 255;
+    --browser: 2 132 199;
+    --backend: 109 40 217;
+    --database: 202 138 4;
+    --danger: 220 38 38;
+    --ok: 22 163 74;
+    --warn: 217 119 6;
+    --danger-fg: 185 28 28;
+    --ok-fg: 21 128 61;
+    --warn-fg: 161 98 7;
+    --browser-fg: 3 105 161;
+    --backend-fg: 91 33 182;
+    --chart-1: #6366f1;
+    --chart-2: #0ea5e9;
+    --chart-3: #10b981;
+    --chart-4: #f59e0b;
+    --chart-5: #ef4444;
+    --chart-6: #ec4899;
+    --chart-7: #64748b;
+    --chart-8: #14b8a6;
+    --chart-9: #f97316;
+    --chart-10: #8b5cf6;
+  }
+
+  .dark {
+    color-scheme: dark;
+    --bg: 10 10 12;
+    --surface: 17 17 20;
+    --surface-2: 24 24 28;
+    --border: 38 38 44;
+    --border-strong: 56 56 64;
+    --accent: 30 30 35;
+    --fg: 237 237 240;
+    --fg-2: 200 200 207;
+    --muted: 145 145 156;
+    --subtle: 110 110 121;
+    --primary: 129 140 248;
+    --primary-fg: 12 12 20;
+    --browser: 56 189 248;
+    --backend: 167 139 250;
+    --database: 251 191 36;
+    --danger: 248 113 113;
+    --ok: 74 222 128;
+    --warn: 251 191 36;
+    --danger-fg: 252 165 165;
+    --ok-fg: 134 239 172;
+    --warn-fg: 252 211 77;
+    --browser-fg: 125 211 252;
+    --backend-fg: 196 181 253;
+    --chart-1: #818cf8;
+    --chart-2: #38bdf8;
+    --chart-3: #34d399;
+    --chart-4: #fbbf24;
+    --chart-5: #f87171;
+    --chart-6: #f472b6;
+    --chart-7: #94a3b8;
+    --chart-8: #2dd4bf;
+    --chart-9: #fb923c;
+    --chart-10: #c084fc;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    .system {
+      color-scheme: dark;
+      --bg: 10 10 12;
+      --surface: 17 17 20;
+      --surface-2: 24 24 28;
+      --border: 38 38 44;
+      --border-strong: 56 56 64;
+      --accent: 30 30 35;
+      --fg: 237 237 240;
+      --fg-2: 200 200 207;
+      --muted: 145 145 156;
+      --subtle: 110 110 121;
+      --primary: 129 140 248;
+      --primary-fg: 12 12 20;
+      --browser: 56 189 248;
+      --backend: 167 139 250;
+      --database: 251 191 36;
+      --danger: 248 113 113;
+      --ok: 74 222 128;
+      --warn: 251 191 36;
+      --danger-fg: 252 165 165;
+      --ok-fg: 134 239 172;
+      --warn-fg: 252 211 77;
+      --browser-fg: 125 211 252;
+      --backend-fg: 196 181 253;
+      --chart-1: #818cf8;
+      --chart-2: #38bdf8;
+      --chart-3: #34d399;
+      --chart-4: #fbbf24;
+      --chart-5: #f87171;
+      --chart-6: #f472b6;
+      --chart-7: #94a3b8;
+      --chart-8: #2dd4bf;
+      --chart-9: #fb923c;
+      --chart-10: #c084fc;
+    }
+  }
+
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    @apply bg-background text-[13px] leading-5 text-fg antialiased;
+    font-feature-settings: 'cv11', 'ss01', 'tnum' 0;
+  }
+  * { @apply border-border; }
+  ::selection { @apply bg-primary/25; }
+  h1, h2, h3 { letter-spacing: -0.011em; }
+  :focus-visible { outline: 2px solid rgb(var(--primary) / 0.7); outline-offset: 1px; }
+  table { font-variant-numeric: tabular-nums; }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: rgb(var(--border-strong)); border-radius: 8px; border: 2px solid rgb(var(--bg)); }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+}
+
+/* Data tables keep their columns on small screens and scroll sideways. */
+@media (max-width: 767px) {
+  .overflow-x-auto > table { min-width: 42rem; }
+}

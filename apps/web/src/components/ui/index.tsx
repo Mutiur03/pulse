@@ -3,10 +3,10 @@ import { cn } from '@/lib/cn';
 
 type Variant = 'default' | 'outline' | 'ghost' | 'danger';
 const variants: Record<Variant, string> = {
-  default: 'bg-primary text-white hover:bg-primary/90',
-  outline: 'border border-border bg-transparent hover:bg-accent',
-  ghost: 'hover:bg-accent',
-  danger: 'bg-danger/90 text-white hover:bg-danger',
+  default: 'bg-primary text-primary-fg shadow-sm hover:bg-primary/90',
+  outline: 'border border-border bg-surface text-fg shadow-sm hover:border-strong hover:bg-accent',
+  ghost: 'text-fg-2 hover:bg-accent hover:text-fg',
+  danger: 'border border-danger/40 bg-danger/10 text-danger-fg hover:bg-danger/15',
 };
 
 export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLButtonElement> & { variant?: Variant; size?: 'sm' | 'md' }>(
@@ -14,8 +14,8 @@ export const Button = forwardRef<HTMLButtonElement, ButtonHTMLAttributes<HTMLBut
     <button
       ref={ref}
       className={cn(
-        'inline-flex items-center justify-center gap-1.5 rounded-md font-medium transition-colors disabled:opacity-50 disabled:pointer-events-none focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary',
-        size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-9 px-4 text-sm',
+        'inline-flex select-none items-center justify-center gap-1.5 whitespace-nowrap rounded-md font-medium transition-colors disabled:pointer-events-none disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60 focus-visible:ring-offset-1 focus-visible:ring-offset-background',
+        size === 'sm' ? 'h-7 px-2.5 text-xs' : 'h-8 px-3 text-[13px]',
         variants[variant],
         className,
       )}
@@ -29,7 +29,7 @@ export const Input = forwardRef<HTMLInputElement, InputHTMLAttributes<HTMLInputE
   <input
     ref={ref}
     className={cn(
-      'h-9 rounded-md border border-border bg-background px-3 text-sm placeholder:text-zinc-500 focus:outline-none focus:ring-2 focus:ring-primary/60',
+      'h-8 rounded-md border border-border bg-surface px-2.5 text-[13px] text-fg shadow-sm transition-colors placeholder:text-subtle hover:border-strong focus:border-primary/70 focus:outline-none focus:ring-2 focus:ring-primary/20 disabled:opacity-60',
       className,
     )}
     {...p}
@@ -40,21 +40,21 @@ Input.displayName = 'Input';
 export const Select = forwardRef<HTMLSelectElement, SelectHTMLAttributes<HTMLSelectElement>>(({ className, ...p }, ref) => (
   <select
     ref={ref}
-    className={cn('h-9 rounded-md border border-border bg-background px-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/60', className)}
+    className={cn('h-8 rounded-md border border-border bg-surface px-2 text-[13px] text-fg shadow-sm transition-colors hover:border-strong focus:border-primary/70 focus:outline-none focus:ring-2 focus:ring-primary/20', className)}
     {...p}
   />
 ));
 Select.displayName = 'Select';
 
 export function Card({ className, ...p }: HTMLAttributes<HTMLDivElement>) {
-  return <div className={cn('rounded-lg border border-border bg-card', className)} {...p} />;
+  return <div className={cn('rounded-lg border border-border bg-surface', className)} {...p} />;
 }
 
 export function CardHeader({ title, description, actions }: { title: React.ReactNode; description?: React.ReactNode; actions?: React.ReactNode }) {
   return (
-    <div className="flex items-start justify-between gap-4 border-b border-border px-4 py-3">
-      <div>
-        <h3 className="text-sm font-semibold">{title}</h3>
+    <div className="flex flex-wrap items-start justify-between gap-x-4 gap-y-2 border-b border-border px-4 py-2.5">
+      <div className="min-w-0">
+        <h3 className="text-[13px] font-semibold text-fg">{title}</h3>
         {description && <p className="mt-0.5 text-xs text-muted">{description}</p>}
       </div>
       {actions}
@@ -63,26 +63,26 @@ export function CardHeader({ title, description, actions }: { title: React.React
 }
 
 const tones = {
-  neutral: 'bg-zinc-800 text-zinc-300',
-  danger: 'bg-danger/15 text-red-300 ring-1 ring-inset ring-danger/30',
-  ok: 'bg-ok/15 text-green-300 ring-1 ring-inset ring-ok/30',
-  warn: 'bg-database/15 text-amber-300 ring-1 ring-inset ring-database/30',
-  browser: 'bg-browser/15 text-sky-300 ring-1 ring-inset ring-browser/30',
-  backend: 'bg-backend/15 text-violet-300 ring-1 ring-inset ring-backend/30',
-  database: 'bg-database/15 text-amber-300 ring-1 ring-inset ring-database/30',
+  neutral: 'bg-accent text-fg-2 ring-1 ring-inset ring-border',
+  danger: 'bg-danger/10 text-danger-fg ring-1 ring-inset ring-danger/25',
+  ok: 'bg-ok/10 text-ok-fg ring-1 ring-inset ring-ok/25',
+  warn: 'bg-warn/10 text-warn-fg ring-1 ring-inset ring-warn/25',
+  browser: 'bg-browser/10 text-browser-fg ring-1 ring-inset ring-browser/25',
+  backend: 'bg-backend/10 text-backend-fg ring-1 ring-inset ring-backend/25',
+  database: 'bg-database/10 text-warn-fg ring-1 ring-inset ring-database/25',
 };
 export type Tone = keyof typeof tones;
 
 export function Badge({ tone = 'neutral', className, ...p }: HTMLAttributes<HTMLSpanElement> & { tone?: Tone }) {
-  return <span className={cn('inline-flex items-center rounded px-1.5 py-0.5 text-[11px] font-medium', tones[tone], className)} {...p} />;
+  return <span className={cn('inline-flex h-5 items-center gap-1 whitespace-nowrap rounded px-1.5 text-[11px] font-medium leading-none', tones[tone], className)} {...p} />;
 }
 
 export function PageHeader({ title, description, actions }: { title: string; description?: string; actions?: React.ReactNode }) {
   return (
-    <div className="mb-5 flex flex-wrap items-end justify-between gap-3">
-      <div>
-        <h1 className="text-xl font-semibold tracking-tight">{title}</h1>
-        {description && <p className="mt-1 text-sm text-muted">{description}</p>}
+    <div className="mb-4 flex flex-wrap items-end justify-between gap-3 border-b border-border pb-4">
+      <div className="min-w-0">
+        <h1 className="text-lg font-semibold tracking-tight text-fg">{title}</h1>
+        {description && <p className="mt-0.5 max-w-3xl text-[13px] text-muted">{description}</p>}
       </div>
       {actions}
     </div>
@@ -104,16 +104,16 @@ export function Empty({
 }) {
   return (
     <div className="flex flex-col items-center gap-2 px-4 py-12 text-center" data-testid="empty-state">
-      <div className="flex h-9 w-9 items-center justify-center rounded-full border border-border bg-accent/60 text-muted" aria-hidden>
+      <div className="flex h-9 w-9 items-center justify-center rounded-md border border-dashed border-strong text-subtle" aria-hidden>
         <svg viewBox="0 0 24 24" className="h-4 w-4" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M3 7h18M3 12h18M3 17h10" />
         </svg>
       </div>
-      {title && <div className="text-sm font-medium text-zinc-200">{title}</div>}
-      {children && <div className="max-w-lg text-sm text-muted">{children}</div>}
+      {title && <div className="text-[13px] font-medium text-fg">{title}</div>}
+      {children && <div className="max-w-md text-[13px] text-muted">{children}</div>}
       {action &&
         (action.href ? (
-          <a href={action.href} className="mt-1 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-white hover:bg-primary/90">
+          <a href={action.href} className="mt-1 inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-fg hover:bg-primary/90">
             {action.label}
           </a>
         ) : (
@@ -156,15 +156,15 @@ export function limitTitle(error: string): string | undefined {
 export function ErrorNote({ error, onRetry }: { error?: string; onRetry?: () => void }) {
   if (!error) return null;
   const title = limitTitle(error);
-  const tone = title ? 'border-amber-500/40 bg-amber-500/10 text-amber-200' : 'border-danger/40 bg-danger/10 text-red-300';
+  const tone = title ? 'border-warn/30 bg-warn/10 text-warn-fg' : 'border-danger/30 bg-danger/10 text-danger-fg';
   return (
-    <div role="alert" className={`flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-sm ${tone}`}>
+    <div role="alert" className={`mb-3 flex items-start justify-between gap-3 rounded-md border px-3 py-2 text-[13px] ${tone}`}>
       <div>
         {title && <div className="font-medium">{title}</div>}
         <div>{error}</div>
       </div>
       {onRetry && (
-        <button type="button" onClick={onRetry} className="shrink-0 rounded border border-white/20 px-2 py-0.5 text-xs hover:bg-white/5">
+        <button type="button" onClick={onRetry} className="shrink-0 rounded border border-strong px-2 py-0.5 text-xs hover:bg-accent">
           Retry
         </button>
       )}
@@ -173,13 +173,18 @@ export function ErrorNote({ error, onRetry }: { error?: string; onRetry?: () => 
 }
 
 export function Spinner() {
-  return <div className="h-4 w-4 animate-spin rounded-full border-2 border-zinc-600 border-t-primary" />;
+  return <div className="h-4 w-4 animate-spin rounded-full border-2 border-strong border-t-primary" />;
 }
 
 export function Th({ className, ...p }: HTMLAttributes<HTMLTableCellElement>) {
-  return <th className={cn('px-4 py-2 text-left text-xs font-medium uppercase tracking-wide text-muted', className)} {...p} />;
+  return <th className={cn('h-8 whitespace-nowrap px-3 text-left text-[11px] font-medium uppercase tracking-wider text-subtle first:pl-4 last:pr-4', className)} {...p} />;
 }
 
 export function Td({ className, ...p }: React.TdHTMLAttributes<HTMLTableCellElement>) {
-  return <td className={cn('px-4 py-2.5 align-middle', className)} {...p} />;
+  return <td className={cn('px-3 py-2 align-middle first:pl-4 last:pr-4', className)} {...p} />;
+}
+
+/** The filter and control row above a list or chart; flat, not a card. */
+export function Toolbar({ className, ...p }: HTMLAttributes<HTMLDivElement>) {
+  return <div className={cn('mb-3 flex flex-wrap items-center gap-2', className)} {...p} />;
 }

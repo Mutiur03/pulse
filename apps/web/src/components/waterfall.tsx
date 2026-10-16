@@ -58,7 +58,7 @@ export function Waterfall({ trace, selected, onSelect }: { trace: Trace; selecte
               <span className={cn('h-2 w-2 shrink-0 rounded-sm', color[s.source])} />
               <span className="truncate">{s.name}</span>
               <span className="shrink-0 text-muted">{s.service_name}</span>
-              {failed && <span className="shrink-0 rounded bg-danger/20 px-1 text-[10px] text-red-300">error</span>}
+              {failed && <span className="shrink-0 rounded bg-danger/20 px-1 text-[10px] text-danger-fg">error</span>}
             </div>
             <div className="relative mr-3 h-7">
               {ticks.slice(1, -1).map((t) => (
@@ -68,7 +68,7 @@ export function Waterfall({ trace, selected, onSelect }: { trace: Trace; selecte
                 className={cn('absolute top-2 h-3 rounded-sm', failed ? 'bg-danger' : color[s.source], s.orphan && 'opacity-60')}
                 style={{ left: `${left}%`, width: `${width}%` }}
               />
-              <span className="absolute top-1.5 font-mono text-[10px] text-zinc-300" style={{ left: `calc(${Math.min(left + width, 88)}% + 4px)` }}>
+              <span className="absolute top-1.5 font-mono text-[10px] text-fg-2" style={{ left: `calc(${Math.min(left + width, 88)}% + 4px)` }}>
                 {ms(s.duration_ns)}
               </span>
               {s.errors.map((e, i) => (
@@ -95,7 +95,7 @@ function Marker({ at, title, kind }: { at: number; title: string; kind: 'error' 
       data-testid={`marker-${kind}`}
       className={cn(
         'absolute top-1.5 h-4 w-1 -translate-x-1/2 rounded-full ring-2 ring-background',
-        kind === 'error' ? 'bg-red-400' : kind === 'event' ? 'bg-emerald-400' : 'bg-zinc-300',
+        kind === 'error' ? 'bg-danger' : kind === 'event' ? 'bg-ok' : 'bg-subtle',
       )}
       style={{ left: `${Math.min(99.5, Math.max(0.5, at))}%` }}
     />

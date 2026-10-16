@@ -31,7 +31,7 @@ export function toInput(r: AlertRule): AlertRuleInput {
 
 function Field({ label, children, help }: { label: string; children: React.ReactNode; help?: string }) {
   return (
-    <label className="flex flex-col gap-1 text-xs text-zinc-300">
+    <label className="flex flex-col gap-1 text-xs text-fg-2">
       {label}
       {children}
       {help && <span className="text-[11px] text-muted">{help}</span>}
@@ -217,7 +217,7 @@ export function AlertForm({ project, initial, onSave }: { project: number; initi
           <Button type="submit" disabled={saving}>
             {saving ? 'Saving…' : 'Save rule'}
           </Button>
-          <Link href="/alerts" className="inline-flex h-9 items-center px-3 text-sm text-muted hover:text-zinc-100">
+          <Link href="/alerts" className="inline-flex h-9 items-center px-3 text-sm text-muted hover:text-fg">
             Cancel
           </Link>
         </div>
@@ -228,7 +228,7 @@ export function AlertForm({ project, initial, onSave }: { project: number; initi
           description={preview?.supported ? `Each point is one ${span(preview.bucket_seconds)} bucket. Now: ${value(preview.current, preview.unit)}` : undefined}
           actions={previewing && <Spinner />}
         />
-        <div className="p-3">{preview ? <AlertChart preview={preview} width={400} height={200} /> : <p className="py-10 text-center text-sm text-muted">Loading…</p>}</div>
+        <div className="p-3">{preview ? <AlertChart preview={preview} height={200} /> : <p className="py-10 text-center text-sm text-muted">Loading…</p>}</div>
       </Card>
     </form>
   );

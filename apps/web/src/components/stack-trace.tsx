@@ -36,12 +36,12 @@ function Frame({ f, open, onToggle }: { f: StackFrame; open: boolean; onToggle: 
         className={cn('flex items-center gap-2 px-4 py-2 font-mono text-xs', hasCode && 'hover:bg-accent/50')}
       >
         {hasCode && <span className="w-3 text-muted">{open ? '▾' : '▸'}</span>}
-        <span className={f.in_app ? 'text-zinc-100' : 'text-muted'} data-testid="frame-location">
+        <span className={f.in_app ? 'text-fg' : 'text-muted'} data-testid="frame-location">
           {location(f)}
         </span>
         {f.function && (
           <span className="text-muted">
-            in <span className="text-sky-300">{f.function}</span>
+            in <span className="text-browser-fg">{f.function}</span>
           </span>
         )}
         <span className="ml-auto flex gap-1">
@@ -50,14 +50,14 @@ function Frame({ f, open, onToggle }: { f: StackFrame; open: boolean; onToggle: 
         </span>
       </div>
       {open && hasCode && (
-        <div className="overflow-auto bg-zinc-950/60 py-2 font-mono text-xs leading-relaxed" data-testid="frame-code">
+        <div className="overflow-auto bg-raised py-2 font-mono text-xs leading-relaxed" data-testid="frame-code">
           {[...pre, f.context_line!, ...(f.post_context ?? [])].map((line, i) => {
             const n = first + i;
             const hit = n === f.line;
             return (
-              <div key={i} className={cn('flex whitespace-pre', hit && 'bg-danger/15 text-red-200')} data-testid={hit ? 'context-line' : undefined}>
+              <div key={i} className={cn('flex whitespace-pre', hit && 'bg-danger/15 text-danger-fg')} data-testid={hit ? 'context-line' : undefined}>
                 <span className="w-12 shrink-0 select-none pr-3 text-right text-muted">{n}</span>
-                <span className={hit ? '' : 'text-zinc-400'}>{line}</span>
+                <span className={hit ? '' : 'text-muted'}>{line}</span>
               </div>
             );
           })}
@@ -87,7 +87,7 @@ export function StackTrace({ ev, onReprocess, reprocessing }: { ev?: ErrorOccurr
   if (!ev) return <pre className="p-4 font-mono text-xs text-muted" data-testid="stack">No stack trace captured.</pre>;
   if (frames.length === 0) {
     return (
-      <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-zinc-300" data-testid="stack">
+      <pre className="max-h-[480px] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-fg-2" data-testid="stack">
         {ev.stack || 'No stack trace captured.'}
       </pre>
     );
@@ -99,7 +99,7 @@ export function StackTrace({ ev, onReprocess, reprocessing }: { ev?: ErrorOccurr
           <button
             type="button"
             onClick={() => setRaw(false)}
-            className={cn('px-2 py-1', !raw ? 'bg-accent text-zinc-100' : 'text-muted hover:text-zinc-100')}
+            className={cn('px-2 py-1', !raw ? 'bg-accent text-fg' : 'text-muted hover:text-fg')}
             data-testid="stack-original"
           >
             Original
@@ -107,7 +107,7 @@ export function StackTrace({ ev, onReprocess, reprocessing }: { ev?: ErrorOccurr
           <button
             type="button"
             onClick={() => setRaw(true)}
-            className={cn('border-l border-border px-2 py-1', raw ? 'bg-accent text-zinc-100' : 'text-muted hover:text-zinc-100')}
+            className={cn('border-l border-border px-2 py-1', raw ? 'bg-accent text-fg' : 'text-muted hover:text-fg')}
             data-testid="stack-raw"
           >
             Minified
@@ -124,7 +124,7 @@ export function StackTrace({ ev, onReprocess, reprocessing }: { ev?: ErrorOccurr
         )}
       </div>
       {raw ? (
-        <pre className="max-h-[560px] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-zinc-300" data-testid="stack-minified">
+        <pre className="max-h-[560px] overflow-auto whitespace-pre-wrap p-4 font-mono text-xs leading-relaxed text-fg-2" data-testid="stack-minified">
           {ev.stack}
         </pre>
       ) : (
@@ -138,7 +138,7 @@ export function StackTrace({ ev, onReprocess, reprocessing }: { ev?: ErrorOccurr
                   key={g.start}
                   type="button"
                   onClick={() => setOpenLibs((s) => new Set(s).add(g.start))}
-                  className="block w-full border-b border-border px-4 py-1.5 text-left text-xs text-muted hover:bg-accent/50 hover:text-zinc-100"
+                  className="block w-full border-b border-border px-4 py-1.5 text-left text-xs text-muted hover:bg-accent/50 hover:text-fg"
                   data-testid="library-frames"
                 >
                   {g.frames.length} library {g.frames.length === 1 ? 'frame' : 'frames'} hidden · show

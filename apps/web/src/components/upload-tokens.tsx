@@ -75,7 +75,7 @@ export function UploadTokens({ project, owner }: { project: number; owner: boole
               {copied ? 'Copied' : 'Copy'}
             </Button>
           </div>
-          <pre className="mt-3 overflow-auto font-mono text-xs leading-relaxed text-zinc-300">{uploadSnippet(project, created.secret)}</pre>
+          <pre className="mt-3 overflow-auto font-mono text-xs leading-relaxed text-fg-2">{uploadSnippet(project, created.secret)}</pre>
         </div>
       )}
       <div className="divide-y divide-border">

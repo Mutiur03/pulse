@@ -32,7 +32,7 @@ export default function IssuePage({ params }: { params: Promise<{ id: string }> 
   return (
     <>
       <div className="mb-2 text-xs text-muted">
-        <Link href="/issues" className="hover:text-zinc-100">
+        <Link href="/issues" className="hover:text-fg">
           Issues
         </Link>{' '}
         / #{id}
@@ -67,7 +67,7 @@ export default function IssuePage({ params }: { params: Promise<{ id: string }> 
               </div>
             }
           />
-          <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-5">
+          <div className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-lg border border-border bg-border md:grid-cols-5">
             <Stat label="Events" value={iss.count.toLocaleString()} />
             <Stat label="First seen" value={ago(iss.first_seen)} />
             <Stat label="Last seen" value={ago(iss.last_seen)} />
@@ -105,7 +105,7 @@ export default function IssuePage({ params }: { params: Promise<{ id: string }> 
                 reprocessing={detail.loading && again > 0}
               />
             </Card>
-            <Card className="h-fit overflow-hidden">
+            <Card className="h-fit overflow-x-auto">
               <CardHeader title="Occurrences" description={`Latest ${events.length}`} />
               <table className="w-full text-xs">
                 <thead className="border-b border-border">
@@ -158,9 +158,9 @@ export default function IssuePage({ params }: { params: Promise<{ id: string }> 
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <Card className="px-4 py-3">
-      <div className="text-xs text-muted">{label}</div>
-      <div className="mt-0.5 text-lg font-semibold">{value}</div>
-    </Card>
+    <div className="bg-surface px-4 py-3">
+      <div className="text-[11px] font-medium uppercase tracking-wider text-subtle">{label}</div>
+      <div className="mt-1 text-lg font-semibold tracking-tight tabular-nums">{value}</div>
+    </div>
   );
 }

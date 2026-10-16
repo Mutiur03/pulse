@@ -84,7 +84,7 @@ export default function FunnelsPage() {
                     aria-label={`Remove step ${i + 1}`}
                     disabled={steps.length <= 2}
                     onClick={() => setSteps(steps.filter((_, j) => j !== i))}
-                    className="h-9 rounded-r-md border border-l-0 border-border px-2 text-muted hover:text-zinc-100 disabled:opacity-30"
+                    className="h-9 rounded-r-md border border-l-0 border-border px-2 text-muted hover:text-fg disabled:opacity-30"
                   >
                     ×
                   </button>
@@ -209,7 +209,7 @@ function DropOffs({ result, focus, setFocus }: { result: FunnelResult; focus: nu
                 </div>
                 <div className="shrink-0 text-right text-xs">
                   <div>
-                    <span className="font-semibold text-red-300">{e.users}</span> of {st.dropped!.users} users
+                    <span className="font-semibold text-danger-fg">{e.users}</span> of {st.dropped!.users} users
                   </div>
                   <div className="text-muted">{e.count} events</div>
                 </div>
@@ -233,11 +233,11 @@ function Cohort({ title, tone, c }: { title: string; tone: 'danger' | 'ok'; c?: 
       <div className="grid grid-cols-2 gap-3">
         <div>
           <div className="text-xs text-muted">Sessions with errors</div>
-          <div className={cn('text-2xl font-semibold', tone === 'danger' && errRate > 0 && 'text-red-300')}>{pct(errRate)}</div>
+          <div className={cn('text-2xl font-semibold', tone === 'danger' && errRate > 0 && 'text-danger-fg')}>{pct(errRate)}</div>
         </div>
         <div>
           <div className="text-xs text-muted">Backend p95</div>
-          <div className={cn('text-2xl font-semibold', tone === 'danger' && (c?.p95_latency_ms ?? 0) > 1000 && 'text-amber-300')}>
+          <div className={cn('text-2xl font-semibold', tone === 'danger' && (c?.p95_latency_ms ?? 0) > 1000 && 'text-warn-fg')}>
             {c?.p95_latency_ms ? `${Math.round(c.p95_latency_ms).toLocaleString()} ms` : '—'}
           </div>
         </div>

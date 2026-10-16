@@ -69,7 +69,7 @@ function Filters({ value, onChange, label }: { value: PropertyFilter[]; onChange
               className="h-8 w-36 text-xs"
             />
           )}
-          <button aria-label={`Remove ${label} filter ${i + 1}`} onClick={() => onChange(value.filter((_, j) => j !== i))} className="px-1 text-muted hover:text-zinc-100">
+          <button aria-label={`Remove ${label} filter ${i + 1}`} onClick={() => onChange(value.filter((_, j) => j !== i))} className="px-1 text-muted hover:text-fg">
             ×
           </button>
         </div>
@@ -95,7 +95,7 @@ export function TrendBuilder({ value, onChange, events }: { value: SavedTrend; o
       </datalist>
       <div className="flex flex-col gap-3">
         {series.map((s, i) => (
-          <div key={i} className="rounded-md border border-border p-3" data-testid="series-row">
+          <div key={i} className="rounded-md bg-raised/70 px-3 py-2.5" data-testid="series-row">
             <div className="flex flex-wrap items-center gap-2">
               <span className="grid h-6 w-6 place-items-center rounded bg-primary/20 text-xs font-semibold text-primary">{letter(i)}</span>
               <Select aria-label={`Series ${letter(i)} event`} value={s.event ?? ''} onChange={(e) => setSeries(i, { event: e.target.value })} className="h-8 w-52 text-xs">
@@ -129,7 +129,7 @@ export function TrendBuilder({ value, onChange, events }: { value: SavedTrend; o
                 />
               )}
               {series.length > 1 && (
-                <button aria-label={`Remove series ${letter(i)}`} onClick={() => onChange({ ...value, series: series.filter((_, j) => j !== i) })} className="ml-auto px-1 text-muted hover:text-zinc-100">
+                <button aria-label={`Remove series ${letter(i)}`} onClick={() => onChange({ ...value, series: series.filter((_, j) => j !== i) })} className="ml-auto px-1 text-muted hover:text-fg">
                   ×
                 </button>
               )}

@@ -1,7 +1,13 @@
+'use client';
 import type { AlertPreview } from '@pulse/api-client';
+import { Measure } from '@/components/charts';
 
 /** The metric over time with the threshold as a dashed line; breaching points are red. */
-export function AlertChart({ preview, width = 640, height = 160 }: { preview: AlertPreview; width?: number; height?: number }) {
+export function AlertChart(props: { preview: AlertPreview; height?: number }) {
+  return <Measure>{(w) => <AlertChartAt {...props} width={w} />}</Measure>;
+}
+
+function AlertChartAt({ preview, width = 640, height = 160 }: { preview: AlertPreview; width?: number; height?: number }) {
   const pad = { l: 40, r: 8, t: 10, b: 20 };
   const pts = preview.points;
   if (!preview.supported) return <p className="px-4 py-10 text-center text-sm text-muted">This rule fires on issue events, so there is no metric to chart.</p>;
@@ -17,29 +23,29 @@ export function AlertChart({ preview, width = 640, height = 160 }: { preview: Al
   const fmt = (v: number) => `${Math.round(v * 100) / 100}${preview.unit}`;
   const clock = (at: string) => new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="metric against threshold" data-testid="alert-chart">
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} className="block" role="img" aria-label="metric against threshold" data-testid="alert-chart">
       {[0, 0.5, 1].map((f) => (
         <g key={f}>
-          <line x1={pad.l} x2={width - pad.r} y1={y(max * f)} y2={y(max * f)} className="stroke-zinc-800" />
-          <text x={pad.l - 4} y={y(max * f) + 3} textAnchor="end" className="fill-zinc-500 text-[9px]">
+          <line x1={pad.l} x2={width - pad.r} y1={y(max * f)} y2={y(max * f)} className="stroke-border" />
+          <text x={pad.l - 4} y={y(max * f) + 3} textAnchor="end" className="fill-subtle text-[10px]">
             {fmt(max * f)}
           </text>
         </g>
       ))}
       <path d={line} fill="none" className="stroke-primary" strokeWidth={1.5} />
       {pts.map((p) => (
-        <circle key={p.at} cx={x(p.at)} cy={y(p.value)} r={2.5} className={breach(p.value) ? 'fill-red-400' : 'fill-primary'}>
+        <circle key={p.at} cx={x(p.at)} cy={y(p.value)} r={2.5} className={breach(p.value) ? 'fill-danger' : 'fill-primary'}>
           <title>{`${clock(p.at)}: ${fmt(p.value)}`}</title>
         </circle>
       ))}
-      <line x1={pad.l} x2={width - pad.r} y1={y(preview.threshold)} y2={y(preview.threshold)} className="stroke-red-400" strokeDasharray="4 3" data-testid="threshold-line" />
-      <text x={width - pad.r} y={y(preview.threshold) - 4} textAnchor="end" className="fill-red-300 text-[9px]">
+      <line x1={pad.l} x2={width - pad.r} y1={y(preview.threshold)} y2={y(preview.threshold)} className="stroke-danger" strokeDasharray="4 3" data-testid="threshold-line" />
+      <text x={width - pad.r} y={y(preview.threshold) - 4} textAnchor="end" className="fill-danger text-[10px]">
         threshold {fmt(preview.threshold)}
       </text>
-      <text x={pad.l} y={height - 4} className="fill-zinc-500 text-[9px]">
+      <text x={pad.l} y={height - 4} className="fill-subtle text-[10px]">
         {clock(pts[0].at)}
       </text>
-      <text x={width - pad.r} y={height - 4} textAnchor="end" className="fill-zinc-500 text-[9px]">
+      <text x={width - pad.r} y={height - 4} textAnchor="end" className="fill-subtle text-[10px]">
         {clock(pts[pts.length - 1].at)}
       </text>
     </svg>

@@ -151,7 +151,7 @@ function Profile() {
                 <Td>
                   <Badge tone={e.event.startsWith('$') ? 'neutral' : 'backend'}>{e.event}</Badge>
                 </Td>
-                <Td className="font-mono text-xs text-zinc-400">{String(e.properties['$pathname'] ?? '')}</Td>
+                <Td className="font-mono text-xs text-muted">{String(e.properties['$pathname'] ?? '')}</Td>
                 <Td className="font-mono text-xs text-muted">{e.distinct_id}</Td>
               </tr>
             ))}

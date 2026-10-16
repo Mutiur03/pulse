@@ -52,14 +52,14 @@ export default function ChannelsPage() {
   return (
     <>
       <div className="mb-2 text-xs text-muted">
-        <Link href="/alerts" className="hover:text-zinc-100">
+        <Link href="/alerts" className="hover:text-fg">
           Alerts
         </Link>{' '}
         / Channels
       </div>
       <PageHeader title="Notification channels" description="Where alert rules send their notifications. Each rule picks its channels." />
       <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
-        <Card className="h-fit overflow-hidden">
+        <Card className="h-fit overflow-x-auto">
           {data.loading && !data.data && (
             <div className="p-4">
               <Spinner />
@@ -85,7 +85,7 @@ export default function ChannelsPage() {
                   <Td className="whitespace-nowrap text-xs text-muted">{ago(c.created_at)}</Td>
                   <Td className="whitespace-nowrap text-right">
                     {tests[c.id] && (
-                      <span className={`mr-2 text-xs ${tests[c.id].startsWith('Failed') ? 'text-red-300' : 'text-muted'}`} data-testid="channel-test-result">
+                      <span className={`mr-2 text-xs ${tests[c.id].startsWith('Failed') ? 'text-danger-fg' : 'text-muted'}`} data-testid="channel-test-result">
                         {tests[c.id]}
                       </span>
                     )}
@@ -124,7 +124,7 @@ export default function ChannelsPage() {
           </form>
           {created?.secret && (
             <div className="border-t border-border p-4 text-xs" data-testid="channel-secret">
-              <div className="mb-1 text-zinc-300">Signing secret for {created.name}. Copy it now; it is not shown again.</div>
+              <div className="mb-1 text-fg-2">Signing secret for {created.name}. Copy it now; it is not shown again.</div>
               <code className="block break-all rounded bg-background p-2 font-mono">{created.secret}</code>
             </div>
           )}

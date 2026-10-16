@@ -5,6 +5,7 @@ import { useSearchParams } from 'next/navigation';
 import { APIError } from '@pulse/api-client';
 import { api } from '@/lib/api';
 import { Button, Card, ErrorNote, Input } from '@/components/ui';
+import { AuthFrame, AuthHeading } from '@/components/auth-card';
 
 function LoginForm() {
   const params = useSearchParams();
@@ -29,14 +30,8 @@ function LoginForm() {
     }
   };
   return (
-    <Card className="w-full max-w-sm p-6">
-      <div className="mb-6 flex items-center gap-2">
-        <span className="grid h-8 w-8 place-items-center rounded-md bg-primary font-bold">P</span>
-        <div>
-          <h1 className="font-semibold">Sign in to Pulse</h1>
-          <p className="text-xs text-muted">Traces, errors and funnels in one place</p>
-        </div>
-      </div>
+    <Card className="w-full max-w-sm p-6 shadow-sm">
+      <AuthHeading title="Sign in to Pulse" subtitle="Traces, errors and funnels in one place" />
       <form onSubmit={submit} className="flex flex-col gap-3">
         <label className="flex flex-col gap-1 text-xs text-muted">
           Email
@@ -46,7 +41,7 @@ function LoginForm() {
           Password
           <Input type="password" name="password" autoComplete="current-password" required value={password} onChange={(e) => setPassword(e.target.value)} />
         </label>
-        <Link href="/reset-password" className="-mt-1 self-end text-xs text-muted underline-offset-2 hover:text-zinc-200 hover:underline">
+        <Link href="/reset-password" className="-mt-1 self-end text-xs text-muted underline-offset-2 hover:text-fg hover:underline">
           Forgot password?
         </Link>
         <ErrorNote error={error} />
@@ -56,12 +51,12 @@ function LoginForm() {
       </form>
       <p className="mt-4 text-xs text-muted">
         New to Pulse?{' '}
-        <Link href="/signup" className="text-zinc-200 underline-offset-2 hover:underline">
+        <Link href="/signup" className="text-fg underline-offset-2 hover:underline">
           Create an account
         </Link>
       </p>
-      <p className="mt-2 text-xs text-muted">
-        Local stack: <span className="font-mono text-zinc-300">demo@pulse.local</span> / <span className="font-mono text-zinc-300">pulse-demo</span>
+      <p className="mt-4 rounded-md border border-dashed border-border px-2.5 py-2 text-xs text-muted">
+        Local stack: <span className="font-mono text-fg-2">demo@pulse.local</span> / <span className="font-mono text-fg-2">pulse-demo</span>
       </p>
     </Card>
   );
@@ -69,10 +64,10 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <div className="grid min-h-screen place-items-center px-4">
+    <AuthFrame>
       <Suspense>
         <LoginForm />
       </Suspense>
-    </div>
+    </AuthFrame>
   );
 }

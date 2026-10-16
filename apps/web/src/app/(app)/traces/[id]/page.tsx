@@ -38,7 +38,7 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
   return (
     <>
       <div className="mb-2 text-xs text-muted">
-        <Link href="/traces" className="hover:text-zinc-100">
+        <Link href="/traces" className="hover:text-fg">
           Traces
         </Link>{' '}
         / <span className="font-mono">{id}</span>
@@ -49,12 +49,12 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
           t && (
             <div className="flex flex-wrap items-center gap-3 text-xs text-muted">
               <span>
-                <span className="text-zinc-100">{ms(t.duration_ns)}</span> total
+                <span className="text-fg">{ms(t.duration_ns)}</span> total
               </span>
               <span>
-                <span className="text-zinc-100">{t.span_count}</span> spans
+                <span className="text-fg">{t.span_count}</span> spans
               </span>
-              <span className={t.error_count ? 'text-red-300' : ''}>{t.error_count} errors</span>
+              <span className={t.error_count ? 'text-danger-fg' : ''}>{t.error_count} errors</span>
               <span>{time(t.start_time)}</span>
               {session && (
                 <Link href={`/replays/${session}?t=${Date.parse(t.start_time)}`} className="text-primary hover:underline" data-testid="trace-replay-link">
@@ -69,7 +69,7 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
       {trace.loading && <Spinner />}
       {t && (
         <div className="grid gap-4 xl:grid-cols-[1fr_380px]">
-          <Card className="overflow-hidden">
+          <Card className="overflow-x-auto">
             <CardHeader
               title="Waterfall"
               description="Browser → backend → database, by start time"
@@ -78,8 +78,8 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
                   <Legend c="bg-browser" l="browser" />
                   <Legend c="bg-backend" l="backend" />
                   <Legend c="bg-database" l="database" />
-                  <Legend c="bg-red-400" l="error" />
-                  <Legend c="bg-emerald-400" l="event" />
+                  <Legend c="bg-danger" l="error" />
+                  <Legend c="bg-ok" l="event" />
                 </div>
               }
             />
@@ -114,7 +114,7 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
                         <td className="px-2 py-1">
                           <Badge tone={levelTone(l.severity)}>{l.severity || '—'}</Badge>
                         </td>
-                        <td className="w-full px-2 py-1 font-mono text-zinc-200">{l.body}</td>
+                        <td className="w-full px-2 py-1 font-mono text-fg">{l.body}</td>
                         <td className="whitespace-nowrap px-4 py-1 text-right text-muted">{spanName(l.span_id) ?? l.service_name}</td>
                       </tr>
                     ))}
@@ -136,7 +136,7 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
               <div className="space-y-4 p-4 text-xs">
                 {span.errors.map((e, i) => (
                   <div key={i} className="rounded-md border border-danger/40 bg-danger/10 p-3">
-                    <div className="font-medium text-red-300">
+                    <div className="font-medium text-danger-fg">
                       {e.exception_type}: {e.message}
                     </div>
                     {e.issue_id > 0 && (
@@ -144,7 +144,7 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
                         Open issue #{e.issue_id} →
                       </Link>
                     )}
-                    {e.stack && <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-zinc-400">{e.stack}</pre>}
+                    {e.stack && <pre className="mt-2 max-h-48 overflow-auto whitespace-pre-wrap font-mono text-[11px] text-muted">{e.stack}</pre>}
                   </div>
                 ))}
                 {spanLogs.length > 0 && (
@@ -153,7 +153,7 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
                       {spanLogs.map((l, i) => (
                         <div key={i} className="flex gap-2">
                           <Badge tone={levelTone(l.severity)}>{l.severity || '—'}</Badge>
-                          <span className="font-mono text-zinc-200">{l.body}</span>
+                          <span className="font-mono text-fg">{l.body}</span>
                         </div>
                       ))}
                     </div>
@@ -163,7 +163,7 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
                   <Section title="Product events">
                     {span.events.map((e, i) => (
                       <div key={i} className="flex justify-between">
-                        <span className="text-emerald-300">{e.event}</span>
+                        <span className="text-ok-fg">{e.event}</span>
                         <span className="text-muted">{e.distinct_id}</span>
                       </div>
                     ))}
@@ -185,7 +185,7 @@ export default function TracePage({ params }: { params: Promise<{ id: string }> 
                         <dt className="truncate text-muted" title={k}>
                           {k}
                         </dt>
-                        <dd className="break-all text-zinc-200">{v}</dd>
+                        <dd className="break-all text-fg">{v}</dd>
                       </div>
                     ))}
                   </dl>

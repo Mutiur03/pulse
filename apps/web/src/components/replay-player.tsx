@@ -18,8 +18,8 @@ export interface PlayerHandle {
 
 const markerColor: Record<Marker['kind'], string> = {
   error: 'bg-danger',
-  request: 'bg-sky-400',
-  pageview: 'bg-zinc-400',
+  request: 'bg-browser',
+  pageview: 'bg-muted',
 };
 
 /** rrweb replayer with a timeline that shows error, request and page markers. */
@@ -114,7 +114,7 @@ export const ReplayPlayer = forwardRef<PlayerHandle, { events: unknown[]; marker
 
     return (
       <div className="flex flex-col gap-2">
-        <div ref={box} className="relative h-[480px] overflow-hidden rounded-md border border-border bg-zinc-950" data-testid="replay-stage">
+        <div ref={box} className="relative h-[480px] overflow-hidden rounded-md border border-border bg-raised" data-testid="replay-stage">
           <div ref={stage} className="replay-root" />
           {error && <div className="absolute inset-0 grid place-items-center text-sm text-muted">{error}</div>}
         </div>
@@ -122,12 +122,12 @@ export const ReplayPlayer = forwardRef<PlayerHandle, { events: unknown[]; marker
           <button
             onClick={toggle}
             disabled={!meta}
-            className="h-8 w-16 rounded-md bg-primary text-xs font-medium text-white disabled:opacity-50"
+            className="h-8 w-16 rounded-md bg-primary text-xs font-medium text-primary-fg disabled:opacity-50"
             data-testid="replay-play"
           >
             {playing ? 'Pause' : 'Play'}
           </button>
-          <span className="w-24 font-mono text-xs text-zinc-300" data-testid="replay-time">
+          <span className="w-24 font-mono text-xs text-fg-2" data-testid="replay-time">
             {duration(offset)} / {duration(total)}
           </span>
           <div
@@ -139,7 +139,7 @@ export const ReplayPlayer = forwardRef<PlayerHandle, { events: unknown[]; marker
               seek(meta.startTime + ((e.clientX - rect.left) / rect.width) * total);
             }}
           >
-            <div className="absolute top-1/2 h-1 w-full -translate-y-1/2 rounded bg-zinc-800" />
+            <div className="absolute top-1/2 h-1 w-full -translate-y-1/2 rounded bg-accent" />
             <div className="absolute top-1/2 h-1 -translate-y-1/2 rounded bg-primary" style={{ width: `${total ? (offset / total) * 100 : 0}%` }} />
             {meta &&
               markers.map((m, i) => (

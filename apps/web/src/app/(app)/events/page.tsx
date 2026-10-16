@@ -4,7 +4,7 @@ import { Fragment, useState } from 'react';
 import { api } from '@/lib/api';
 import { fromRange, time } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
-import { Badge, Button, Card, Empty, ErrorNote, Input, Loading, PageHeader, Select, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Button, Card, Empty, ErrorNote, Input, Loading, PageHeader, Select, Spinner, Td, Th, Toolbar } from '@/components/ui';
 import { TimeRange } from '@/components/time-range';
 
 export default function EventsPage() {
@@ -30,7 +30,7 @@ export default function EventsPage() {
   return (
     <>
       <PageHeader title="Events" description="Raw product events. Click a user or session to filter by it." />
-      <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
+      <Toolbar>
         <Select aria-label="Event" value={q.event ?? ''} onChange={(e) => setQ({ event: e.target.value })}>
           <option value="">All events</option>
           {names.data?.map((n) => (
@@ -66,9 +66,9 @@ export default function EventsPage() {
           </Button>
         )}
         {events.loading && <Spinner />}
-      </Card>
+      </Toolbar>
       <ErrorNote error={events.error} onRetry={events.reload} />
-      <Card className="overflow-hidden">
+      <Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-accent/40">
             <tr>
@@ -134,7 +134,7 @@ export default function EventsPage() {
                 {open === i && (
                   <tr>
                     <td colSpan={5} className="bg-background px-4 py-3">
-                      <pre className="overflow-auto font-mono text-xs text-zinc-300">{JSON.stringify(e.properties, null, 2)}</pre>
+                      <pre className="overflow-auto font-mono text-xs text-fg-2">{JSON.stringify(e.properties, null, 2)}</pre>
                     </td>
                   </tr>
                 )}

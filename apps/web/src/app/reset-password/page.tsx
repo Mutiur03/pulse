@@ -9,7 +9,7 @@ import { Button, ErrorNote, Input } from '@/components/ui';
 
 const back = (
   <p className="mt-4 text-xs text-muted">
-    <Link href="/login" className="text-zinc-200 underline-offset-2 hover:underline">
+    <Link href="/login" className="text-fg underline-offset-2 hover:underline">
       Back to sign in
     </Link>
   </p>
@@ -35,7 +35,7 @@ function RequestForm() {
   return (
     <AuthCard title="Reset your password" subtitle="We will email you a link that works for one hour.">
       {sent ? (
-        <p className="text-sm text-zinc-300" data-testid="reset-sent">
+        <p className="text-sm text-fg-2" data-testid="reset-sent">
           If an account exists for <span className="font-medium">{email.trim()}</span>, a reset link is on its way. Check your inbox.
         </p>
       ) : (
@@ -79,7 +79,7 @@ function ConfirmForm({ token }: { token: string }) {
   return (
     <AuthCard title="Choose a new password" subtitle="Every device signed in to your account will be signed out.">
       {done ? (
-        <div className="flex flex-col gap-3 text-sm text-zinc-300" data-testid="reset-done">
+        <div className="flex flex-col gap-3 text-sm text-fg-2" data-testid="reset-done">
           Your password was changed.
           <Button onClick={() => (window.location.href = '/login')}>Sign in</Button>
         </div>

@@ -42,7 +42,7 @@ export function InstallGuide({ apiKey }: { apiKey: string }) {
             aria-selected={platform === p}
             data-testid={`platform-${p}`}
             onClick={() => setPlatform(p)}
-            className={cn('rounded-md px-3 py-1.5 text-xs', platform === p ? 'bg-accent text-zinc-100' : 'text-muted hover:text-zinc-200')}
+            className={cn('rounded-md px-3 py-1.5 text-xs', platform === p ? 'bg-accent text-fg' : 'text-muted hover:text-fg')}
           >
             {platformLabels[p]}
           </button>
@@ -50,12 +50,12 @@ export function InstallGuide({ apiKey }: { apiKey: string }) {
       </div>
       {install && (
         <div className="flex items-start justify-between gap-3 border-b border-border px-4 py-3">
-          <pre className="overflow-auto font-mono text-xs text-zinc-300">{install}</pre>
+          <pre className="overflow-auto font-mono text-xs text-fg-2">{install}</pre>
           <CopyButton text={install} />
         </div>
       )}
       <div className="flex items-start justify-between gap-3 px-4 py-3">
-        <pre className="overflow-auto font-mono text-xs leading-relaxed text-zinc-300" data-testid={platform === 'browser' ? 'new-project-snippet' : 'platform-snippet'}>
+        <pre className="overflow-auto font-mono text-xs leading-relaxed text-fg-2" data-testid={platform === 'browser' ? 'new-project-snippet' : 'platform-snippet'}>
           {snippet}
         </pre>
         <CopyButton text={snippet} />
@@ -110,13 +110,13 @@ export function FirstEventCheck({ project }: { project: number }) {
           <div className="flex flex-col gap-3" data-testid="first-event-received">
             <div className="flex items-center gap-2 text-ok">
               <span className="h-2 w-2 rounded-full bg-ok" />
-              First {first.kind} received: <span className="font-mono text-zinc-200">{first.name}</span>
+              First {first.kind} received: <span className="font-mono text-fg">{first.name}</span>
             </div>
             <div className="flex gap-2">
-              <Link href={first.kind === 'event' ? '/events' : '/traces'} className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-white">
+              <Link href={first.kind === 'event' ? '/events' : '/traces'} className="inline-flex h-8 items-center rounded-md bg-primary px-3 text-xs font-medium text-primary-fg">
                 Open {first.kind === 'event' ? 'events' : 'traces'}
               </Link>
-              <Link href="/dashboards" className="inline-flex h-8 items-center rounded-md px-3 text-xs text-zinc-300 hover:bg-accent">
+              <Link href="/dashboards" className="inline-flex h-8 items-center rounded-md px-3 text-xs text-fg-2 hover:bg-accent">
                 Go to dashboards
               </Link>
             </div>

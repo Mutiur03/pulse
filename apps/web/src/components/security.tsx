@@ -47,7 +47,7 @@ export function AllowedOrigins({ project, owner }: { project: number; owner: boo
       <form onSubmit={save} className="space-y-2 p-4">
         <textarea
           aria-label="Allowed origins"
-          className="h-24 w-full rounded-md border border-border bg-zinc-950 p-2 font-mono text-xs text-zinc-200 disabled:opacity-60"
+          className="h-24 w-full rounded-md border border-border bg-raised p-2 font-mono text-xs text-fg disabled:opacity-60"
           placeholder="Any origin"
           value={text}
           disabled={!owner || busy}
@@ -63,7 +63,7 @@ export function AllowedOrigins({ project, owner }: { project: number; owner: boo
               Save origins
             </Button>
             {saved && (
-              <span className="text-xs text-emerald-400" data-testid="origins-saved">
+              <span className="text-xs text-ok-fg" data-testid="origins-saved">
                 Saved. Ingest applies it within seconds.
               </span>
             )}
@@ -156,8 +156,8 @@ export function AuditLog({ org }: { org: Org }) {
                 <td className="px-4 py-2">
                   <Badge tone={actionTone(e.action)}>{e.action}</Badge>
                 </td>
-                <td className="px-4 py-2 text-zinc-300">{e.actor_email || '-'}</td>
-                <td className="max-w-xs truncate px-4 py-2 text-zinc-300">{e.target || '-'}</td>
+                <td className="px-4 py-2 text-fg-2">{e.actor_email || '-'}</td>
+                <td className="max-w-xs truncate px-4 py-2 text-fg-2">{e.target || '-'}</td>
                 <td className="px-4 py-2 font-mono text-muted">{e.ip || '-'}</td>
               </tr>
             ))}

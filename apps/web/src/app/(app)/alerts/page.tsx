@@ -20,7 +20,7 @@ export default function AlertsPage() {
             <Link href="/alerts/channels" className="inline-flex h-9 items-center rounded-md border border-border px-4 text-sm hover:bg-accent">
               Channels
             </Link>
-            <Link href="/alerts/new" className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-white hover:bg-primary/90" data-testid="new-alert">
+            <Link href="/alerts/new" className="inline-flex h-9 items-center rounded-md bg-primary px-4 text-sm font-medium text-primary-fg hover:bg-primary/90" data-testid="new-alert">
               New rule
             </Link>
           </div>
@@ -28,7 +28,7 @@ export default function AlertsPage() {
       />
       <ErrorNote error={rules.error} />
       {rules.loading && !rules.data && <Spinner />}
-      <Card className="overflow-hidden">
+      <Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-accent/40">
             <tr>

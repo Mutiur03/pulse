@@ -69,7 +69,7 @@ function Invite() {
         {error ? <ErrorNote error={error} /> : <Spinner />}
         {error && (
           <p className="mt-4 text-xs">
-            <Link href="/login" className="text-zinc-200 underline-offset-2 hover:underline">
+            <Link href="/login" className="text-fg underline-offset-2 hover:underline">
               Go to sign in
             </Link>
           </p>
@@ -81,19 +81,19 @@ function Invite() {
     <AuthCard title={`Join ${info.org_name}`} subtitle={`${info.inviter || 'An owner'} invited ${info.email} as ${info.role}.`}>
       <div data-testid="invite-card">
         {me ? (
-          <div className="flex flex-col gap-3 text-sm text-zinc-300">
+          <div className="flex flex-col gap-3 text-sm text-fg-2">
             <p>
               Signed in as <span className="font-medium">{me.user.email}</span>.
             </p>
             {me.user.email.toLowerCase() !== info.email.toLowerCase() && (
-              <p className="text-xs text-amber-300">This invite is for {info.email}. Sign in with that account to accept it.</p>
+              <p className="text-xs text-warn-fg">This invite is for {info.email}. Sign in with that account to accept it.</p>
             )}
             <ErrorNote error={error} />
             <Button onClick={accept} disabled={busy}>
               {busy ? 'Joining…' : `Accept and join ${info.org_name}`}
             </Button>
             <button
-              className="text-xs text-muted hover:text-zinc-200"
+              className="text-xs text-muted hover:text-fg"
               onClick={async () => {
                 await api.logout().catch(() => undefined);
                 window.location.href = `/login?next=${encodeURIComponent(next)}`;
@@ -125,7 +125,7 @@ function Invite() {
             </form>
             <p className="mt-4 text-xs text-muted">
               Already have an account?{' '}
-              <Link href={`/login?next=${encodeURIComponent(next)}`} className="text-zinc-200 underline-offset-2 hover:underline">
+              <Link href={`/login?next=${encodeURIComponent(next)}`} className="text-fg underline-offset-2 hover:underline">
                 Sign in to accept
               </Link>
             </p>

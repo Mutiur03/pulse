@@ -36,7 +36,7 @@ export default function IssuesPage() {
             <button
               key={s}
               onClick={() => setQ({ status: s === 'unresolved' ? '' : s })}
-              className={cn('rounded px-3 py-1 text-sm capitalize text-muted', status === s && 'bg-accent text-zinc-100')}
+              className={cn('rounded px-3 py-1 text-sm capitalize text-muted', status === s && 'bg-accent text-fg')}
             >
               {s}
             </button>
@@ -59,7 +59,7 @@ export default function IssuesPage() {
         {issues.data && <span className="text-xs text-muted">{issues.data.total} issues</span>}
       </div>
       <ErrorNote error={issues.error} />
-      <Card className="overflow-hidden">
+      <Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-accent/40">
             <tr>

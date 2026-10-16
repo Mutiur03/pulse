@@ -133,7 +133,7 @@ function Body({ widget, range }: { widget: DashboardWidget; range: string }) {
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-md bg-zinc-900/60 px-2 py-1.5">
+    <div className="rounded-md bg-raised/60 px-2 py-1.5">
       <div className="text-base font-semibold tabular-nums">{value}</div>
       <div className="text-[11px] text-muted">{label}</div>
     </div>

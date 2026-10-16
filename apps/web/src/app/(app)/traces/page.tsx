@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { fromRange, ms, time } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
-import { Badge, Card, Empty, ErrorNote, Input, Loading, PageHeader, Select, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Card, Empty, ErrorNote, Input, Loading, PageHeader, Select, Spinner, Td, Th, Toolbar } from '@/components/ui';
 import { TimeRange } from '@/components/time-range';
 
 export default function TracesPage() {
@@ -31,7 +31,7 @@ export default function TracesPage() {
   return (
     <>
       <PageHeader title="Traces" description="Every request from the browser through your services and database." />
-      <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
+      <Toolbar>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -55,9 +55,9 @@ export default function TracesPage() {
         <Input type="number" min={0} placeholder="Max ms" aria-label="Max duration (ms)" value={q.max ?? ''} onChange={(e) => setQ({ max: e.target.value })} className="w-24" />
         <TimeRange value={range} onChange={(v) => setQ({ range: v })} />
         {traces.loading && <Spinner />}
-      </Card>
+      </Toolbar>
       <ErrorNote error={traces.error} onRetry={traces.reload} />
-      <Card className="overflow-hidden">
+      <Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-accent/40">
             <tr>
@@ -91,7 +91,7 @@ export default function TracesPage() {
                 </Td>
                 <Td>
                   <div className="flex items-center gap-2">
-                    <div className="h-1.5 flex-1 rounded bg-zinc-800">
+                    <div className="h-1.5 flex-1 rounded bg-accent">
                       <div className={`h-1.5 rounded ${t.error_count ? 'bg-danger' : 'bg-primary'}`} style={{ width: `${Math.max(2, (t.duration_ns / maxDur) * 100)}%` }} />
                     </div>
                     <span className="w-16 text-right font-mono text-xs">{ms(t.duration_ns)}</span>

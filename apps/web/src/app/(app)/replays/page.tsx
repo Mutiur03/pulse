@@ -4,7 +4,7 @@ import { useState } from 'react';
 import { api } from '@/lib/api';
 import { duration, fromRange, time } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
-import { Badge, Card, Empty, ErrorNote, Input, Loading, PageHeader, Spinner, Td, Th } from '@/components/ui';
+import { Badge, Card, Empty, ErrorNote, Input, Loading, PageHeader, Spinner, Td, Th, Toolbar } from '@/components/ui';
 import { TimeRange } from '@/components/time-range';
 
 export default function ReplaysPage() {
@@ -32,7 +32,7 @@ export default function ReplaysPage() {
         title="Session replays"
         description={`Recordings of real sessions with their errors and traces. Inputs are masked by default. Kept ${replays.data?.retention_days ?? 30} days.`}
       />
-      <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
+      <Toolbar>
         <form
           onSubmit={(e) => {
             e.preventDefault();
@@ -45,15 +45,15 @@ export default function ReplaysPage() {
           <button type="submit" className="hidden" />
         </form>
         <Input type="number" min={0} placeholder="Min s" aria-label="Min duration (s)" value={q.min ?? ''} onChange={(e) => setQ({ min: e.target.value })} className="w-24" />
-        <label className="flex items-center gap-1.5 text-xs text-zinc-300">
+        <label className="flex items-center gap-1.5 text-xs text-fg-2">
           <input type="checkbox" checked={q.errors === '1'} onChange={(e) => setQ({ errors: e.target.checked ? '1' : '' })} data-testid="has-errors" />
           With errors
         </label>
         <TimeRange value={range} onChange={(v) => setQ({ range: v })} />
         {replays.loading && <Spinner />}
-      </Card>
+      </Toolbar>
       <ErrorNote error={replays.error} />
-      <Card className="overflow-hidden">
+      <Card className="overflow-x-auto">
         <table className="w-full text-sm">
           <thead className="border-b border-border bg-accent/40">
             <tr>

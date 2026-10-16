@@ -1,6 +1,8 @@
+'use client';
+import { useEffect, useRef, useState } from 'react';
 import type { TrendResult } from '@pulse/api-client';
 
-export const palette = ['#a78bfa', '#38bdf8', '#34d399', '#fbbf24', '#f87171', '#f472b6', '#94a3b8', '#2dd4bf', '#fb923c', '#c084fc'];
+export const palette = Array.from({ length: 10 }, (_, i) => `var(--chart-${i + 1})`);
 
 export function compact(v: number): string {
   const a = Math.abs(v);
@@ -41,23 +43,25 @@ export function LineChart({
   testId?: string;
   legend?: boolean;
 }) {
-  const width = 640;
-  const pad = { l: 48, r: 10, t: 10, b: 22 };
+  const box = useRef<HTMLDivElement>(null);
+  const width = useWidth(box);
+  const pad = { l: 44, r: 12, t: 10, b: 22 };
   const all = lines.flatMap((l) => l.data);
-  if (buckets.length === 0 || lines.length === 0) return <p className="px-4 py-12 text-center text-sm text-muted">No data in this range.</p>;
+  if (buckets.length === 0 || lines.length === 0) return <p className="px-4 py-12 text-center text-[13px] text-muted">No data in this range.</p>;
   const lo = Math.min(0, ...all);
   const hi = Math.max(...all, lo + 1);
   const n = Math.max(buckets.length - 1, 1);
   const x = (i: number) => pad.l + (i / n) * (width - pad.l - pad.r);
   const y = (v: number) => pad.t + (1 - (v - lo) / (hi - lo)) * (height - pad.t - pad.b);
-  const ticks = [0, Math.floor(buckets.length / 2), buckets.length - 1].filter((v, i, a) => a.indexOf(v) === i);
+  const nTicks = Math.max(2, Math.min(7, Math.floor(width / 120)));
+  const ticks = Array.from({ length: nTicks }, (_, k) => Math.round((k / (nTicks - 1)) * (buckets.length - 1))).filter((v, i, a) => a.indexOf(v) === i);
   return (
-    <div>
-      <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label="chart" data-testid={testId}>
-        {[0, 0.5, 1].map((f) => (
+    <div ref={box}>
+      <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} className="block overflow-visible" role="img" aria-label="chart" data-testid={testId}>
+        {[0, 0.25, 0.5, 0.75, 1].map((f) => (
           <g key={f}>
-            <line x1={pad.l} x2={width - pad.r} y1={y(lo + (hi - lo) * f)} y2={y(lo + (hi - lo) * f)} className="stroke-zinc-800" />
-            <text x={pad.l - 6} y={y(lo + (hi - lo) * f) + 3} textAnchor="end" className="fill-zinc-500 text-[10px]">
+            <line x1={pad.l} x2={width - pad.r} y1={y(lo + (hi - lo) * f)} y2={y(lo + (hi - lo) * f)} className={f === 0 ? 'stroke-strong' : 'stroke-border'} strokeDasharray={f === 0 ? undefined : '2 3'} />
+            <text x={pad.l - 6} y={y(lo + (hi - lo) * f) + 3} textAnchor="end" className="fill-subtle text-[10px]">
               {compact(lo + (hi - lo) * f)}
               {unit}
             </text>
@@ -69,17 +73,18 @@ export function LineChart({
               d={l.data.map((v, j) => `${j ? 'L' : 'M'}${x(j).toFixed(1)},${y(v).toFixed(1)}`).join(' ')}
               fill="none"
               stroke={palette[i % palette.length]}
-              strokeWidth={1.75}
+              strokeWidth={1.5}
+              strokeLinejoin="round"
             />
             {l.data.map((v, j) => (
-              <circle key={j} cx={x(j)} cy={y(v)} r={buckets.length > 60 ? 1 : 2.25} fill={palette[i % palette.length]}>
+              <circle key={j} cx={x(j)} cy={y(v)} r={buckets.length > 30 ? 1 : 2} fill={palette[i % palette.length]}>
                 <title>{`${l.label} · ${tick(buckets[j], interval)}: ${compact(v)}${unit}`}</title>
               </circle>
             ))}
           </g>
         ))}
         {ticks.map((i) => (
-          <text key={i} x={x(i)} y={height - 5} textAnchor={i === 0 ? 'start' : i === buckets.length - 1 ? 'end' : 'middle'} className="fill-zinc-500 text-[10px]">
+          <text key={i} x={x(i)} y={height - 5} textAnchor={i === 0 ? 'start' : i === buckets.length - 1 ? 'end' : 'middle'} className="fill-subtle text-[10px]">
             {tick(buckets[i], interval)}
           </text>
         ))}
@@ -91,7 +96,7 @@ export function LineChart({
 
 export function Legend({ labels }: { labels: string[] }) {
   return (
-    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-300" data-testid="chart-legend">
+    <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-fg-2" data-testid="chart-legend">
       {labels.map((l, i) => (
         <span key={`${l}-${i}`} className="flex items-center gap-1.5">
           <span className="inline-block h-2 w-2 rounded-full" style={{ background: palette[i % palette.length] }} />
@@ -110,11 +115,11 @@ export function BarList({ items, testId = 'bar-list' }: { items: { label: string
     <div className="flex flex-col gap-1.5" data-testid={testId}>
       {items.map((it, i) => (
         <div key={`${it.label}-${i}`} className="grid grid-cols-[minmax(0,12rem)_1fr_4rem] items-center gap-3 text-xs">
-          <span className="truncate text-zinc-300" title={it.label}>
+          <span className="truncate text-fg-2" title={it.label}>
             {it.label}
           </span>
-          <span className="h-4 rounded-sm bg-zinc-800">
-            <span className="block h-4 rounded-sm" style={{ width: `${(it.value / max) * 100}%`, background: palette[i % palette.length] }} />
+          <span className="h-3 rounded-sm bg-accent">
+            <span className="block h-3 rounded-sm" style={{ width: `${(it.value / max) * 100}%`, background: palette[i % palette.length] }} />
           </span>
           <span className="text-right tabular-nums">{compact(it.value)}</span>
         </div>
@@ -139,7 +144,7 @@ export function TrendChart({ result, display = 'line', height }: { result: Trend
     const first = result.series[0];
     return (
       <div className="py-6 text-center" data-testid="trend-number">
-        <div className="text-4xl font-semibold tabular-nums">{first ? compact(first.total) : '0'}</div>
+        <div className="text-4xl font-semibold tracking-tight tabular-nums">{first ? compact(first.total) : '0'}</div>
         <div className="mt-1 text-xs text-muted">{first ? seriesLabel(first) : 'No data'}</div>
       </div>
     );
@@ -167,4 +172,24 @@ export function TrendChart({ result, display = 'line', height }: { result: Trend
       </div>
     );
   return <LineChart buckets={result.buckets} lines={lines} interval={result.interval} height={height} testId="trend-chart" legend={lines.length > 1 || result.series.some((s) => s.breakdown)} />;
+}
+
+/** The rendered width of an element, so SVG text stays at its real size. */
+export function useWidth(ref: React.RefObject<HTMLDivElement | null>, initial = 640): number {
+  const [w, setW] = useState(initial);
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const ro = new ResizeObserver(([e]) => setW(Math.max(240, Math.round(e.contentRect.width))));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref]);
+  return w;
+}
+
+/** Renders children at the element's real width (for fixed-size SVG text). */
+export function Measure({ children, initial = 640 }: { children: (width: number) => React.ReactNode; initial?: number }) {
+  const ref = useRef<HTMLDivElement>(null);
+  const w = useWidth(ref, initial);
+  return <div ref={ref}>{children(w)}</div>;
 }

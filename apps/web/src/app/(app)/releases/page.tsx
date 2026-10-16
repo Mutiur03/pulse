@@ -44,7 +44,7 @@ export default function ReleasesPage() {
       )}
       {list.data && list.data.releases.length > 0 && (
         <div className="grid gap-4 xl:grid-cols-[360px_1fr]">
-          <Card className="h-fit overflow-hidden">
+          <Card className="h-fit overflow-x-auto">
             <table className="w-full text-sm">
               <thead className="border-b border-border">
                 <tr>
@@ -72,7 +72,7 @@ export default function ReleasesPage() {
               </tbody>
             </table>
           </Card>
-          <Card className="overflow-hidden">
+          <Card className="overflow-x-auto">
             <CardHeader
               title={selected ?? ''}
               description={detail.data ? `Created ${time(detail.data.release.created_at)}` : undefined}

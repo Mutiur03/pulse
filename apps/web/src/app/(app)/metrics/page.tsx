@@ -4,17 +4,22 @@ import { api } from '@/lib/api';
 import { fromRange } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
 import { TimeRange } from '@/components/time-range';
+import { Measure } from '@/components/charts';
 import { Card, CardHeader, Empty, ErrorNote, Input, Loading, PageHeader, Select, Spinner } from '@/components/ui';
 
 const aggs = ['', 'avg', 'sum', 'min', 'max', 'count', 'rate', 'p50', 'p90', 'p95', 'p99'] as const;
-const colors = ['#a78bfa', '#38bdf8', '#34d399', '#fbbf24', '#f87171', '#f472b6', '#94a3b8', '#2dd4bf'];
+const colors = Array.from({ length: 8 }, (_, i) => `var(--chart-${i + 1})`);
 
 function fmt(v: number, unit: string): string {
   const n = Math.abs(v) >= 100 ? Math.round(v) : Math.round(v * 100) / 100;
   return `${n.toLocaleString()}${unit && unit !== '1' ? ` ${unit}` : ''}`;
 }
 
-function Chart({ res, width = 900, height = 260 }: { res: MetricResult; width?: number; height?: number }) {
+function Chart(props: { res: MetricResult; height?: number }) {
+  return <Measure initial={900}>{(w) => <ChartAt {...props} width={w} />}</Measure>;
+}
+
+function ChartAt({ res, width = 900, height = 260 }: { res: MetricResult; width?: number; height?: number }) {
   const pad = { l: 64, r: 12, t: 12, b: 22 };
   const all = res.series.flatMap((s) => s.points);
   if (all.length === 0) return <p className="px-4 py-16 text-center text-sm text-muted">No data points in this range.</p>;
@@ -28,11 +33,11 @@ function Chart({ res, width = 900, height = 260 }: { res: MetricResult; width?: 
   const y = (v: number) => pad.t + (1 - (v - lo) / (hi - lo)) * (height - pad.t - pad.b);
   const clock = (t: number) => new Date(t).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   return (
-    <svg viewBox={`0 0 ${width} ${height}`} className="w-full" role="img" aria-label={`${res.name} over time`} data-testid="metric-chart">
+    <svg viewBox={`0 0 ${width} ${height}`} width="100%" height={height} className="block" role="img" aria-label={`${res.name} over time`} data-testid="metric-chart">
       {[0, 0.5, 1].map((f) => (
         <g key={f}>
-          <line x1={pad.l} x2={width - pad.r} y1={y(lo + (hi - lo) * f)} y2={y(lo + (hi - lo) * f)} className="stroke-zinc-800" />
-          <text x={pad.l - 6} y={y(lo + (hi - lo) * f) + 3} textAnchor="end" className="fill-zinc-500 text-[10px]">
+          <line x1={pad.l} x2={width - pad.r} y1={y(lo + (hi - lo) * f)} y2={y(lo + (hi - lo) * f)} className="stroke-border" />
+          <text x={pad.l - 6} y={y(lo + (hi - lo) * f) + 3} textAnchor="end" className="fill-subtle text-[10px]">
             {fmt(lo + (hi - lo) * f, res.unit)}
           </text>
         </g>
@@ -52,10 +57,10 @@ function Chart({ res, width = 900, height = 260 }: { res: MetricResult; width?: 
           ))}
         </g>
       ))}
-      <text x={pad.l} y={height - 4} className="fill-zinc-500 text-[10px]">
+      <text x={pad.l} y={height - 4} className="fill-subtle text-[10px]">
         {clock(t0)}
       </text>
-      <text x={width - pad.r} y={height - 4} textAnchor="end" className="fill-zinc-500 text-[10px]">
+      <text x={width - pad.r} y={height - 4} textAnchor="end" className="fill-subtle text-[10px]">
         {clock(t1)}
       </text>
     </svg>

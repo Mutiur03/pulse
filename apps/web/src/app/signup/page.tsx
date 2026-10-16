@@ -4,6 +4,7 @@ import { useState } from 'react';
 import { APIError } from '@pulse/api-client';
 import { api, selectOrg, selectProject } from '@/lib/api';
 import { Button, Card, ErrorNote, Input } from '@/components/ui';
+import { AuthFrame, AuthHeading } from '@/components/auth-card';
 
 export default function SignupPage() {
   const [name, setName] = useState('');
@@ -32,15 +33,9 @@ export default function SignupPage() {
     }
   };
   return (
-    <div className="grid min-h-screen place-items-center px-4">
-      <Card className="w-full max-w-sm p-6">
-        <div className="mb-6 flex items-center gap-2">
-          <span className="grid h-8 w-8 place-items-center rounded-md bg-primary font-bold">P</span>
-          <div>
-            <h1 className="font-semibold">Create your Pulse account</h1>
-            <p className="text-xs text-muted">You get your own organization; add projects next.</p>
-          </div>
-        </div>
+    <AuthFrame>
+      <Card className="w-full max-w-sm p-6 shadow-sm">
+        <AuthHeading title="Create your Pulse account" subtitle="You get your own organization; add projects next." />
         <form onSubmit={submit} className="flex flex-col gap-3">
           <label className="flex flex-col gap-1 text-xs text-muted">
             Name
@@ -69,11 +64,11 @@ export default function SignupPage() {
         </form>
         <p className="mt-4 text-xs text-muted">
           Already have an account?{' '}
-          <Link href="/login" className="text-zinc-200 underline-offset-2 hover:underline">
+          <Link href="/login" className="text-fg underline-offset-2 hover:underline">
             Sign in
           </Link>
         </p>
       </Card>
-    </div>
+    </AuthFrame>
   );
 }

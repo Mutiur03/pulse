@@ -6,7 +6,7 @@ import { api } from '@/lib/api';
 import { fromRange, time } from '@/lib/format';
 import { useAsync, useQueryState } from '@/lib/hooks';
 import { levelColor, levelOrder, levelTone, withTerm } from '@/lib/logs';
-import { Badge, Button, Card, CardHeader, Empty, ErrorNote, Input, PageHeader, Spinner } from '@/components/ui';
+import { Badge, Button, Card, CardHeader, Empty, ErrorNote, Input, PageHeader, Spinner, Toolbar } from '@/components/ui';
 import { TimeRange } from '@/components/time-range';
 
 const pageSize = 100;
@@ -67,8 +67,8 @@ function LogRow({ l, open, onToggle, onFilter }: { l: LogRecord; open: boolean; 
         <td className="px-2 py-1.5">
           <Badge tone={levelTone(l.severity)}>{l.severity || '—'}</Badge>
         </td>
-        <td className="whitespace-nowrap px-2 py-1.5 text-xs text-zinc-400">{l.service_name}</td>
-        <td className="w-full px-2 py-1.5 font-mono text-xs text-zinc-200" data-testid="log-body">
+        <td className="whitespace-nowrap px-2 py-1.5 text-xs text-muted">{l.service_name}</td>
+        <td className="w-full px-2 py-1.5 font-mono text-xs text-fg" data-testid="log-body">
           {l.body}
           {attrs.length > 0 && !open && (
             <span className="ml-2 text-muted">
@@ -89,7 +89,7 @@ function LogRow({ l, open, onToggle, onFilter }: { l: LogRecord; open: boolean; 
       </tr>
       {open && (
         <tr data-testid="log-detail">
-          <td colSpan={5} className="bg-zinc-950/60 px-4 py-3">
+          <td colSpan={5} className="bg-raised px-4 py-3">
             <table className="text-xs">
               <tbody>
                 {[
@@ -226,7 +226,7 @@ export default function LogsPage() {
           </Link>
         }
       />
-      <Card className="mb-4 flex flex-wrap items-center gap-2 p-3">
+      <Toolbar>
         <form
           className="flex min-w-[24rem] flex-1 gap-2"
           onSubmit={(e) => {
@@ -247,14 +247,14 @@ export default function LogsPage() {
         <Button variant={live ? 'default' : 'outline'} onClick={() => setLive(!live)} data-testid="live-tail" data-live={live} aria-pressed={live}>
           {live ? (
             <span className="flex items-center gap-1.5">
-              <span className="h-2 w-2 animate-pulse rounded-full bg-green-400" /> Live
+              <span className="h-2 w-2 animate-pulse rounded-full bg-ok" /> Live
             </span>
           ) : (
             'Live tail'
           )}
         </Button>
         {(loading || stats.loading) && <Spinner />}
-      </Card>
+      </Toolbar>
       <ErrorNote error={error ?? stats.error} />
       <div className="grid gap-4 lg:grid-cols-[14rem_1fr]">
         <Card className="h-fit space-y-4 p-3" data-testid="logs-facets">
@@ -266,7 +266,7 @@ export default function LogsPage() {
             <CardHeader title="Volume" description={stats.data ? `${stats.data.total} logs` : undefined} />
             <div className="px-3 pb-2">{stats.data && <Histogram stats={stats.data} />}</div>
           </Card>
-          <Card className="overflow-hidden">
+          <Card className="overflow-x-auto">
             {logs.length === 0 && !loading ? (
               q ? (
                 <Empty title="No logs match this search">Try a shorter query or a longer time range.</Empty>
