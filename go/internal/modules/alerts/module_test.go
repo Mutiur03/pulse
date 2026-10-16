@@ -1,17 +1,35 @@
-package api
+package alerts_test
 
 import (
 	"context"
 	"encoding/json"
 	"errors"
+	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
 
+	"github.com/go-chi/chi/v5"
+
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/auth"
+	module "github.com/Mutiur03/pulse/internal/modules/alerts"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 )
+
+func call(t *testing.T, m *module.Module, p *auth.Principal, method, path, body string) *httptest.ResponseRecorder {
+	t.Helper()
+	r := chi.NewRouter()
+	m.Register(r)
+	req := httptest.NewRequest(method, path, strings.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	if p != nil {
+		req = req.WithContext(auth.WithPrincipal(req.Context(), p))
+	}
+	rec := httptest.NewRecorder()
+	r.ServeHTTP(rec, req)
+	return rec
+}
 
 type fakeAlerts struct {
 	rules    map[int64]alerts.Rule
@@ -106,7 +124,8 @@ func TestAlertsAPI(t *testing.T) {
 	fa := &fakeAlerts{rules: map[int64]alerts.Rule{}, channels: map[int64]alerts.Channel{}}
 	fm := &fakeAlertMetrics{}
 	snd := &recordSender{}
-	s := &Server{Alerts: fa, AlertMetrics: fm, AlertSender: snd, Now: func() time.Time { return now }}
+	deps := module.Deps{Store: fa, Metrics: fm, Sender: snd, Now: func() time.Time { return now }}
+	s := module.New(deps)
 	me := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "member"}}}
 	owner := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "owner"}}}
 
@@ -125,12 +144,13 @@ func TestAlertsAPI(t *testing.T) {
 		t.Fatalf("bad target: %d", rec.Code)
 	}
 	// The outbound check refuses internal targets before they are saved.
-	s.OutboundCheck = func(_ context.Context, u string) error {
+	deps.OutboundCheck = func(_ context.Context, u string) error {
 		if strings.Contains(u, "169.254.169.254") {
 			return errors.New("blocked")
 		}
 		return nil
 	}
+	s = module.New(deps)
 	if rec := call(t, s, owner, "POST", "/v1/projects/1/alert-channels", `{"name":"x","kind":"slack","target":"http://169.254.169.254/latest"}`); rec.Code != 400 || !strings.Contains(rec.Body.String(), "not allowed") {
 		t.Fatalf("metadata target: %d %s", rec.Code, rec.Body)
 	}
@@ -200,7 +220,7 @@ func TestAlertsAPI(t *testing.T) {
 	if rec := call(t, s, me, "GET", "/v1/projects/1/alerts/1", ""); rec.Code != 404 {
 		t.Fatalf("deleted: %d", rec.Code)
 	}
-	if rec := call(t, &Server{}, me, "GET", "/v1/projects/1/alerts", ""); rec.Code != 503 {
+	if rec := call(t, module.New(module.Deps{}), me, "GET", "/v1/projects/1/alerts", ""); rec.Code != 503 {
 		t.Fatalf("unconfigured: %d", rec.Code)
 	}
 }

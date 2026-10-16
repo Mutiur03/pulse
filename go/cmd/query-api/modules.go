@@ -1,7 +1,9 @@
 package main
 
 import (
+	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api"
+	alertsmod "github.com/Mutiur03/pulse/internal/modules/alerts"
 	"github.com/Mutiur03/pulse/internal/modules/analytics"
 	"github.com/Mutiur03/pulse/internal/modules/dashboards"
 	"github.com/Mutiur03/pulse/internal/modules/issues"
@@ -36,6 +38,11 @@ func mountModules(r chi.Router, cfg *config.Config, d deps, srv *api.Server) {
 	}
 	sourcemaps.New(sd).Register(r)
 
+	alertsmod.New(alertsmod.Deps{
+		Store: &alerts.Store{DB: d.db}, Metrics: d.ch, OutboundCheck: d.outbound.CheckURL,
+		Sender: &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL, Policy: d.outbound},
+		AppURL: srv.AppURL, Audit: srv.Audit, ClientIP: d.proxies,
+	}).Register(r)
 	issues.New(issues.Deps{Repository: d.issues, Occurrences: d.ch, Symbolicator: d.sym}).Register(r)
 	analytics.New(analytics.Deps{Events: d.ch, Trends: d.ch, People: d.ch}).Register(r)
 	telemetry.New(telemetry.Deps{Traces: d.ch, Stats: d.ch, Logs: d.ch, Metrics: d.ch}).Register(r)

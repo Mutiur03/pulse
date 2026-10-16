@@ -12,7 +12,6 @@ import (
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/orgs"
 
-	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/clientip"
@@ -75,34 +74,17 @@ type Server struct {
 	Origins  OriginStore
 	Audit    audit.Recorder
 	AuditLog AuditReader
-	// OutboundCheck validates webhook and Slack URLs before they are
-	// saved (SSRF protection); nil skips the check.
-	OutboundCheck func(ctx context.Context, rawURL string) error
-	Orgs          OrgStore
+	Orgs     OrgStore
 	// Mail sends reset, invite and verification emails; nil drops them.
 	Mail mail.Sender
 	// AppURL is the web app's public base URL used in email links.
 	AppURL string
-	// Alerts manages alert rules and channels; nil disables alerting.
-	Alerts       AlertStore
-	AlertMetrics AlertMetrics
-	// AlertSender delivers test notifications.
-	AlertSender interface {
-		Send(ctx context.Context, c alerts.Channel, p alerts.Payload) error
-	}
 	// Governance keeps data settings and deletion requests; nil disables
 	// them. Persons links a deletion to every id of the person.
 	Governance   GovernanceStore
 	Persons      PersonLinker
 	SecureCookie bool
 	Now          func() time.Time
-}
-
-func (s *Server) now() time.Time {
-	if s.Now != nil {
-		return s.Now()
-	}
-	return time.Now()
 }
 
 var _ legacy.ServerInterface = (*Server)(nil)

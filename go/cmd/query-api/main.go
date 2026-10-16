@@ -10,7 +10,6 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api"
 	"github.com/Mutiur03/pulse/internal/api/legacy"
 	"github.com/Mutiur03/pulse/internal/audit"
@@ -125,7 +124,7 @@ func run(ctx context.Context, cfg *config.Config) error {
 
 // newServer builds the API handlers and stores on top of d.
 func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
-	db, rdb, chClient, proxies, outbound := d.db, d.redis, d.ch, d.proxies, d.outbound
+	db, rdb, chClient, proxies := d.db, d.redis, d.ch, d.proxies
 	idle := auth.DefaultIdle
 	if h := config.NonNegInt("SESSION_IDLE_HOURS", 0); h > 0 {
 		idle = time.Duration(h) * time.Hour
@@ -153,14 +152,13 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 			// Five reset emails per address and client per hour.
 			ResetEmail: limit("reset:req", "RESET_EMAIL_LIMIT", 5, time.Hour),
 		},
-		ClientIP:      proxies,
-		Sessions:      accounts,
-		Roles:         orgStore,
-		Origins:       &projects.Origins{DB: db, Keys: keyStore},
-		Audit:         auditStore,
-		AuditLog:      auditStore,
-		OutboundCheck: outbound.CheckURL,
-		Orgs:          orgStore,
+		ClientIP: proxies,
+		Sessions: accounts,
+		Roles:    orgStore,
+		Origins:  &projects.Origins{DB: db, Keys: keyStore},
+		Audit:    auditStore,
+		AuditLog: auditStore,
+		Orgs:     orgStore,
 		// Without SMTP_ADDR emails are written to the log.
 		Mail:       mail.New(cfg.SMTP),
 		AppURL:     cfg.AppURL,
@@ -169,10 +167,6 @@ func newServer(cfg *config.Config, d deps) (*api.Server, *auth.Store) {
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
 		SecureCookie: config.String("COOKIE_SECURE", "") != "false",
 	}
-
-	srv.Alerts, srv.AlertMetrics = &alerts.Store{DB: db}, chClient
-	srv.AlertSender = &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL, Policy: outbound}
-
 
 	return srv, accounts
 }
