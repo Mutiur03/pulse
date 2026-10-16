@@ -169,15 +169,8 @@ func (r *Rule) Validate() error {
 	case r.Metric == EventCount && strings.TrimSpace(r.EventName) == "":
 		return errors.New("event_count needs an event name")
 	}
-	r.LogQuery = strings.TrimSpace(r.LogQuery)
-	if r.Metric == LogCount {
-		q, err := logquery.Parse(r.LogQuery)
-		if err != nil {
-			return fmt.Errorf("log query: %w", err)
-		}
-		r.LogQuery = q.String()
-	} else {
-		r.LogQuery = ""
+	if err := r.normalizeLogQuery(); err != nil {
+		return err
 	}
 	if r.Comparison == "" {
 		r.Comparison = Above
@@ -191,6 +184,26 @@ func (r *Rule) Validate() error {
 	if r.Interval == 0 {
 		r.Interval = time.Minute
 	}
+	return r.checkRanges()
+}
+
+// normalizeLogQuery keeps a canonical log query for log_count and clears it
+// for other metrics.
+func (r *Rule) normalizeLogQuery() error {
+	r.LogQuery = strings.TrimSpace(r.LogQuery)
+	if r.Metric != LogCount {
+		r.LogQuery = ""
+		return nil
+	}
+	q, err := logquery.Parse(r.LogQuery)
+	if err != nil {
+		return fmt.Errorf("log query: %w", err)
+	}
+	r.LogQuery = q.String()
+	return nil
+}
+
+func (r *Rule) checkRanges() error {
 	switch {
 	case r.Window < MinWindow || r.Window > MaxWindow:
 		return errors.New("window must be between 1m and 24h")

@@ -1,0 +1,735 @@
+[
+  {
+    "Name": "error_count filtered=false bucket=0s",
+    "SQL": "SELECT toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ?",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_count filtered=false bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_count filtered=false bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_count filtered=true bucket=0s",
+    "SQL": "SELECT toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND service_name = ? AND environment = ? AND (positionCaseInsensitive(url, ?) \u003e 0 OR trace_id IN (SELECT trace_id FROM spans WHERE project_id = ? AND http_route = ? AND timestamp \u003e= ? AND timestamp \u003c ?))",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "prod",
+      "/pay",
+      "3",
+      "/pay",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_count filtered=true bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND service_name = ? AND environment = ? AND (positionCaseInsensitive(url, ?) \u003e 0 OR trace_id IN (SELECT trace_id FROM spans WHERE project_id = ? AND http_route = ? AND timestamp \u003e= ? AND timestamp \u003c ?)) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "prod",
+      "/pay",
+      "3",
+      "/pay",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_count filtered=true bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND service_name = ? AND environment = ? AND (positionCaseInsensitive(url, ?) \u003e 0 OR trace_id IN (SELECT trace_id FROM spans WHERE project_id = ? AND http_route = ? AND timestamp \u003e= ? AND timestamp \u003c ?)) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "prod",
+      "/pay",
+      "3",
+      "/pay",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_rate filtered=false bucket=0s",
+    "SQL": "SELECT toFloat64(count() / 5) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ?",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_rate filtered=false bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(count() / 1) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_rate filtered=false bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(count() / 10) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_rate filtered=true bucket=0s",
+    "SQL": "SELECT toFloat64(count() / 5) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND service_name = ? AND environment = ? AND (positionCaseInsensitive(url, ?) \u003e 0 OR trace_id IN (SELECT trace_id FROM spans WHERE project_id = ? AND http_route = ? AND timestamp \u003e= ? AND timestamp \u003c ?))",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "prod",
+      "/pay",
+      "3",
+      "/pay",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_rate filtered=true bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(count() / 1) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND service_name = ? AND environment = ? AND (positionCaseInsensitive(url, ?) \u003e 0 OR trace_id IN (SELECT trace_id FROM spans WHERE project_id = ? AND http_route = ? AND timestamp \u003e= ? AND timestamp \u003c ?)) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "prod",
+      "/pay",
+      "3",
+      "/pay",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "error_rate filtered=true bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(count() / 10) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(argMax(issue_id, timestamp)) AS i FROM errors WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND service_name = ? AND environment = ? AND (positionCaseInsensitive(url, ?) \u003e 0 OR trace_id IN (SELECT trace_id FROM spans WHERE project_id = ? AND http_route = ? AND timestamp \u003e= ? AND timestamp \u003c ?)) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "prod",
+      "/pay",
+      "3",
+      "/pay",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "failure_rate filtered=false bucket=0s",
+    "SQL": "SELECT toFloat64(if(count() = 0, 0, countIf(status_code = 'ERROR' OR http_status \u003e= 500) * 100 / count())) AS v, count() AS n, argMaxIf(trace_id, timestamp, status_code = 'ERROR' OR http_status \u003e= 500) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server'",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "failure_rate filtered=false bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(if(count() = 0, 0, countIf(status_code = 'ERROR' OR http_status \u003e= 500) * 100 / count())) AS v, count() AS n, argMaxIf(trace_id, timestamp, status_code = 'ERROR' OR http_status \u003e= 500) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "failure_rate filtered=false bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(if(count() = 0, 0, countIf(status_code = 'ERROR' OR http_status \u003e= 500) * 100 / count())) AS v, count() AS n, argMaxIf(trace_id, timestamp, status_code = 'ERROR' OR http_status \u003e= 500) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "failure_rate filtered=true bucket=0s",
+    "SQL": "SELECT toFloat64(if(count() = 0, 0, countIf(status_code = 'ERROR' OR http_status \u003e= 500) * 100 / count())) AS v, count() AS n, argMaxIf(trace_id, timestamp, status_code = 'ERROR' OR http_status \u003e= 500) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?)",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "failure_rate filtered=true bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(if(count() = 0, 0, countIf(status_code = 'ERROR' OR http_status \u003e= 500) * 100 / count())) AS v, count() AS n, argMaxIf(trace_id, timestamp, status_code = 'ERROR' OR http_status \u003e= 500) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "failure_rate filtered=true bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(if(count() = 0, 0, countIf(status_code = 'ERROR' OR http_status \u003e= 500) * 100 / count())) AS v, count() AS n, argMaxIf(trace_id, timestamp, status_code = 'ERROR' OR http_status \u003e= 500) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p95 filtered=false bucket=0s",
+    "SQL": "SELECT toFloat64(quantile(0.95)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server'",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p95 filtered=false bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(quantile(0.95)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p95 filtered=false bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(quantile(0.95)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p95 filtered=true bucket=0s",
+    "SQL": "SELECT toFloat64(quantile(0.95)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?)",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p95 filtered=true bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(quantile(0.95)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p95 filtered=true bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(quantile(0.95)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p99 filtered=false bucket=0s",
+    "SQL": "SELECT toFloat64(quantile(0.99)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server'",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p99 filtered=false bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(quantile(0.99)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p99 filtered=false bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(quantile(0.99)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p99 filtered=true bucket=0s",
+    "SQL": "SELECT toFloat64(quantile(0.99)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?)",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p99 filtered=true bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(quantile(0.99)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "latency_p99 filtered=true bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(quantile(0.99)(duration_ns) / 1e6) AS v, count() AS n, argMax(trace_id, duration_ns) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": true,
+    "Err": ""
+  },
+  {
+    "Name": "throughput filtered=false bucket=0s",
+    "SQL": "SELECT toFloat64(count() / 5) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server'",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "throughput filtered=false bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(count() / 1) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "throughput filtered=false bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(count() / 10) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "throughput filtered=true bucket=0s",
+    "SQL": "SELECT toFloat64(count() / 5) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?)",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "throughput filtered=true bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(count() / 1) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "throughput filtered=true bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(count() / 10) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM spans WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND span_kind = 'server' AND service_name = ? AND http_route = ? AND (attributes['resource.deployment.environment.name'] = ? OR attributes['resource.deployment.environment'] = ?) GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "/pay",
+      "prod",
+      "prod"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "event_count filtered=false bucket=0s",
+    "SQL": "SELECT toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM events WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND event = ?",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "signup"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "event_count filtered=false bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM events WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND event = ? GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "signup"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "event_count filtered=false bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM events WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND event = ? GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "signup"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "event_count filtered=true bucket=0s",
+    "SQL": "SELECT toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM events WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND event = ? AND positionCaseInsensitive(current_url, ?) \u003e 0",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "signup",
+      "/pay"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "event_count filtered=true bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM events WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND event = ? AND positionCaseInsensitive(current_url, ?) \u003e 0 GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "signup",
+      "/pay"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "event_count filtered=true bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM events WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND event = ? AND positionCaseInsensitive(current_url, ?) \u003e 0 GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "signup",
+      "/pay"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "log_count filtered=false bucket=0s",
+    "SQL": "SELECT toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM logs WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND severity = ? AND positionCaseInsensitive(body, ?) \u003e 0",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "ERROR",
+      "50%"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "log_count filtered=false bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM logs WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND severity = ? AND positionCaseInsensitive(body, ?) \u003e 0 GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "ERROR",
+      "50%"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "log_count filtered=false bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM logs WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND severity = ? AND positionCaseInsensitive(body, ?) \u003e 0 GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "ERROR",
+      "50%"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "log_count filtered=true bucket=0s",
+    "SQL": "SELECT toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM logs WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND service_name = ? AND severity = ? AND positionCaseInsensitive(body, ?) \u003e 0",
+    "Args": [
+      "3",
+      "2026-10-16 11:55:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "ERROR",
+      "50%"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "log_count filtered=true bucket=30s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 60 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM logs WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND service_name = ? AND severity = ? AND positionCaseInsensitive(body, ?) \u003e 0 GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "ERROR",
+      "50%"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "log_count filtered=true bucket=10m0s",
+    "SQL": "SELECT toDateTime(toStartOfInterval(timestamp, INTERVAL 600 SECOND)) AS b, toFloat64(toFloat64(count())) AS v, count() AS n, argMax(trace_id, timestamp) AS t, toUInt64(toUInt64(0)) AS i FROM logs WHERE project_id = ? AND timestamp \u003e= ? AND timestamp \u003c ? AND service_name = ? AND severity = ? AND positionCaseInsensitive(body, ?) \u003e 0 GROUP BY b ORDER BY b",
+    "Args": [
+      "3",
+      "2026-10-16 11:00:00 +0000 UTC",
+      "2026-10-16 12:00:00 +0000 UTC",
+      "api",
+      "ERROR",
+      "50%"
+    ],
+    "Empty": false,
+    "Err": ""
+  },
+  {
+    "Name": "new_issue filtered=false bucket=0s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"new_issue\" has no query"
+  },
+  {
+    "Name": "new_issue filtered=false bucket=30s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"new_issue\" has no query"
+  },
+  {
+    "Name": "new_issue filtered=false bucket=10m0s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"new_issue\" has no query"
+  },
+  {
+    "Name": "new_issue filtered=true bucket=0s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"new_issue\" has no query"
+  },
+  {
+    "Name": "new_issue filtered=true bucket=30s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"new_issue\" has no query"
+  },
+  {
+    "Name": "new_issue filtered=true bucket=10m0s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"new_issue\" has no query"
+  },
+  {
+    "Name": "bogus filtered=false bucket=0s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"bogus\" has no query"
+  },
+  {
+    "Name": "bogus filtered=false bucket=30s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"bogus\" has no query"
+  },
+  {
+    "Name": "bogus filtered=false bucket=10m0s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"bogus\" has no query"
+  },
+  {
+    "Name": "bogus filtered=true bucket=0s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"bogus\" has no query"
+  },
+  {
+    "Name": "bogus filtered=true bucket=30s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"bogus\" has no query"
+  },
+  {
+    "Name": "bogus filtered=true bucket=10m0s",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "metric \"bogus\" has no query"
+  },
+  {
+    "Name": "bad log query",
+    "SQL": "",
+    "Args": null,
+    "Empty": false,
+    "Err": "unknown level \"(\"; use one of trace, debug, info, warn, error, fatal"
+  }
+]
