@@ -24,13 +24,6 @@ import (
 	"github.com/Mutiur03/pulse/internal/store/ch"
 )
 
-func duration(name string, def time.Duration) time.Duration {
-	if d, err := time.ParseDuration(os.Getenv(name)); err == nil && d > 0 {
-		return d
-	}
-	return def
-}
-
 func main() {
 	cfg := config.Load()
 	db, err := pgxpool.New(context.Background(), cfg.PostgresURL)
@@ -38,7 +31,7 @@ func main() {
 		log.Fatalf("Failed to configure Postgres: %v", err)
 	}
 	defer db.Close()
-	chClient, err := ch.NewClient(cfg.ClickHouseAddr)
+	chClient, err := ch.Connect(cfg.ClickHouse)
 	if err != nil {
 		log.Fatalf("Failed to create ClickHouse client: %v", err)
 	}
@@ -52,15 +45,15 @@ func main() {
 	}
 	// Without object storage, rows are still deleted; objects are left to
 	// the bucket's own lifecycle rules.
-	if s := replay.Connect(); s != nil {
+	if s := replay.Connect(cfg.S3); s != nil {
 		w.Replays = s
 	}
-	if s := replay.ConnectArtifacts(); s != nil {
+	if s := replay.ConnectArtifacts(cfg.S3, cfg.ArtifactBucket); s != nil {
 		w.SourceMaps = s
 	}
 
-	poll := duration("DELETION_POLL_INTERVAL", 5*time.Second)
-	every := duration("RETENTION_INTERVAL", time.Hour)
+	poll := config.Duration("DELETION_POLL_INTERVAL", 5*time.Second)
+	every := config.Duration("RETENTION_INTERVAL", time.Hour)
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

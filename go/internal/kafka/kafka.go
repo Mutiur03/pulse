@@ -5,7 +5,6 @@ import (
 	"crypto/tls"
 	"fmt"
 	"log"
-	"os"
 	"time"
 
 	"github.com/twmb/franz-go/pkg/kgo"
@@ -13,19 +12,26 @@ import (
 	"github.com/twmb/franz-go/pkg/sasl/scram"
 )
 
-// securityOpts configures TLS and SASL for managed Kafka from the
-// environment: KAFKA_TLS=true, KAFKA_SASL_MECHANISM (SCRAM-SHA-512,
-// SCRAM-SHA-256 or PLAIN), KAFKA_SASL_USERNAME and KAFKA_SASL_PASSWORD.
-func securityOpts() ([]kgo.Opt, error) {
+// Security configures TLS and SASL for managed Kafka.
+type Security struct {
+	TLS bool
+	// SASLMechanism is SCRAM-SHA-512 (the default), SCRAM-SHA-256 or PLAIN.
+	// SASL is off when SASLUsername is empty.
+	SASLMechanism string
+	SASLUsername  string
+	SASLPassword  string
+}
+
+func securityOpts(sec Security) ([]kgo.Opt, error) {
 	var opts []kgo.Opt
-	if os.Getenv("KAFKA_TLS") == "true" {
+	if sec.TLS {
 		opts = append(opts, kgo.DialTLSConfig(&tls.Config{MinVersion: tls.VersionTLS12}))
 	}
-	user, pass := os.Getenv("KAFKA_SASL_USERNAME"), os.Getenv("KAFKA_SASL_PASSWORD")
+	user, pass := sec.SASLUsername, sec.SASLPassword
 	if user == "" {
 		return opts, nil
 	}
-	switch mech := os.Getenv("KAFKA_SASL_MECHANISM"); mech {
+	switch mech := sec.SASLMechanism; mech {
 	case "", "SCRAM-SHA-512":
 		opts = append(opts, kgo.SASL(scram.Auth{User: user, Pass: pass}.AsSha512Mechanism()))
 	case "SCRAM-SHA-256":
@@ -42,8 +48,8 @@ type Producer struct {
 	client *kgo.Client
 }
 
-func NewProducer(brokers []string) (*Producer, error) {
-	sec, err := securityOpts()
+func NewProducer(brokers []string, security Security) (*Producer, error) {
+	sec, err := securityOpts(security)
 	if err != nil {
 		return nil, err
 	}
@@ -93,8 +99,8 @@ type Consumer struct {
 	client *kgo.Client
 }
 
-func NewConsumer(brokers []string, groupID string, topics []string) (*Consumer, error) {
-	sec, err := securityOpts()
+func NewConsumer(brokers []string, security Security, groupID string, topics []string) (*Consumer, error) {
+	sec, err := securityOpts(security)
 	if err != nil {
 		return nil, err
 	}

@@ -35,7 +35,7 @@ func main() {
 		}()
 	}
 
-	chClient, err := ch.NewClient(cfg.ClickHouseAddr)
+	chClient, err := ch.Connect(cfg.ClickHouse)
 	if err != nil {
 		log.Fatalf("Failed to create ClickHouse client: %v", err)
 	}
@@ -51,17 +51,17 @@ func main() {
 
 	// Source maps live in object storage; without it stacks stay minified.
 	var sym *symbolicate.Symbolicator
-	if obj := replay.ConnectArtifacts(); obj != nil {
+	if obj := replay.ConnectArtifacts(cfg.S3, cfg.ArtifactBucket); obj != nil {
 		sym = &symbolicate.Symbolicator{Artifacts: &artifacts.Store{DB: issueStore.Pool()}, Objects: obj}
 	}
 
-	producer, err := kafka.NewProducer(cfg.KafkaBootstrapServers)
+	producer, err := kafka.NewProducer(cfg.KafkaBootstrapServers, cfg.Kafka)
 	if err != nil {
 		log.Fatalf("Failed to create Kafka producer: %v", err)
 	}
 	defer producer.Close()
 
-	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, "stream-processor", []string{"raw.events", "raw.spans", "raw.errors", "raw.logs", "raw.metrics"})
+	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, cfg.Kafka, "stream-processor", []string{"raw.events", "raw.spans", "raw.errors", "raw.logs", "raw.metrics"})
 	if err != nil {
 		log.Fatalf("Failed to create Kafka consumer: %v", err)
 	}

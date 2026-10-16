@@ -7,8 +7,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
-	"strings"
 	"syscall"
 	"time"
 
@@ -51,11 +49,8 @@ func main() {
 	}
 
 	// Cost limits for every read; see docs/load-testing.md.
-	chClient, err := ch.NewClientWithLimits(cfg.ClickHouseAddr, ch.ReadLimits{
-		MaxExecutionTime: time.Duration(envInt("QUERY_MAX_EXECUTION_SECONDS", 30)) * time.Second,
-		MaxRowsToRead:    uint64(envInt("QUERY_MAX_ROWS_TO_READ", 2_000_000_000)),
-		MaxMemoryUsage:   uint64(envInt("QUERY_MAX_MEMORY_MB", 4096)) << 20,
-	})
+	ch.HeavyMaxThreads = config.Int("QUERY_HEAVY_MAX_THREADS", ch.HeavyMaxThreads)
+	chClient, err := ch.Connect(chOptions(cfg))
 	if err != nil {
 		log.Fatalf("Failed to create ClickHouse client: %v", err)
 	}
@@ -81,15 +76,15 @@ func main() {
 	rdb := redis.NewClient(redisOpts)
 	defer func() { _ = rdb.Close() }()
 	idle := auth.DefaultIdle
-	if h := envInt("SESSION_IDLE_HOURS", 0); h > 0 {
+	if h := config.NonNegInt("SESSION_IDLE_HOURS", 0); h > 0 {
 		idle = time.Duration(h) * time.Hour
 	}
 	accounts := &auth.Store{DB: db, Idle: idle}
-	proxies, err := clientip.Parse(os.Getenv("TRUSTED_PROXIES"))
+	proxies, err := clientip.Parse(config.String("TRUSTED_PROXIES", ""))
 	if err != nil {
 		log.Fatalf("TRUSTED_PROXIES: %v", err)
 	}
-	outbound, err := safehttp.ParseAllowlist(os.Getenv("OUTBOUND_ALLOWLIST"))
+	outbound, err := safehttp.ParseAllowlist(cfg.OutboundAllowlist)
 	if err != nil {
 		log.Fatalf("OUTBOUND_ALLOWLIST: %v", err)
 	}
@@ -97,7 +92,7 @@ func main() {
 	orgStore := &orgs.Store{DB: db}
 	auditStore := &audit.Store{DB: db}
 	limit := func(prefix, env string, def int, window time.Duration) *auth.Throttle {
-		return &auth.Throttle{Redis: rdb, Max: envInt(env, def), Window: window, Prefix: prefix}
+		return &auth.Throttle{Redis: rdb, Max: config.NonNegInt(env, def), Window: window, Prefix: prefix}
 	}
 	srv := &api.Server{
 		Traces: chClient, Issues: issueStore, Accounts: accounts,
@@ -124,11 +119,8 @@ func main() {
 		OutboundCheck: outbound.CheckURL,
 		Orgs:          orgStore,
 		// Without SMTP_ADDR emails are written to the log.
-		Mail: mail.New(mail.Config{
-			Addr: os.Getenv("SMTP_ADDR"), From: os.Getenv("SMTP_FROM"),
-			User: os.Getenv("SMTP_USER"), Password: os.Getenv("SMTP_PASSWORD"),
-		}),
-		AppURL:     os.Getenv("APP_URL"),
+		Mail:       mail.New(cfg.SMTP),
+		AppURL:     cfg.AppURL,
 		Replays:    chClient,
 		Metrics:    chClient,
 		Insights:   chClient,
@@ -138,27 +130,25 @@ func main() {
 		Persons:    chClient,
 		Dashboards: &dashboards.Store{DB: db},
 		// Set COOKIE_SECURE=false only for plain-HTTP local development.
-		SecureCookie: os.Getenv("COOKIE_SECURE") != "false",
+		SecureCookie: config.String("COOKIE_SECURE", "") != "false",
 	}
 
 	srv.Alerts, srv.AlertMetrics = &alerts.Store{DB: db}, chClient
 	srv.AlertSender = &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL, Policy: outbound}
 
 	// A typed nil would look non-nil through the interface.
-	if objects := replay.Connect(); objects != nil {
+	if objects := replay.Connect(cfg.S3); objects != nil {
 		srv.ReplayObjects = objects
 	}
 	// Releases and upload tokens work without object storage; uploads and
 	// symbolication need it.
 	rel := &artifacts.Store{DB: db}
 	srv.Releases = rel
-	if objects := replay.ConnectArtifacts(); objects != nil {
+	if objects := replay.ConnectArtifacts(cfg.S3, cfg.ArtifactBucket); objects != nil {
 		srv.ArtifactObjects = objects
 		srv.Symbolicator = &symbolicate.Symbolicator{Artifacts: rel, Objects: objects}
 	}
-	if d, err := strconv.Atoi(os.Getenv("REPLAY_RETENTION_DAYS")); err == nil {
-		srv.ReplayRetentionDays = d
-	}
+	srv.ReplayRetentionDays = config.Int("REPLAY_RETENTION_DAYS", 0)
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
@@ -172,12 +162,12 @@ func main() {
 	r.Use(api.RequestLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
-	r.Use(api.SecurityHeaders(envInt("HSTS_MAX_AGE", 0)))
+	r.Use(api.SecurityHeaders(config.NonNegInt("HSTS_MAX_AGE", 0)))
 	// The web app calls this API through its own same-origin proxy, so no
 	// CORS headers are sent and the session cookie never leaves that origin.
 	// State-changing requests must come from the web app's origin.
 	csrf := auth.CSRF{}
-	for _, o := range append([]string{os.Getenv("APP_URL")}, strings.Split(os.Getenv("CSRF_TRUSTED_ORIGINS"), ",")...) {
+	for _, o := range append([]string{cfg.AppURL}, config.List("CSRF_TRUSTED_ORIGINS")...) {
 		if n := auth.NormalizeOrigin(o); n != "" {
 			csrf.Origins = append(csrf.Origins, n)
 		}
@@ -187,9 +177,9 @@ func main() {
 	}
 	r.Use(auth.Middleware(accounts, csrf))
 	limiter := &api.QueryLimiter{
-		PerOrg:  envInt("QUERY_MAX_CONCURRENT_PER_ORG", 8),
-		Wait:    time.Duration(envInt("QUERY_QUEUE_WAIT_SECONDS", 10)) * time.Second,
-		Timeout: time.Duration(envInt("QUERY_MAX_EXECUTION_SECONDS", 30)) * time.Second,
+		PerOrg:  config.NonNegInt("QUERY_MAX_CONCURRENT_PER_ORG", 8),
+		Wait:    time.Duration(config.NonNegInt("QUERY_QUEUE_WAIT_SECONDS", 10)) * time.Second,
+		Timeout: time.Duration(config.NonNegInt("QUERY_MAX_EXECUTION_SECONDS", 30)) * time.Second,
 	}
 	r.Use(limiter.Middleware)
 
@@ -197,7 +187,7 @@ func main() {
 
 	// Metrics are served on their own port, not the public one.
 	monitor.Service("query-api")
-	monitor.Serve(envOr("METRICS_ADDR", ":9102"))
+	monitor.Serve(config.String("METRICS_ADDR", ":9102"))
 	addr := fmt.Sprintf(":%d", cfg.QueryAPIPort)
 	server := &http.Server{Addr: addr, Handler: handler, ReadHeaderTimeout: 10 * time.Second}
 
@@ -220,17 +210,13 @@ func main() {
 	}
 }
 
-// envInt reads a positive integer setting, or def.
-func envInt(name string, def int) int {
-	if n, err := strconv.Atoi(os.Getenv(name)); err == nil && n >= 0 {
-		return n
+// chOptions adds the per-query cost limits; see docs/load-testing.md.
+func chOptions(cfg *config.Config) ch.Options {
+	o := cfg.ClickHouse
+	o.Limits = ch.ReadLimits{
+		MaxExecutionTime: time.Duration(config.NonNegInt("QUERY_MAX_EXECUTION_SECONDS", 30)) * time.Second,
+		MaxRowsToRead:    uint64(config.NonNegInt("QUERY_MAX_ROWS_TO_READ", 2_000_000_000)),
+		MaxMemoryUsage:   uint64(config.NonNegInt("QUERY_MAX_MEMORY_MB", 4096)) << 20,
 	}
-	return def
-}
-
-func envOr(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
+	return o
 }

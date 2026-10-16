@@ -48,7 +48,7 @@ func main() {
 		log.Fatalf("Failed to configure Postgres: %v", err)
 	}
 	defer db.Close()
-	chClient, err := ch.NewClient(cfg.ClickHouseAddr)
+	chClient, err := ch.Connect(cfg.ClickHouse)
 	if err != nil {
 		log.Fatalf("Failed to create ClickHouse client: %v", err)
 	}
@@ -60,10 +60,10 @@ func main() {
 	rdb := redis.NewClient(redisOpts)
 	defer func() { _ = rdb.Close() }()
 
-	appURL := os.Getenv("APP_URL")
+	appURL := cfg.AppURL
 	// Webhook and Slack deliveries never reach internal addresses unless
 	// allowlisted here (development only).
-	outbound, err := safehttp.ParseAllowlist(os.Getenv("OUTBOUND_ALLOWLIST"))
+	outbound, err := safehttp.ParseAllowlist(cfg.OutboundAllowlist)
 	if err != nil {
 		log.Fatalf("OUTBOUND_ALLOWLIST: %v", err)
 	}
@@ -72,10 +72,7 @@ func main() {
 		Metrics: chClient,
 		Sender: &alerts.Notifier{
 			// Without SMTP_ADDR emails are written to the log.
-			Mail: mail.New(mail.Config{
-				Addr: os.Getenv("SMTP_ADDR"), From: os.Getenv("SMTP_FROM"),
-				User: os.Getenv("SMTP_USER"), Password: os.Getenv("SMTP_PASSWORD"),
-			}),
+			Mail:   mail.New(cfg.SMTP),
 			AppURL: appURL,
 			Policy: outbound,
 		},
@@ -83,7 +80,7 @@ func main() {
 		AppURL: appURL,
 	}
 
-	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, "alerting-worker", []string{processor.TopicIssueEvents})
+	consumer, err := kafka.NewConsumer(cfg.KafkaBootstrapServers, cfg.Kafka, "alerting-worker", []string{processor.TopicIssueEvents})
 	if err != nil {
 		log.Fatalf("Failed to create Kafka consumer: %v", err)
 	}

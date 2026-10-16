@@ -2,8 +2,6 @@ package ch
 
 import (
 	"context"
-	"os"
-	"strconv"
 	"time"
 
 	"github.com/ClickHouse/clickhouse-go/v2"
@@ -28,14 +26,9 @@ func cacheRange(from, to time.Time) (time.Time, time.Time) {
 // HeavyMaxThreads caps the threads of one heavy read (a funnel), so a few
 // funnels cannot take every core while people open lists and charts. On an
 // 8 vCPU server 3 kept every read under its latency target with 5 users;
-// QUERY_HEAVY_MAX_THREADS overrides it (0 = the server default).
+// the query API sets it from QUERY_HEAVY_MAX_THREADS at startup (0 = the
+// server default).
 var HeavyMaxThreads = 3
-
-func init() {
-	if v, err := strconv.Atoi(os.Getenv("QUERY_HEAVY_MAX_THREADS")); err == nil {
-		HeavyMaxThreads = v
-	}
-}
 
 // cached returns a context whose queries use the ClickHouse query cache,
 // with heavy reads limited to HeavyMaxThreads. Only aggregate reads (trends

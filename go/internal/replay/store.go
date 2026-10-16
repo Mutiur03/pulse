@@ -6,7 +6,6 @@ import (
 	"errors"
 	"io"
 	"log"
-	"os"
 	"time"
 
 	"github.com/minio/minio-go/v7"
@@ -89,43 +88,20 @@ func (s *S3) Get(ctx context.Context, key string) ([]byte, error) {
 	return b, err
 }
 
-// S3ConfigFromEnv reads S3_ENDPOINT (host:port), S3_ACCESS_KEY,
-// S3_SECRET_KEY, S3_BUCKET, S3_REGION and S3_USE_SSL. ok is false when no
-// endpoint is set, which disables replay storage.
-func S3ConfigFromEnv() (S3Config, bool) {
-	c := S3Config{
-		Endpoint:  os.Getenv("S3_ENDPOINT"),
-		AccessKey: os.Getenv("S3_ACCESS_KEY"),
-		SecretKey: os.Getenv("S3_SECRET_KEY"),
-		Bucket:    os.Getenv("S3_BUCKET"),
-		Region:    os.Getenv("S3_REGION"),
-		UseSSL:    os.Getenv("S3_USE_SSL") == "true",
-	}
-	if c.Bucket == "" {
-		c.Bucket = "pulse-replays"
-	}
-	if c.Region == "" {
-		c.Region = "us-east-1"
-	}
-	return c, c.Endpoint != ""
-}
-
-// Connect opens the configured storage, or returns nil when none is set or
+// Connect opens the replay bucket, or returns nil when no endpoint is set or
 // it cannot be reached (replay is then disabled, everything else works).
-func Connect() *S3 {
-	cfg, ok := S3ConfigFromEnv()
-	return connect(cfg, ok, "session replay")
+func Connect(cfg S3Config) *S3 {
+	return connect(cfg, cfg.Endpoint != "", "session replay")
 }
 
-// ConnectArtifacts opens the bucket for source maps: S3_ARTIFACT_BUCKET,
-// default pulse-artifacts, on the same server as replays.
-func ConnectArtifacts() *S3 {
-	cfg, ok := S3ConfigFromEnv()
-	cfg.Bucket = os.Getenv("S3_ARTIFACT_BUCKET")
-	if cfg.Bucket == "" {
-		cfg.Bucket = "pulse-artifacts"
+// ConnectArtifacts opens the source map bucket, on the same server as
+// replays; bucket defaults to pulse-artifacts.
+func ConnectArtifacts(cfg S3Config, bucket string) *S3 {
+	if bucket == "" {
+		bucket = "pulse-artifacts"
 	}
-	return connect(cfg, ok, "source map")
+	cfg.Bucket = bucket
+	return connect(cfg, cfg.Endpoint != "", "source map")
 }
 
 func connect(cfg S3Config, ok bool, what string) *S3 {

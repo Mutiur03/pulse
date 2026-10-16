@@ -6,7 +6,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"strconv"
 	"time"
 
@@ -18,11 +17,18 @@ type Client struct {
 	conn driver.Conn
 }
 
-func envOr(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
+// Options says where and how to connect. Empty Database and Username mean
+// "default".
+type Options struct {
+	Addr     string
+	Database string
+	Username string
+	Password string
+	// Secure turns on TLS; managed ClickHouse services require it (usually
+	// on port 9440).
+	Secure bool
+	// Limits caps every query; the query API sets them, writers do not.
+	Limits ReadLimits
 }
 
 // ReadLimits caps what one query may cost. Zero values mean no limit. The
@@ -84,23 +90,23 @@ func LimitError(err error) error {
 	return nil
 }
 
+// NewClient connects to addr as the default user, without limits.
 func NewClient(addr string) (*Client, error) {
-	return NewClientWithLimits(addr, ReadLimits{})
+	return Connect(Options{Addr: addr})
 }
 
-// NewClientWithLimits connects with every query capped by limits.
-func NewClientWithLimits(addr string, limits ReadLimits) (*Client, error) {
+// Connect opens and pings a connection.
+func Connect(o Options) (*Client, error) {
 	opts := &clickhouse.Options{
-		Settings: limits.Settings(),
-		Addr:     []string{addr},
+		Settings: o.Limits.Settings(),
+		Addr:     []string{o.Addr},
 		Auth: clickhouse.Auth{
-			Database: envOr("CLICKHOUSE_DB", "default"),
-			Username: envOr("CLICKHOUSE_USER", "default"),
-			Password: os.Getenv("CLICKHOUSE_PASSWORD"),
+			Database: orDefault(o.Database),
+			Username: orDefault(o.Username),
+			Password: o.Password,
 		},
 	}
-	// Managed ClickHouse services require TLS (usually on port 9440).
-	if os.Getenv("CLICKHOUSE_SECURE") == "true" {
+	if o.Secure {
 		opts.TLS = &tls.Config{MinVersion: tls.VersionTLS12}
 	}
 	conn, err := clickhouse.Open(opts)
@@ -374,4 +380,11 @@ func jsonArray(v interface{}) string {
 		return "[]"
 	}
 	return string(b)
+}
+
+func orDefault(v string) string {
+	if v == "" {
+		return "default"
+	}
+	return v
 }

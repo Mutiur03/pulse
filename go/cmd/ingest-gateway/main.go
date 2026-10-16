@@ -8,7 +8,6 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
-	"strconv"
 	"syscall"
 	"time"
 
@@ -41,7 +40,7 @@ func main() {
 		}()
 	}
 
-	producer, err := kafka.NewProducer(cfg.KafkaBootstrapServers)
+	producer, err := kafka.NewProducer(cfg.KafkaBootstrapServers, cfg.Kafka)
 	if err != nil {
 		log.Fatalf("Failed to create Kafka producer: %v", err)
 	}
@@ -64,8 +63,8 @@ func main() {
 	}
 
 	var opts []ingest.Option
-	if objects := replay.Connect(); objects != nil {
-		chClient, err := ch.NewClient(cfg.ClickHouseAddr)
+	if objects := replay.Connect(cfg.S3); objects != nil {
+		chClient, err := ch.Connect(cfg.ClickHouse)
 		if err != nil {
 			log.Fatalf("Failed to create ClickHouse client: %v", err)
 		}
@@ -75,12 +74,12 @@ func main() {
 	// PII scrubbing with each project's rules (internal/governance).
 	scrub := &governance.Cache{Source: &governance.Store{DB: db}}
 	opts = append(opts, ingest.WithScrubbing(scrub))
-	if h := os.Getenv("COUNTRY_HEADER"); h != "" {
+	if h := config.String("COUNTRY_HEADER", ""); h != "" {
 		opts = append(opts, ingest.WithCountryHeader(h))
 	}
 	// Metrics are served on their own port, not the public one.
 	monitor.Service("ingest-gateway")
-	monitor.Serve(envOr("METRICS_ADDR", ":9101"))
+	monitor.Serve(config.String("METRICS_ADDR", ":9101"))
 	addr := fmt.Sprintf(":%d", cfg.IngestGatewayPort)
 	server := &http.Server{
 		Addr:              addr,
@@ -124,18 +123,15 @@ func main() {
 // disables it), with TLS when OTLP_GRPC_TLS_CERT and OTLP_GRPC_TLS_KEY are
 // set and a size limit from OTLP_GRPC_MAX_RECV_MIB.
 func startGRPC(p ingest.Producer, auth ingest.Authenticator, scrub ingest.ScrubSource) (*grpc.Server, net.Listener) {
-	port := os.Getenv("OTLP_GRPC_PORT")
-	if port == "" {
-		port = "4317"
-	}
+	port := config.String("OTLP_GRPC_PORT", "4317")
 	if port == "0" || port == "off" {
 		return nil, nil
 	}
 	var opts []grpc.ServerOption
-	if mib, err := strconv.Atoi(os.Getenv("OTLP_GRPC_MAX_RECV_MIB")); err == nil && mib > 0 {
+	if mib := config.PositiveInt("OTLP_GRPC_MAX_RECV_MIB", 0); mib > 0 {
 		opts = append(opts, grpc.MaxRecvMsgSize(mib<<20))
 	}
-	cert, key := os.Getenv("OTLP_GRPC_TLS_CERT"), os.Getenv("OTLP_GRPC_TLS_KEY")
+	cert, key := config.String("OTLP_GRPC_TLS_CERT", ""), config.String("OTLP_GRPC_TLS_KEY", "")
 	if cert != "" || key != "" {
 		creds, err := credentials.NewServerTLSFromFile(cert, key)
 		if err != nil {
@@ -166,11 +162,4 @@ func ingestRoute(r *http.Request) string {
 		return r.URL.Path
 	}
 	return "other"
-}
-
-func envOr(k, def string) string {
-	if v := os.Getenv(k); v != "" {
-		return v
-	}
-	return def
 }
