@@ -15,6 +15,17 @@
     "turbo": "^2.3.3",
     "typescript": "^5.7.2"
   },
+  "pnpm": {
+    "overrides": {
+      "postcss@<8.5.18": "^8.5.30",
+      "sharp@<0.35.5": "^0.35.5"
+    },
+    "auditConfig": {
+      "ignoreGhsas": [
+        "GHSA-vfj7-8cjw-p6xm"
+      ]
+    }
+  },
   "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=20"

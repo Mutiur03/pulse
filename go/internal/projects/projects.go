@@ -99,3 +99,43 @@ func (s *Store) Rename(ctx context.Context, projectID int64, name string) (strin
 	}
 	return name, nil
 }
+
+// Origins stores a project's allowed browser origins; after a change the
+// project's keys are dropped from the ingest cache so it applies at once.
+type Origins struct {
+	DB   *pgxpool.Pool
+	Keys interface {
+		PurgeProject(ctx context.Context, projectID int64) error
+	}
+}
+
+func (o *Origins) AllowedOrigins(ctx context.Context, project int64) ([]string, error) {
+	var list []string
+	err := o.DB.QueryRow(ctx, `SELECT allowed_origins FROM projects WHERE id = $1`, project).Scan(&list)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrNotFound
+	}
+	if list == nil {
+		list = []string{}
+	}
+	return list, err
+}
+
+func (o *Origins) SetAllowedOrigins(ctx context.Context, project int64, origins []string) ([]string, error) {
+	if origins == nil {
+		origins = []string{}
+	}
+	tag, err := o.DB.Exec(ctx, `UPDATE projects SET allowed_origins = $2 WHERE id = $1`, project, origins)
+	if err != nil {
+		return nil, err
+	}
+	if tag.RowsAffected() == 0 {
+		return nil, ErrNotFound
+	}
+	if o.Keys != nil {
+		if err := o.Keys.PurgeProject(ctx, project); err != nil {
+			return nil, err
+		}
+	}
+	return origins, nil
+}

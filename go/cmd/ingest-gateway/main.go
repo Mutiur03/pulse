@@ -133,7 +133,7 @@ func startGRPC(p ingest.Producer, auth ingest.Authenticator) (*grpc.Server, net.
 	}
 	s := ingest.NewGRPCServer(p, auth, opts...)
 	go func() {
-		log.Printf("OTLP gRPC receiver listening on :%s (tls=%v)", port, cert != "")
+		log.Printf("OTLP gRPC receiver listening on :%s (tls=%v)", port, cert != "") //nolint:gosec // operator setting
 		if err := s.Serve(lis); err != nil && err != grpc.ErrServerStopped {
 			log.Fatalf("gRPC server error: %v", err)
 		}

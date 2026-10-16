@@ -264,8 +264,8 @@ func main() {
 	s := &server{db: db}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, _ *http.Request) { writeJSON(w, 200, map[string]string{"status": "ok"}) })
-	mux.Handle("GET /api/orders", otelhttp.WithRouteTag("/api/orders", http.HandlerFunc(s.orders)))
-	mux.Handle("POST /api/pay", otelhttp.WithRouteTag("/api/pay", http.HandlerFunc(s.pay)))
+	mux.Handle("GET /api/orders", routeTag("/api/orders", http.HandlerFunc(s.orders)))
+	mux.Handle("POST /api/pay", routeTag("/api/pay", http.HandlerFunc(s.pay)))
 
 	handler := cors(otelhttp.NewHandler(withSession(mux), "go-demo-api",
 		otelhttp.WithSpanNameFormatter(func(_ string, r *http.Request) string { return r.Method + " " + r.URL.Path }),
@@ -284,4 +284,12 @@ func main() {
 	c, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 	_ = srv.Shutdown(c)
+}
+
+// routeTag records the route on the server span as http.route.
+func routeTag(route string, h http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		trace.SpanFromContext(r.Context()).SetAttributes(semconv.HTTPRoute(route))
+		h.ServeHTTP(w, r)
+	})
 }

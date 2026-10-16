@@ -3,6 +3,7 @@ import { useState } from 'react';
 import { api, currentContext, handleAuthError } from '@/lib/api';
 import { Members } from '@/components/members';
 import { UploadTokens } from '@/components/upload-tokens';
+import { AllowedOrigins, AuditLog, Sessions } from '@/components/security';
 import { backendSnippet, browserSnippet } from '@/lib/snippet';
 import { time } from '@/lib/format';
 import { useAsync } from '@/lib/hooks';
@@ -134,8 +135,11 @@ export default function SettingsPage() {
           <pre className="overflow-auto px-4 pb-4 font-mono text-xs leading-relaxed text-zinc-300">{backend}</pre>
         </Card>
       </div>
+      {project && <AllowedOrigins project={project.id} owner={owner} />}
       {project && <UploadTokens project={project.id} owner={owner} />}
       {ctx?.org && me.data && <Members org={ctx.org} me={me.data.user.id} />}
+      {ctx?.org?.role === 'owner' && <AuditLog org={ctx.org} />}
+      <Sessions />
     </>
   );
 }

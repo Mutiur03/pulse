@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"sync"
 	"testing"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/safehttp"
 )
 
 var t0 = time.Date(2026, 10, 1, 12, 0, 0, 0, time.UTC)
@@ -251,7 +253,8 @@ func TestNotifierChannels(t *testing.T) {
 	}))
 	defer srv.Close()
 	fm := &fakeMail{}
-	n := &Notifier{Mail: fm, AppURL: "http://app", Now: func() time.Time { return t0 }}
+	loopback := &safehttp.Policy{AllowNets: []netip.Prefix{netip.MustParsePrefix("127.0.0.0/8")}}
+	n := &Notifier{Mail: fm, AppURL: "http://app", Now: func() time.Time { return t0 }, Policy: loopback, Backoff: time.Millisecond}
 	v := 12.0
 	p := Payload{Notice: NoticeFiring, RuleID: 7, RuleName: "Errors", State: Alerting, Previous: OK, Metric: ErrorCount,
 		Condition: "error_count > 5 over 5m", Value: &v, IssueID: 3, TraceID: "abc", URL: "http://app/alerts/7", At: t0}
@@ -283,10 +286,50 @@ func TestNotifierChannels(t *testing.T) {
 		t.Fatalf("email %+v", m)
 	}
 
-	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(500) }))
+	tries := 0
+	failing := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { tries++; w.WriteHeader(500) }))
 	defer failing.Close()
-	if err := n.Send(context.Background(), Channel{Kind: Webhook, Target: failing.URL}, p); err == nil {
-		t.Fatal("HTTP 500 should be an error")
+	if err := n.Send(context.Background(), Channel{Kind: Webhook, Target: failing.URL}, p); err == nil || tries != 3 {
+		t.Fatalf("HTTP 500 should be retried 3 times and fail: %v after %d", err, tries)
+	}
+
+	// A 4xx is final; a flaky endpoint succeeds on the retry.
+	tries = 0
+	gone := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { tries++; w.WriteHeader(410) }))
+	defer gone.Close()
+	if err := n.Send(context.Background(), Channel{Kind: Webhook, Target: gone.URL}, p); err == nil || tries != 1 {
+		t.Fatalf("HTTP 410: %v after %d", err, tries)
+	}
+	tries = 0
+	flaky := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		tries++
+		if tries == 1 {
+			w.WriteHeader(503)
+		}
+	}))
+	defer flaky.Close()
+	if err := n.Send(context.Background(), Channel{Kind: Webhook, Target: flaky.URL}, p); err != nil || tries != 2 {
+		t.Fatalf("flaky: %v after %d", err, tries)
+	}
+}
+
+func TestNotifierBlocksInternalTargets(t *testing.T) {
+	hits := 0
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { hits++ }))
+	defer srv.Close()
+	n := &Notifier{Backoff: time.Millisecond}
+	p := Payload{Notice: NoticeFiring, RuleName: "x", At: t0}
+	for _, k := range []ChannelKind{Webhook, Slack} {
+		err := n.Send(context.Background(), Channel{Kind: k, Target: srv.URL}, p)
+		if !errors.Is(err, safehttp.ErrBlocked) {
+			t.Fatalf("%s to loopback: %v", k, err)
+		}
+		if err := n.CheckTarget(context.Background(), Channel{Kind: k, Target: "http://169.254.169.254/latest"}); err == nil {
+			t.Fatal("metadata address accepted")
+		}
+	}
+	if hits != 0 {
+		t.Fatalf("blocked target was reached %d times", hits)
 	}
 }
 

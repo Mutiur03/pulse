@@ -5,10 +5,8 @@ import (
 	"encoding/json"
 	"errors"
 	"log"
-	"math"
 	"net/http"
 	"net/url"
-	"strconv"
 	"strings"
 
 	"github.com/Mutiur03/pulse/internal/api/gen"
@@ -55,13 +53,16 @@ func (s *Server) RequestPasswordReset(w http.ResponseWriter, r *http.Request) {
 	if !decode(w, r, &body) {
 		return
 	}
-	ip := clientIP(r)
-	if blocked, wait := s.ResetThrottle.Blocked(r.Context(), body.Email, ip); blocked {
-		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
-		writeErr(w, http.StatusTooManyRequests, "too many reset requests, try again later")
+	ip := s.ip(r)
+	if ok, wait := s.Limits.ResetIP.Take(r.Context(), ip); !ok {
+		tooMany(w, wait, "too many reset requests from this address, try again later")
 		return
 	}
-	s.ResetThrottle.Fail(r.Context(), body.Email, ip)
+	if blocked, wait := s.Limits.ResetEmail.Blocked(r.Context(), body.Email, ip); blocked {
+		tooMany(w, wait, "too many reset requests, try again later")
+		return
+	}
+	s.Limits.ResetEmail.Fail(r.Context(), body.Email, ip)
 	if auth.ValidEmail(strings.TrimSpace(body.Email)) {
 		token, u, ok, err := s.Accounts.RequestReset(r.Context(), body.Email)
 		if err != nil {

@@ -73,7 +73,8 @@ func main() {
 			_, _ = w.Write([]byte(`{"status":"healthy","service":"stream-processor"}`))
 		})
 		log.Println("Stream processor health endpoint on :8082")
-		if err := http.ListenAndServe(":8082", mux); err != nil {
+		hs := &http.Server{Addr: ":8082", Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+		if err := hs.ListenAndServe(); err != nil {
 			log.Printf("Health server error: %v", err)
 		}
 	}()

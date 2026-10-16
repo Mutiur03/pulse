@@ -17,8 +17,9 @@ import (
 )
 
 type fakeAccounts struct {
-	users  map[string]string // email -> password
-	logins int
+	users     map[string]string // email -> password
+	logins    int
+	loggedOut string
 }
 
 func (f *fakeAccounts) Login(_ context.Context, email, pw, _ string) (string, auth.User, error) {
@@ -45,7 +46,7 @@ func (f *fakeAccounts) Principal(_ context.Context, tok string) (*auth.Principal
 	return &auth.Principal{User: auth.User{ID: 1, Email: strings.TrimPrefix(tok, "tok-")}}, nil
 }
 
-func (f *fakeAccounts) Logout(context.Context, string) error { return nil }
+func (f *fakeAccounts) Logout(_ context.Context, t string) error { f.loggedOut = t; return nil }
 
 func (f *fakeAccounts) RequestReset(_ context.Context, email string) (string, auth.User, bool, error) {
 	if _, ok := f.users[email]; !ok {
@@ -113,8 +114,8 @@ func TestSignup(t *testing.T) {
 func TestLoginThrottle(t *testing.T) {
 	mr := miniredis.RunT(t)
 	acc := &fakeAccounts{users: map[string]string{"a@example.com": "right password"}}
-	s := &Server{Accounts: acc, Throttle: &auth.Throttle{
-		Redis: redis.NewClient(&redis.Options{Addr: mr.Addr()}), Max: 5, Window: 15 * time.Minute}}
+	s := &Server{Accounts: acc, Limits: AuthLimits{LoginFail: &auth.Throttle{
+		Redis: redis.NewClient(&redis.Options{Addr: mr.Addr()}), Max: 5, Window: 15 * time.Minute}}}
 	bad := `{"email":"a@example.com","password":"wrong"}`
 	good := `{"email":"a@example.com","password":"right password"}`
 	for i := 0; i < 5; i++ {
@@ -152,8 +153,8 @@ func TestLoginThrottle(t *testing.T) {
 
 func TestLoginThrottleRedisDown(t *testing.T) {
 	acc := &fakeAccounts{users: map[string]string{"a@example.com": "right password"}}
-	s := &Server{Accounts: acc, Throttle: &auth.Throttle{
-		Redis: redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1}), Max: 1, Window: time.Minute}}
+	s := &Server{Accounts: acc, Limits: AuthLimits{LoginFail: &auth.Throttle{
+		Redis: redis.NewClient(&redis.Options{Addr: "127.0.0.1:1", MaxRetries: -1}), Max: 1, Window: time.Minute}}}
 	post(s, "/v1/auth/login", `{"email":"a@example.com","password":"x"}`, "1.1.1.1")
 	if rec := post(s, "/v1/auth/login", `{"email":"a@example.com","password":"right password"}`, "1.1.1.1"); rec.Code != 200 {
 		t.Errorf("must fail open: %d", rec.Code)

@@ -196,6 +196,70 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Error'
+  /v1/orgs/{org_id}/members/{user_id}/role:
+    post:
+      summary: Change a member's role
+      description: Owners only. The last owner cannot be demoted.
+      operationId: setMemberRole
+      parameters:
+        - $ref: '#/components/parameters/OrgPath'
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: integer
+            format: int64
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RoleInput'
+      responses:
+        '204':
+          description: Done
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: That is the last owner
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+  /v1/orgs/{org_id}/audit-log:
+    get:
+      summary: Security audit log of the organization
+      description: Owners only. Includes logins of current members.
+      operationId: listAuditLog
+      parameters:
+        - $ref: '#/components/parameters/OrgPath'
+        - name: limit
+          in: query
+          schema:
+            type: integer
+        - name: before
+          in: query
+          description: Only entries with a smaller id, for paging
+          schema:
+            type: integer
+            format: int64
+      responses:
+        '200':
+          description: Newest entries first
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/AuditEntry'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/orgs/{org_id}/invites:
     get:
       summary: Pending invites
@@ -314,6 +378,19 @@ paths:
       responses:
         '204':
           description: Logged out
+  /v1/auth/logout-all:
+    post:
+      summary: End every session of the current user, on all devices
+      operationId: logoutAll
+      responses:
+        '200':
+          description: Sessions ended
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LogoutAllResult'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   /v1/auth/me:
     get:
       summary: Current user and their projects
@@ -378,6 +455,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/Project'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  /v1/projects/{project_id}/allowed-origins:
+    get:
+      summary: Browser origins allowed to send data with the project's ingest keys
+      operationId: getAllowedOrigins
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      responses:
+        '200':
+          description: Allowed origins; empty allows any origin
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllowedOrigins'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      summary: Replace the allowed browser origins
+      description: Owners only.
+      operationId: setAllowedOrigins
+      parameters:
+        - $ref: '#/components/parameters/ProjectPath'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AllowedOrigins'
+      responses:
+        '200':
+          description: Saved origins
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AllowedOrigins'
         '400':
           $ref: '#/components/responses/BadRequest'
         '403':
@@ -1383,6 +1500,56 @@ components:
         joined_at:
           type: string
           format: date-time
+    RoleInput:
+      type: object
+      required: [role]
+      properties:
+        role:
+          type: string
+          enum: [owner, member]
+    LogoutAllResult:
+      type: object
+      required: [sessions_ended]
+      properties:
+        sessions_ended:
+          type: integer
+          format: int64
+    AllowedOrigins:
+      type: object
+      required: [origins]
+      properties:
+        origins:
+          type: array
+          description: Origins such as https://app.example.com or https://*.example.com
+          items:
+            type: string
+    AuditEntry:
+      type: object
+      required: [id, created_at, action, actor_email, target, ip, details]
+      properties:
+        id:
+          type: integer
+          format: int64
+        created_at:
+          type: string
+          format: date-time
+        action:
+          type: string
+        actor_id:
+          type: integer
+          format: int64
+        actor_email:
+          type: string
+        project_id:
+          type: integer
+          format: int64
+        target:
+          type: string
+        ip:
+          type: string
+        details:
+          type: object
+          additionalProperties: true
     InviteInput:
       type: object
       required: [email, role]

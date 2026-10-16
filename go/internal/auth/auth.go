@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"net/http"
+	"net/url"
 	"regexp"
 	"strings"
 	"time"
@@ -21,7 +22,12 @@ import (
 
 const (
 	CookieName = "pulse_session"
+	// SessionTTL is the absolute lifetime of a session.
 	SessionTTL = 7 * 24 * time.Hour
+	// DefaultIdle ends sessions unused for this long.
+	DefaultIdle = 24 * time.Hour
+	// touchEvery limits last_seen_at writes to one per session per minute.
+	touchEvery = time.Minute
 	BcryptCost = 12
 )
 
@@ -105,7 +111,18 @@ func tokenHash(token string) []byte {
 }
 
 // Store is the Postgres-backed user and session store.
-type Store struct{ DB *pgxpool.Pool }
+type Store struct {
+	DB *pgxpool.Pool
+	// Idle ends sessions unused for longer; 0 means DefaultIdle.
+	Idle time.Duration
+}
+
+func (s *Store) idle() time.Duration {
+	if s.Idle > 0 {
+		return s.Idle
+	}
+	return DefaultIdle
+}
 
 // Login checks the password and creates a session, returning the raw token
 // for the cookie. Only its SHA-256 is stored.
@@ -159,13 +176,22 @@ func (s *Store) Principal(ctx context.Context, token string) (*Principal, error)
 		return nil, ErrNoSession
 	}
 	p := &Principal{}
-	err := s.DB.QueryRow(ctx, `SELECT u.id, u.email, u.name, u.email_verified_at IS NOT NULL FROM user_sessions s JOIN users u ON u.id = s.user_id
-		WHERE s.token_hash = $1 AND s.expires_at > now()`, tokenHash(token)).Scan(&p.User.ID, &p.User.Email, &p.User.Name, &p.User.EmailVerified)
+	var lastSeen time.Time
+	// A session ends at its absolute expiry or after Idle without use.
+	err := s.DB.QueryRow(ctx, `SELECT u.id, u.email, u.name, u.email_verified_at IS NOT NULL, s.last_seen_at
+		FROM user_sessions s JOIN users u ON u.id = s.user_id
+		WHERE s.token_hash = $1 AND s.expires_at > now() AND s.last_seen_at > now() - make_interval(secs => $2)`,
+		tokenHash(token), s.idle().Seconds()).Scan(&p.User.ID, &p.User.Email, &p.User.Name, &p.User.EmailVerified, &lastSeen)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return nil, ErrNoSession
 	}
 	if err != nil {
 		return nil, err
+	}
+	if time.Since(lastSeen) > touchEvery {
+		if _, err := s.DB.Exec(ctx, `UPDATE user_sessions SET last_seen_at = now() WHERE token_hash = $1`, tokenHash(token)); err != nil {
+			return nil, err
+		}
 	}
 	if p.Projects, err = ListProjects(ctx, s.DB, p.User.ID); err != nil {
 		return nil, err
@@ -214,6 +240,12 @@ func (s *Store) Logout(ctx context.Context, token string) error {
 	return err
 }
 
+// LogoutAll deletes every session of the user, on every device.
+func (s *Store) LogoutAll(ctx context.Context, userID int64) (int64, error) {
+	tag, err := s.DB.Exec(ctx, `DELETE FROM user_sessions WHERE user_id = $1`, userID)
+	return tag.RowsAffected(), err
+}
+
 // SessionStore is what the middleware needs; an interface for tests.
 type SessionStore interface {
 	Principal(ctx context.Context, token string) (*Principal, error)
@@ -250,19 +282,67 @@ func bearerUpload(r *http.Request) bool {
 		strings.HasPrefix(r.Header.Get("Authorization"), "Bearer ")
 }
 
-// Middleware requires a valid session for everything but Public paths and
-// rejects state-changing requests that are not JSON, which (with SameSite
-// cookies) blocks cross-site form posts.
-func Middleware(store SessionStore) func(http.Handler) http.Handler {
+// CSRF configures the cross-site request checks of Middleware.
+type CSRF struct {
+	// Origins are the web app origins (scheme://host[:port]) allowed to make
+	// state-changing requests. Empty skips the Origin comparison; the
+	// Sec-Fetch-Site and content type checks still apply.
+	Origins []string
+}
+
+// NormalizeOrigin lowercases an origin and drops a trailing slash, or
+// returns "" if s is not an http(s) origin.
+func NormalizeOrigin(s string) string {
+	s = strings.TrimRight(strings.TrimSpace(s), "/")
+	u, err := url.Parse(s)
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.Path != "" || u.RawQuery != "" || u.User != nil {
+		return ""
+	}
+	return strings.ToLower(u.Scheme + "://" + u.Host)
+}
+
+// crossSite reports a state-changing request that a browser made from
+// another site: a foreign Origin, or Sec-Fetch-Site cross-site when the
+// Origin header is missing.
+func (c CSRF) crossSite(r *http.Request) bool {
+	if site := r.Header.Get("Sec-Fetch-Site"); site == "cross-site" || site == "same-site" {
+		return true
+	}
+	origin := r.Header.Get("Origin")
+	if origin == "" || len(c.Origins) == 0 {
+		return false
+	}
+	o := NormalizeOrigin(origin)
+	for _, allowed := range c.Origins {
+		if o != "" && o == allowed {
+			return false
+		}
+	}
+	return true
+}
+
+func mutating(r *http.Request) bool {
+	return r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions
+}
+
+// Middleware requires a valid session for everything but Public paths. For
+// state-changing requests it also requires JSON (a cross-site form cannot
+// send it without a CORS preflight, which the API never grants) and rejects
+// requests whose Origin is not the web app or that a browser marks as
+// cross-site. Together with SameSite=Lax cookies this is the CSRF defence.
+func Middleware(store SessionStore, csrf CSRF) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if bearerUpload(r) {
 				next.ServeHTTP(w, r)
 				return
 			}
-			if r.Method != http.MethodGet && r.Method != http.MethodHead && r.Method != http.MethodOptions &&
-				!strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
+			if mutating(r) && !strings.HasPrefix(r.Header.Get("Content-Type"), "application/json") {
 				writeErr(w, http.StatusUnsupportedMediaType, "content type must be application/json")
+				return
+			}
+			if mutating(r) && csrf.crossSite(r) {
+				writeErr(w, http.StatusForbidden, "cross-site request refused")
 				return
 			}
 			if Public[r.URL.Path] {
@@ -296,7 +376,8 @@ func writeErr(w http.ResponseWriter, code int, msg string) {
 
 // SetCookie writes the session cookie. secure should be true behind HTTPS.
 func SetCookie(w http.ResponseWriter, token string, secure bool) {
-	http.SetCookie(w, &http.Cookie{
+	// Secure is off only for plain-HTTP local development (COOKIE_SECURE=false).
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // Secure is configurable, see above
 		Name: CookieName, Value: token, Path: "/", HttpOnly: true, Secure: secure,
 		SameSite: http.SameSiteLaxMode, MaxAge: int(SessionTTL.Seconds()),
 	})
@@ -304,6 +385,6 @@ func SetCookie(w http.ResponseWriter, token string, secure bool) {
 
 // ClearCookie expires the session cookie.
 func ClearCookie(w http.ResponseWriter, secure bool) {
-	http.SetCookie(w, &http.Cookie{Name: CookieName, Value: "", Path: "/", HttpOnly: true, Secure: secure,
+	http.SetCookie(w, &http.Cookie{Name: CookieName, Value: "", Path: "/", HttpOnly: true, Secure: secure, //nolint:gosec // as in SetCookie
 		SameSite: http.SameSiteLaxMode, MaxAge: -1})
 }

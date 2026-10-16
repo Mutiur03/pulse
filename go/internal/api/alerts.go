@@ -4,10 +4,12 @@ import (
 	"context"
 	"errors"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 )
 
@@ -318,8 +320,14 @@ func (s *Server) ListAlertChannels(w http.ResponseWriter, r *http.Request, proje
 	writeJSON(w, http.StatusOK, out)
 }
 
+// Channels decide where project data is sent, so only owners manage them;
+// members can still list them and edit rules.
+func (s *Server) channelOwner(w http.ResponseWriter, r *http.Request, projectID int64) bool {
+	return s.alertsReady(w, r, projectID) && owns(w, r, projectID)
+}
+
 func (s *Server) CreateAlertChannel(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath) {
-	if !s.alertsReady(w, r, projectID) {
+	if !s.channelOwner(w, r, projectID) {
 		return
 	}
 	var in gen.AlertChannelInput
@@ -331,27 +339,38 @@ func (s *Server) CreateAlertChannel(w http.ResponseWriter, r *http.Request, proj
 		writeErr(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	if (c.Kind == alerts.Webhook || c.Kind == alerts.Slack) && s.OutboundCheck != nil {
+		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+		err := s.OutboundCheck(ctx, c.Target)
+		cancel()
+		if err != nil {
+			writeErr(w, http.StatusBadRequest, "target is not allowed: "+err.Error())
+			return
+		}
+	}
 	created, err := s.Alerts.CreateChannel(r.Context(), c)
 	if err != nil {
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.AlertChannelCreate, Target: c.Name, Details: map[string]any{"kind": string(c.Kind)}})
 	writeJSON(w, http.StatusCreated, alertChannel(created, true))
 }
 
 func (s *Server) DeleteAlertChannel(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath, channelID gen.ChannelPath) {
-	if !s.alertsReady(w, r, projectID) {
+	if !s.channelOwner(w, r, projectID) {
 		return
 	}
 	if err := s.Alerts.DeleteChannel(r.Context(), projectID, channelID); err != nil {
 		alertError(w, err)
 		return
 	}
+	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.AlertChannelDelete, Target: "channel " + strconv.FormatInt(channelID, 10)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
 func (s *Server) TestAlertChannel(w http.ResponseWriter, r *http.Request, projectID gen.ProjectPath, channelID gen.ChannelPath) {
-	if !s.alertsReady(w, r, projectID) {
+	if !s.channelOwner(w, r, projectID) {
 		return
 	}
 	c, err := s.Alerts.GetChannel(r.Context(), projectID, channelID)

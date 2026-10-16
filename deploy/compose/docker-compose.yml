@@ -271,6 +271,11 @@ services:
       S3_BUCKET: pulse-replays
       S3_ARTIFACT_BUCKET: pulse-artifacts
       REPLAY_RETENTION_DAYS: 30
+      # Only the web app's proxy may supply X-Forwarded-For.
+      TRUSTED_PROXIES: 172.28.0.30
+      # Webhook targets on private addresses are refused; allow the host
+      # for local receivers. Never allowlist internal hosts in production.
+      OUTBOUND_ALLOWLIST: host.docker.internal
     depends_on:
       objectstore:
         condition: service_started
@@ -311,6 +316,7 @@ services:
       SMTP_ADDR: mailpit:1025
       SMTP_FROM: "Pulse Alerts <alerts@pulse.local>"
       APP_URL: http://localhost:3000
+      OUTBOUND_ALLOWLIST: host.docker.internal
     extra_hosts:
       - "host.docker.internal:host-gateway"
     depends_on:
@@ -377,10 +383,22 @@ services:
     environment:
       # Server-side only: the app proxies /api/* to the query API.
       QUERY_API_URL: http://query-api:8081
+      # Plain HTTP locally; browsers ignore HSTS over HTTP anyway.
+      HSTS_MAX_AGE: "0"
+    # A fixed address so the query API can trust exactly this proxy.
+    networks:
+      default:
+        ipv4_address: 172.28.0.30
     depends_on:
       query-api:
         condition: service_healthy
     restart: unless-stopped
+
+networks:
+  default:
+    ipam:
+      config:
+        - subnet: 172.28.0.0/16
 
 volumes:
   kafka-data:

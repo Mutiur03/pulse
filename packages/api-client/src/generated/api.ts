@@ -172,6 +172,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/orgs/{org_id}/members/{user_id}/role": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Change a member's role
+         * @description Owners only. The last owner cannot be demoted.
+         */
+        post: operations["setMemberRole"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/orgs/{org_id}/audit-log": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Security audit log of the organization
+         * @description Owners only. Includes logins of current members.
+         */
+        get: operations["listAuditLog"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/orgs/{org_id}/invites": {
         parameters: {
             query?: never;
@@ -264,6 +304,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/auth/logout-all": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** End every session of the current user, on all devices */
+        post: operations["logoutAll"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/auth/me": {
         parameters: {
             query?: never;
@@ -317,6 +374,27 @@ export interface paths {
         head?: never;
         /** Rename a project */
         patch: operations["updateProject"];
+        trace?: never;
+    };
+    "/v1/projects/{project_id}/allowed-origins": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Browser origins allowed to send data with the project's ingest keys */
+        get: operations["getAllowedOrigins"];
+        put?: never;
+        /**
+         * Replace the allowed browser origins
+         * @description Owners only.
+         */
+        post: operations["setAllowedOrigins"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
         trace?: never;
     };
     "/v1/projects/{project_id}/keys": {
@@ -882,6 +960,35 @@ export interface components {
             role: "owner" | "member";
             /** Format: date-time */
             joined_at: string;
+        };
+        RoleInput: {
+            /** @enum {string} */
+            role: "owner" | "member";
+        };
+        LogoutAllResult: {
+            /** Format: int64 */
+            sessions_ended: number;
+        };
+        AllowedOrigins: {
+            /** @description Origins such as https://app.example.com or https://*.example.com */
+            origins: string[];
+        };
+        AuditEntry: {
+            /** Format: int64 */
+            id: number;
+            /** Format: date-time */
+            created_at: string;
+            action: string;
+            /** Format: int64 */
+            actor_id?: number;
+            actor_email: string;
+            /** Format: int64 */
+            project_id?: number;
+            target: string;
+            ip: string;
+            details: {
+                [key: string]: unknown;
+            };
         };
         InviteInput: {
             email: string;
@@ -1739,6 +1846,71 @@ export interface operations {
             };
         };
     };
+    setMemberRole: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                org_id: components["parameters"]["OrgPath"];
+                user_id: number;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["RoleInput"];
+            };
+        };
+        responses: {
+            /** @description Done */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description That is the last owner */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["Error"];
+                };
+            };
+        };
+    };
+    listAuditLog: {
+        parameters: {
+            query?: {
+                limit?: number;
+                /** @description Only entries with a smaller id, for paging */
+                before?: number;
+            };
+            header?: never;
+            path: {
+                org_id: components["parameters"]["OrgPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Newest entries first */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AuditEntry"][];
+                };
+            };
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
     listInvites: {
         parameters: {
             query?: never;
@@ -1893,6 +2065,27 @@ export interface operations {
             };
         };
     };
+    logoutAll: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Sessions ended */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["LogoutAllResult"];
+                };
+            };
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     getMe: {
         parameters: {
             query?: never;
@@ -1981,6 +2174,58 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["Project"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            403: components["responses"]["Forbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getAllowedOrigins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Allowed origins; empty allows any origin */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllowedOrigins"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    setAllowedOrigins: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                project_id: components["parameters"]["ProjectPath"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AllowedOrigins"];
+            };
+        };
+        responses: {
+            /** @description Saved origins */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AllowedOrigins"];
                 };
             };
             400: components["responses"]["BadRequest"];

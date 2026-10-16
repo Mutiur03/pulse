@@ -55,7 +55,21 @@ export function Members({ org, me }: { org: Org; me: number }) {
               <div className="text-xs text-muted">Joined {time(m.joined_at)}</div>
             </div>
             <div className="flex shrink-0 items-center gap-2">
-              <Badge tone={m.role === 'owner' ? 'backend' : 'neutral'}>{m.role}</Badge>
+              {owner && m.user_id !== me ? (
+                <Select
+                  aria-label={`Role of ${m.email}`}
+                  value={m.role}
+                  disabled={busy}
+                  onChange={(e) => void act(() => api.setMemberRole(org.id, m.user_id, e.target.value as Role), `${m.email} is now ${e.target.value}.`)}
+                  className="w-28"
+                  data-testid="member-role"
+                >
+                  <option value="member">member</option>
+                  <option value="owner">owner</option>
+                </Select>
+              ) : (
+                <Badge tone={m.role === 'owner' ? 'backend' : 'neutral'}>{m.role}</Badge>
+              )}
               {owner && m.user_id !== me && (
                 <Button
                   size="sm"
@@ -106,7 +120,7 @@ export function Members({ org, me }: { org: Org; me: number }) {
             <Button type="submit" size="sm" disabled={busy || !email.trim()}>
               Send invite
             </Button>
-            {note && <span className="text-xs text-emerald-400">{note}</span>}
+            {note && <span className="text-xs text-emerald-400" data-testid="members-note">{note}</span>}
           </form>
         </>
       )}

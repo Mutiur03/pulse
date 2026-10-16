@@ -235,6 +235,9 @@ test('verify email, then reset a forgotten password', async ({ page, playwright 
   await page.context().clearCookies();
   await page.goto('/login');
   await page.getByRole('link', { name: 'Forgot password?' }).click();
+  await expect(page).toHaveURL(/\/reset-password$/);
+  // Submitting before the form hydrates would post it natively.
+  await page.waitForLoadState('networkidle');
   await page.getByLabel('Email').fill(who);
   await shot(page, '14-forgot-password');
   await page.getByRole('button', { name: 'Send reset link' }).click();
@@ -330,6 +333,17 @@ test('owners invite new and existing users into their organization', async ({ pa
   await page.getByTestId('member-row').filter({ hasText: fresh }).getByRole('button', { name: 'Remove' }).click();
   await expect(page.getByTestId('member-row')).toHaveCount(2);
   await shot(page, '20-members');
+
+  // Owners change roles; the audit log records invites, joins and changes.
+  await page.getByTestId('member-row').filter({ hasText: existing }).getByTestId('member-role').selectOption('member');
+  await expect(page.getByTestId('members-note')).toHaveText(`${existing} is now member.`);
+  await page.reload();
+  await expect(page.getByTestId('member-row').filter({ hasText: existing }).getByTestId('member-role')).toHaveValue('member');
+  const log = page.getByTestId('audit-log');
+  for (const action of ['member.role', 'member.remove', 'invite.accept', 'invite.revoke']) {
+    await expect(log.getByText(action, { exact: true }).first()).toBeVisible();
+  }
+  await expect(log.getByText('invite.create', { exact: true })).toHaveCount(3);
 });
 
 const demo = process.env.DEMO_URL ?? 'http://localhost:5173';
@@ -634,8 +648,111 @@ test('spans and metrics exported over OTLP/gRPC show in the waterfall and metric
 
   // Its HTTP server metrics arrive over the same gRPC connection.
   await expect(async () => {
-    await page.goto('/metrics?name=http.server.duration&group_by=http.route&range=15m');
+    await page.goto('/metrics?name=http.server.request.duration&group_by=http.route&range=15m');
     await expect(page.getByTestId('metric-series').first()).toBeAttached({ timeout: 3000 });
   }).toPass({ timeout: 60_000 });
   await shot(page, '36-metrics');
+});
+
+const ingestURL = process.env.INGEST_URL ?? 'http://localhost:8080';
+
+test('security: headers, CSRF, allowed origins, SSRF, audit log and sign out everywhere', async ({ browser }) => {
+  test.setTimeout(120_000);
+  // A fresh owner, so signing out everywhere does not affect other tests.
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  const owner = `sec-${Date.now()}@example.com`;
+  await page.goto('/signup');
+  await page.getByLabel('Name').fill('Sec Owner');
+  await page.getByLabel('Email').fill(owner);
+  await page.getByLabel('Password').fill('a-long-e2e-password');
+  await page.getByRole('button', { name: 'Create account' }).click();
+  await expect(page).toHaveURL(/\/projects\/new/);
+  await page.getByLabel('Project name').fill('Sec Shop');
+  await page.getByRole('button', { name: 'Create project' }).click();
+  const key = (await page.getByTestId('new-project-key').innerText()).trim();
+
+  // Pages carry a nonce-based CSP and the other security headers.
+  const res = await page.goto('/settings');
+  const h = res!.headers();
+  expect(h['content-security-policy']).toMatch(/script-src 'self' 'nonce-[A-Za-z0-9+/=]+' 'strict-dynamic'/);
+  expect(h['content-security-policy']).toContain("frame-ancestors 'none'");
+  expect(h['x-frame-options']).toBe('DENY');
+  expect(h['x-content-type-options']).toBe('nosniff');
+  expect(h['referrer-policy']).toBe('strict-origin-when-cross-origin');
+  const nonce = /'nonce-([^']+)'/.exec(h['content-security-policy'])![1];
+  expect(await page.locator(`script[nonce]`).count()).toBeGreaterThan(0);
+  expect(await page.evaluate(() => document.querySelector('script[nonce]')?.getAttribute('nonce'))).toBe('');
+  expect(nonce.length).toBeGreaterThan(10);
+  await expect(page.getByTestId('active-key')).toHaveText(key);
+
+  // A cross-site request with the session cookie is refused.
+  const csrf = await page.request.post('/api/v1/projects', { data: { name: 'csrf' }, headers: { Origin: 'https://evil.example' } });
+  expect(csrf.status()).toBe(403);
+  const same = await page.request.get('/api/v1/projects');
+  expect((await same.json()).map((p: { name: string }) => p.name)).toEqual(['Sec Shop']);
+
+  // Restrict the project's keys to one browser origin.
+  await page.getByTestId('allowed-origins').fill('https://shop.example\nhttps://*.shop.example');
+  await page.getByRole('button', { name: 'Save origins' }).click();
+  await expect(page.getByTestId('origins-saved')).toBeVisible();
+  const send = (origin: string) =>
+    page.request.post(`${ingestURL}/v1/events?key=${key}`, {
+      headers: { Origin: origin, 'Content-Type': 'text/plain' },
+      data: JSON.stringify({ event: 'security_check', anonymous_id: 'sec' }),
+    });
+  expect((await send('https://evil.example')).status()).toBe(403);
+  const ok = await send('https://app.shop.example');
+  expect(ok.status()).toBe(202);
+  expect(ok.headers()['access-control-allow-origin']).toBe('https://app.shop.example');
+  await shot(page, '37-security-settings');
+
+  // Webhook channels may not point at internal addresses.
+  await page.goto('/alerts/channels');
+  await page.getByLabel('Channel name').fill('Metadata');
+  await page.getByLabel('Kind').selectOption('webhook');
+  await page.getByLabel('Target').fill('http://169.254.169.254/latest/meta-data/');
+  await page.getByRole('button', { name: 'Add channel' }).click();
+  await expect(page.getByText(/target is not allowed/)).toBeVisible();
+  await shot(page, '38-ssrf-blocked');
+
+  // A failed login with a forged X-Forwarded-For is recorded with the real
+  // address, since only the web proxy is trusted.
+  const forged = await page.request.post('/api/v1/auth/login', {
+    data: { email: owner, password: 'wrong-password' },
+    headers: { 'X-Forwarded-For': '203.0.113.99' },
+  });
+  expect(forged.status()).toBe(401);
+
+  // The audit log lists the signup, project and origin changes, and logins.
+  await page.goto('/settings');
+  const log = page.getByTestId('audit-log');
+  await expect(log.getByText('login.failure')).toBeVisible();
+  await expect(log.getByText('project.create')).toBeVisible();
+  await expect(log.getByText('project.update')).toBeVisible();
+  await expect(log.getByText('alert_channel.create')).toHaveCount(0);
+  const failure = log.getByTestId('audit-row').filter({ hasText: 'login.failure' });
+  const ip = (await failure.locator('td').nth(4).innerText()).trim();
+  expect(ip).not.toBe('203.0.113.99');
+  expect(ip).not.toBe('172.28.0.30');
+  expect(ip).not.toBe('-');
+  await log.scrollIntoViewIfNeeded();
+  await shot(page, '39-audit-log');
+
+  // A second session, then sign out everywhere ends both.
+  const other = await browser.newContext();
+  const op = await other.newPage();
+  await op.goto('/login');
+  await op.getByLabel('Email').fill(owner);
+  await op.getByLabel('Password').fill('a-long-e2e-password');
+  await op.getByRole('button', { name: 'Sign in' }).click();
+  await expect(op).toHaveURL(/\/traces/);
+  expect((await op.request.get('/api/v1/auth/me')).status()).toBe(200);
+  page.on('dialog', (d) => void d.accept());
+  await page.getByTestId('logout-all').click();
+  await expect(page).toHaveURL(/\/login/);
+  expect((await op.request.get('/api/v1/auth/me')).status()).toBe(401);
+  expect((await page.request.get('/api/v1/auth/me')).status()).toBe(401);
+  await other.close();
+  await ctx.close();
 });

@@ -134,6 +134,36 @@ func (s *Store) RemoveMember(ctx context.Context, org, user int64) error {
 	return tx.Commit(ctx)
 }
 
+// SetRole changes a member's role. Demoting the last owner fails with
+// ErrLastOwner.
+func (s *Store) SetRole(ctx context.Context, org, user int64, role string) error {
+	if role != "owner" && role != "member" {
+		return errors.New("role must be owner or member")
+	}
+	tx, err := s.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = tx.Rollback(ctx) }()
+	var owners int
+	var target string
+	err = tx.QueryRow(ctx, `SELECT count(*) FILTER (WHERE role = 'owner'), COALESCE(max(role) FILTER (WHERE user_id = $2), '')
+		FROM (SELECT user_id, role FROM org_members WHERE org_id = $1 FOR UPDATE) m`, org, user).Scan(&owners, &target)
+	if err != nil {
+		return err
+	}
+	if target == "" {
+		return ErrNotFound
+	}
+	if target == "owner" && role == "member" && owners <= 1 {
+		return ErrLastOwner
+	}
+	if _, err := tx.Exec(ctx, `UPDATE org_members SET role = $3 WHERE org_id = $1 AND user_id = $2`, org, user, role); err != nil {
+		return err
+	}
+	return tx.Commit(ctx)
+}
+
 // CreateInvite stores an invite and returns it with the raw token for the
 // email. Earlier pending invites for the same address are revoked.
 func (s *Store) CreateInvite(ctx context.Context, org int64, email, role string, invitedBy int64) (Invite, string, error) {

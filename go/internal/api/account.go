@@ -3,12 +3,11 @@ package api
 import (
 	"encoding/json"
 	"errors"
-	"math"
-	"net"
+	"log"
 	"net/http"
-	"strconv"
 
 	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/orgs"
@@ -34,23 +33,54 @@ func (s *Server) Login(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusBadRequest, "email and password are required")
 		return
 	}
-	ip := clientIP(r)
-	if blocked, wait := s.Throttle.Blocked(r.Context(), body.Email, ip); blocked {
-		w.Header().Set("Retry-After", strconv.Itoa(int(math.Ceil(wait.Seconds()))))
-		writeErr(w, http.StatusTooManyRequests, "too many failed logins, try again later")
+	ctx, ip, l := r.Context(), s.ip(r), s.Limits
+	if ok, wait := l.LoginIP.Take(ctx, ip); !ok {
+		tooMany(w, wait, "too many login attempts from this address, try again later")
 		return
 	}
-	token, _, err := s.Accounts.Login(r.Context(), body.Email, body.Password, r.UserAgent())
+	blocked, wait := l.LoginFail.Blocked(ctx, body.Email, ip)
+	if !blocked {
+		blocked, wait = l.LoginEmail.Blocked(ctx, body.Email)
+	}
+	if blocked {
+		s.record(r, audit.Entry{ActorEmail: body.Email, Action: audit.LoginBlocked, IP: ip})
+		tooMany(w, wait, "too many failed logins, try again later")
+		return
+	}
+	token, u, err := s.Accounts.Login(ctx, body.Email, body.Password, r.UserAgent())
 	if errors.Is(err, auth.ErrBadCredentials) {
-		s.Throttle.Fail(r.Context(), body.Email, ip)
+		l.LoginFail.Fail(ctx, body.Email, ip)
+		l.LoginEmail.Fail(ctx, body.Email)
+		s.record(r, audit.Entry{ActorEmail: body.Email, Action: audit.LoginFailure, IP: ip})
 		writeErr(w, http.StatusUnauthorized, "invalid email or password")
 		return
 	} else if err != nil {
 		internal(w, err)
 		return
 	}
-	s.Throttle.Reset(r.Context(), body.Email, ip)
+	l.LoginFail.Reset(ctx, body.Email, ip)
+	l.LoginEmail.Reset(ctx, body.Email)
+	s.record(r, audit.Entry{ActorID: u.ID, ActorEmail: u.Email, Action: audit.LoginSuccess, IP: ip,
+		Details: map[string]any{"user_agent": truncate(r.UserAgent(), 200)}})
+	s.endOldSession(r)
 	s.startSession(w, r, token, http.StatusOK)
+}
+
+// endOldSession deletes the session the browser had before logging in, so
+// a new login always gets a fresh token (session fixation).
+func (s *Server) endOldSession(r *http.Request) {
+	if c, err := r.Cookie(auth.CookieName); err == nil && c.Value != "" {
+		if err := s.Accounts.Logout(r.Context(), c.Value); err != nil {
+			log.Printf("ending previous session: %v", err)
+		}
+	}
+}
+
+func truncate(s string, n int) string {
+	if len(s) > n {
+		return s[:n]
+	}
+	return s
 }
 
 func (s *Server) startSession(w http.ResponseWriter, r *http.Request, token string, code int) {
@@ -63,20 +93,14 @@ func (s *Server) startSession(w http.ResponseWriter, r *http.Request, token stri
 	writeJSON(w, code, meOf(p))
 }
 
-// clientIP is the peer address. The web app proxies browser calls, so behind
-// it this is the proxy's address and throttling is effectively per email.
-func clientIP(r *http.Request) string {
-	host, _, err := net.SplitHostPort(r.RemoteAddr)
-	if err != nil {
-		return r.RemoteAddr
-	}
-	return host
-}
-
 func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 	var body gen.SignupRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<14)).Decode(&body); err != nil {
 		writeErr(w, http.StatusBadRequest, "invalid JSON body")
+		return
+	}
+	if ok, wait := s.Limits.SignupIP.Take(r.Context(), s.ip(r)); !ok {
+		tooMany(w, wait, "too many signups from this address, try again later")
 		return
 	}
 	invite := ""
@@ -105,6 +129,8 @@ func (s *Server) Signup(w http.ResponseWriter, r *http.Request) {
 	if !u.EmailVerified {
 		s.sendVerification(r.Context(), u)
 	}
+	s.record(r, audit.Entry{ActorID: u.ID, ActorEmail: u.Email, Action: audit.Signup, Details: map[string]any{"invited": invite != ""}})
+	s.endOldSession(r)
 	s.startSession(w, r, token, http.StatusCreated)
 }
 
@@ -159,6 +185,8 @@ func (s *Server) RotateKey(w http.ResponseWriter, r *http.Request, projectID gen
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.KeyRotate, Target: keyLabel(k.PublicKey),
+		Details: map[string]any{"revoked": len(revoked)}})
 	for _, old := range revoked {
 		if err := s.Keys.Purge(r.Context(), old); err != nil {
 			// The cache entry still expires within keys.PositiveTTL.
@@ -194,6 +222,7 @@ func (s *Server) CreateKey(w http.ResponseWriter, r *http.Request, projectID gen
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.KeyCreate, Target: keyLabel(k.PublicKey)})
 	writeJSON(w, http.StatusCreated, apiKey(k))
 }
 
@@ -209,9 +238,18 @@ func (s *Server) RevokeKey(w http.ResponseWriter, r *http.Request, projectID gen
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.KeyRevoke, Target: keyLabel(k.PublicKey)})
 	if err := s.Keys.Purge(r.Context(), k.PublicKey); err != nil {
 		internal(w, err)
 		return
 	}
 	writeJSON(w, http.StatusOK, apiKey(k))
+}
+
+// keyLabel shortens a public key for the audit log.
+func keyLabel(k string) string {
+	if len(k) > 12 {
+		return k[:12] + "..."
+	}
+	return k
 }

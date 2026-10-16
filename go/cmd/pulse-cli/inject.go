@@ -114,10 +114,10 @@ func injectCmd(args []string) error {
 		if err != nil {
 			return fmt.Errorf("%s: %w", mp, err)
 		}
-		if err := os.WriteFile(path, newJS, 0o644); err != nil {
+		if err := os.WriteFile(path, newJS, 0o644); err != nil { //nolint:gosec // build output that is served publicly
 			return err
 		}
-		if err := os.WriteFile(mp, newMap, 0o644); err != nil {
+		if err := os.WriteFile(mp, newMap, 0o644); err != nil { //nolint:gosec // build output that is uploaded
 			return err
 		}
 		fmt.Printf("%s  %s\n", id, path)

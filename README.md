@@ -67,7 +67,7 @@ See [docs/architecture.md](docs/architecture.md) for the complete technical desi
 ### Prerequisites
 
 - Docker and Docker Compose
-- Go 1.21+ (for local development)
+- Go 1.26+ (for local development)
 - Node.js 20+ and pnpm (for web development)
 
 ### Run the Stack
@@ -123,7 +123,7 @@ who continued.
 
 ### End-to-End Smoke Test
 
-See [docs/sending-backend-telemetry.md](docs/sending-backend-telemetry.md) for pointing OpenTelemetry SDKs or the Collector at the gateway.
+See [docs/sending-backend-telemetry.md](docs/sending-backend-telemetry.md) for pointing OpenTelemetry SDKs or the Collector at the gateway, and [docs/SECURITY.md](docs/SECURITY.md) for sessions, CSRF, rate limits, roles, the audit log and the production checklist.
 
 Run the smoke test to verify the complete data flow (ingest → Kafka → ClickHouse → query API):
 

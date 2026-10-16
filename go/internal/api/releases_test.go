@@ -84,7 +84,7 @@ func upload(t *testing.T, s *Server, token, path string, files map[string][]byte
 		req.Header.Set("Authorization", "Bearer "+token)
 	}
 	r := chi.NewRouter()
-	h := auth.Middleware(nil)(gen.HandlerFromMux(s, r))
+	h := auth.Middleware(nil, auth.CSRF{})(gen.HandlerFromMux(s, r))
 	rec := httptest.NewRecorder()
 	h.ServeHTTP(rec, req)
 	return rec

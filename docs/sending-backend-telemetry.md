@@ -221,7 +221,7 @@ curl localhost:8081/v1/issues/42
 curl -X PATCH localhost:8081/v1/issues/42 -H 'Content-Type: application/json' -d '{"status":"resolved"}'
 curl localhost:8081/v1/traces/<trace_id>     # browser + backend + DB spans as one tree
 curl 'localhost:8081/v1/metrics/names'
-curl 'localhost:8081/v1/metrics/query?name=http.server.duration&agg=p95&group_by=http.route'
+curl 'localhost:8081/v1/metrics/query?name=http.server.request.duration&agg=p95&group_by=http.route'
 ```
 
 Metrics are stored one row per data point in the ClickHouse `metrics`

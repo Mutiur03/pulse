@@ -46,7 +46,7 @@ func NewHandler(p Producer, auth Authenticator, opts ...Option) http.Handler {
 	mux.HandleFunc("/v1/logs", h.post(h.logs))
 	mux.HandleFunc("/v1/metrics", h.post(h.metrics))
 	mux.HandleFunc("/v1/replay", h.post(h.replayChunk))
-	return cors(mux)
+	return securityHeaders(cors(mux, auth))
 }
 
 type handler struct {
@@ -106,6 +106,11 @@ func (h *handler) post(fn func(r *http.Request, body []byte, project string) (in
 				log.Printf("key lookup failed: %v", err)
 				http.Error(w, "key lookup unavailable", http.StatusServiceUnavailable)
 			}
+			return
+		}
+		if origin := r.Header.Get("Origin"); origin != "" && !originAllowed(r.Context(), h.auth, key, origin) {
+			w.Header().Del("Access-Control-Allow-Origin")
+			http.Error(w, "origin not allowed for this key", http.StatusForbidden)
 			return
 		}
 		if ok, retry := h.auth.Allow(r.Context(), key); !ok {
@@ -261,11 +266,32 @@ func (h *handler) errors(r *http.Request, body []byte, project string) (int, *ap
 	return len(errs), h.produceAll(r.Context(), TopicErrors, keys, vals)
 }
 
-// cors allows browser SDKs on any origin to send data. No credentials are
-// used, so a wildcard origin is safe here.
-func cors(next http.Handler) http.Handler {
+// OriginChecker is implemented by authenticators that restrict which
+// browser origins may use a key (the project's allowed origins).
+type OriginChecker interface {
+	OriginAllowed(ctx context.Context, key, origin string) bool
+}
+
+func originAllowed(ctx context.Context, a Authenticator, key, origin string) bool {
+	c, ok := a.(OriginChecker)
+	return !ok || c.OriginAllowed(ctx, key, origin)
+}
+
+// cors lets browser SDKs send data. No credentials are used. A browser
+// request gets its own origin echoed back only if the key's project allows
+// it; the request itself is refused in post, since a CORS-simple request
+// reaches the server even when the browser later hides the response.
+func cors(next http.Handler, a Authenticator) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Access-Control-Allow-Origin", "*")
+		origin := r.Header.Get("Origin")
+		w.Header().Add("Vary", "Origin")
+		if origin == "" {
+			w.Header().Set("Access-Control-Allow-Origin", "*")
+		} else if key := ingestKey(r); key == "" || originAllowed(r.Context(), a, key, origin) {
+			// A preflight without a key in the URL cannot be checked yet; the
+			// request that follows is.
+			w.Header().Set("Access-Control-Allow-Origin", origin)
+		}
 		w.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS")
 		w.Header().Set("Access-Control-Allow-Headers", "Content-Type, X-Pulse-Key")
 		w.Header().Set("Access-Control-Max-Age", "86400")
@@ -273,6 +299,15 @@ func cors(next http.Handler) http.Handler {
 			w.WriteHeader(http.StatusNoContent)
 			return
 		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+// securityHeaders sets headers that apply to every API response.
+func securityHeaders(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("X-Content-Type-Options", "nosniff")
+		w.Header().Set("Cache-Control", "no-store")
 		next.ServeHTTP(w, r)
 	})
 }

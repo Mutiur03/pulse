@@ -3,7 +3,24 @@
 import { NextRequest } from 'next/server';
 
 const upstream = process.env.QUERY_API_URL ?? 'http://localhost:8081';
-const forwardRequest = ['cookie', 'content-type', 'user-agent', 'accept'];
+// Origin and Sec-Fetch-Site let the API refuse cross-site requests (CSRF).
+const forwardRequest = ['cookie', 'content-type', 'user-agent', 'accept', 'origin', 'sec-fetch-site'];
+// Set this app's own proxies (a load balancer in front of it) to keep their
+// X-Forwarded-For hops; otherwise only the TCP peer is forwarded.
+const trustInboundForwarded = process.env.TRUST_PROXY_HEADERS === 'true';
+
+/**
+ * The X-Forwarded-For to send upstream: inbound hops when this app sits
+ * behind trusted proxies, then the TCP peer recorded by peer-ip.cjs. The API
+ * believes it only from addresses in its TRUSTED_PROXIES. Without the peer
+ * header (e.g. next dev) nothing is forwarded and the API sees this app.
+ */
+function forwardedFor(req: NextRequest): string | undefined {
+  const peer = req.headers.get('x-pulse-peer-ip');
+  if (!peer) return undefined;
+  const inbound = trustInboundForwarded ? req.headers.get('x-forwarded-for') : null;
+  return inbound ? `${inbound}, ${peer}` : peer;
+}
 const forwardResponse = ['content-type', 'set-cookie', 'retry-after'];
 
 async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }> }) {
@@ -14,6 +31,8 @@ async function proxy(req: NextRequest, ctx: { params: Promise<{ path: string[] }
     const v = req.headers.get(h);
     if (v) headers.set(h, v);
   }
+  const xff = forwardedFor(req);
+  if (xff) headers.set('x-forwarded-for', xff);
   const hasBody = req.method !== 'GET' && req.method !== 'HEAD';
   let res: Response;
   try {

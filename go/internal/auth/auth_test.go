@@ -22,7 +22,7 @@ func (f fakeSessions) Principal(_ context.Context, tok string) (*Principal, erro
 func TestMiddleware(t *testing.T) {
 	me := &Principal{User: User{ID: 1}, Projects: []Project{{ID: 1}}}
 	var seen *Principal
-	h := Middleware(fakeSessions{"good": me})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	h := Middleware(fakeSessions{"good": me}, CSRF{Origins: []string{"https://app.example"}})(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = FromContext(r.Context())
 		w.WriteHeader(200)
 	}))
@@ -105,6 +105,47 @@ func TestNormalizeSignup(t *testing.T) {
 	} {
 		if _, _, err := NormalizeSignup(c[0], c[1], c[2]); err == nil {
 			t.Errorf("%v should be rejected", c)
+		}
+	}
+}
+
+func TestCSRFOriginChecks(t *testing.T) {
+	me := &Principal{User: User{ID: 1}}
+	h := Middleware(fakeSessions{"good": me}, CSRF{Origins: []string{NormalizeOrigin("https://App.example/")}})(
+		http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { w.WriteHeader(200) }))
+	cases := []struct {
+		method, path, origin, site string
+		want                       int
+	}{
+		{"POST", "/v1/projects", "https://app.example", "same-origin", 200},
+		{"POST", "/v1/projects", "", "", 200},
+		{"POST", "/v1/projects", "https://evil.example", "", 403},
+		{"POST", "/v1/projects", "null", "", 403},
+		{"POST", "/v1/projects", "", "cross-site", 403},
+		{"POST", "/v1/projects", "", "same-site", 403},
+		{"POST", "/v1/auth/login", "https://evil.example", "cross-site", 403},
+		{"GET", "/v1/issues", "https://evil.example", "cross-site", 200},
+	}
+	for _, c := range cases {
+		req := httptest.NewRequest(c.method, c.path, strings.NewReader("{}"))
+		req.AddCookie(&http.Cookie{Name: CookieName, Value: "good"})
+		req.Header.Set("Content-Type", "application/json")
+		if c.origin != "" {
+			req.Header.Set("Origin", c.origin)
+		}
+		if c.site != "" {
+			req.Header.Set("Sec-Fetch-Site", c.site)
+		}
+		rec := httptest.NewRecorder()
+		h.ServeHTTP(rec, req)
+		if rec.Code != c.want {
+			t.Errorf("%s %s origin=%q site=%q: got %d want %d", c.method, c.path, c.origin, c.site, rec.Code, c.want)
+		}
+	}
+	for in, want := range map[string]string{"https://A.example/": "https://a.example", "http://x:3000": "http://x:3000",
+		"https://a.example/path": "", "javascript:alert(1)": "", "": ""} {
+		if got := NormalizeOrigin(in); got != want {
+			t.Errorf("NormalizeOrigin(%q) = %q", in, got)
 		}
 	}
 }

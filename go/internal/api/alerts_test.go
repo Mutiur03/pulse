@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -107,18 +108,36 @@ func TestAlertsAPI(t *testing.T) {
 	snd := &recordSender{}
 	s := &Server{Alerts: fa, AlertMetrics: fm, AlertSender: snd, Now: func() time.Time { return now }}
 	me := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "member"}}}
+	owner := &auth.Principal{Projects: []auth.Project{{ID: 1, Role: "owner"}}}
 
-	rec := call(t, s, me, "POST", "/v1/projects/1/alert-channels", `{"name":"Hook","kind":"webhook","target":"http://example.com/h"}`)
+	// Members cannot manage channels; owners can.
+	if rec := call(t, s, me, "POST", "/v1/projects/1/alert-channels", `{"name":"Hook","kind":"webhook","target":"http://example.com/h"}`); rec.Code != 403 {
+		t.Fatalf("member creates channel: %d", rec.Code)
+	}
+	rec := call(t, s, owner, "POST", "/v1/projects/1/alert-channels", `{"name":"Hook","kind":"webhook","target":"http://example.com/h"}`)
 	if rec.Code != 201 || !strings.Contains(rec.Body.String(), `"secret":"whsec_test"`) {
 		t.Fatalf("create channel: %d %s", rec.Code, rec.Body)
 	}
 	if rec := call(t, s, me, "GET", "/v1/projects/1/alert-channels", ""); strings.Contains(rec.Body.String(), "whsec_test") {
 		t.Fatal("list leaks the signing secret")
 	}
-	if rec := call(t, s, me, "POST", "/v1/projects/1/alert-channels", `{"name":"x","kind":"webhook","target":"file:///etc"}`); rec.Code != 400 {
+	if rec := call(t, s, owner, "POST", "/v1/projects/1/alert-channels", `{"name":"x","kind":"webhook","target":"file:///etc"}`); rec.Code != 400 {
 		t.Fatalf("bad target: %d", rec.Code)
 	}
-	if rec := call(t, s, me, "POST", "/v1/projects/1/alert-channels/1/test", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"ok":true`) || !snd.sent[0].Test {
+	// The outbound check refuses internal targets before they are saved.
+	s.OutboundCheck = func(_ context.Context, u string) error {
+		if strings.Contains(u, "169.254.169.254") {
+			return errors.New("blocked")
+		}
+		return nil
+	}
+	if rec := call(t, s, owner, "POST", "/v1/projects/1/alert-channels", `{"name":"x","kind":"slack","target":"http://169.254.169.254/latest"}`); rec.Code != 400 || !strings.Contains(rec.Body.String(), "not allowed") {
+		t.Fatalf("metadata target: %d %s", rec.Code, rec.Body)
+	}
+	if rec := call(t, s, me, "POST", "/v1/projects/1/alert-channels/1/test", ""); rec.Code != 403 {
+		t.Fatalf("member test send: %d", rec.Code)
+	}
+	if rec := call(t, s, owner, "POST", "/v1/projects/1/alert-channels/1/test", ""); rec.Code != 200 || !strings.Contains(rec.Body.String(), `"ok":true`) || !snd.sent[0].Test {
 		t.Fatalf("test send: %d %s", rec.Code, rec.Body)
 	}
 

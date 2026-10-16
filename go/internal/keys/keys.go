@@ -24,6 +24,9 @@ var ErrInvalidKey = errors.New("invalid or revoked key")
 type Key struct {
 	ProjectID       int64
 	RateLimitPerSec int
+	// Origins are the browser origins allowed to use the key; empty allows
+	// any origin.
+	Origins []string
 }
 
 // Lookup finds an active key in the source of truth.
@@ -91,16 +94,32 @@ func Purge(ctx context.Context, rdb redis.UniversalClient, publicKey string) err
 	return rdb.Del(ctx, cachePrefix+publicKey).Err()
 }
 
-func encode(k Key) string { return fmt.Sprintf("%d:%d", k.ProjectID, k.RateLimitPerSec) }
+// encode stores "project:limit" plus " origin" for each allowed origin.
+// Origins never contain spaces.
+func encode(k Key) string {
+	s := fmt.Sprintf("%d:%d", k.ProjectID, k.RateLimitPerSec)
+	for _, o := range k.Origins {
+		s += " " + o
+	}
+	return s
+}
 
 func decode(s string) (Key, bool) {
-	p, l, ok := strings.Cut(s, ":")
+	fields := strings.Fields(s)
+	if len(fields) == 0 {
+		return Key{}, false
+	}
+	p, l, ok := strings.Cut(fields[0], ":")
 	if !ok {
 		return Key{}, false
 	}
 	pid, err1 := strconv.ParseInt(p, 10, 64)
 	lim, err2 := strconv.Atoi(l)
-	return Key{ProjectID: pid, RateLimitPerSec: lim}, err1 == nil && err2 == nil
+	k := Key{ProjectID: pid, RateLimitPerSec: lim}
+	if len(fields) > 1 {
+		k.Origins = fields[1:]
+	}
+	return k, err1 == nil && err2 == nil
 }
 
 // Limiter is a fixed one-second window counter per key in Redis.
@@ -140,6 +159,29 @@ type Store struct {
 	Redis redis.UniversalClient
 }
 
+// PurgeProject removes all keys of a project from the gateway cache, e.g.
+// after its allowed origins changed.
+func (s *Store) PurgeProject(ctx context.Context, projectID int64) error {
+	if s.Redis == nil {
+		return nil
+	}
+	rows, err := s.DB.Query(ctx, `SELECT public_key FROM api_keys WHERE project_id = $1`, projectID)
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var k string
+		if err := rows.Scan(&k); err != nil {
+			return err
+		}
+		if err := Purge(ctx, s.Redis, k); err != nil {
+			return err
+		}
+	}
+	return rows.Err()
+}
+
 // Purge removes a key from the gateway cache.
 func (s *Store) Purge(ctx context.Context, publicKey string) error {
 	if s.Redis == nil {
@@ -150,8 +192,9 @@ func (s *Store) Purge(ctx context.Context, publicKey string) error {
 
 func (s *Store) Find(ctx context.Context, publicKey string) (Key, error) {
 	var k Key
-	err := s.DB.QueryRow(ctx, `SELECT project_id, rate_limit_per_sec FROM api_keys
-		WHERE public_key = $1 AND revoked_at IS NULL`, publicKey).Scan(&k.ProjectID, &k.RateLimitPerSec)
+	err := s.DB.QueryRow(ctx, `SELECT k.project_id, k.rate_limit_per_sec, p.allowed_origins FROM api_keys k
+		JOIN projects p ON p.id = k.project_id
+		WHERE k.public_key = $1 AND k.revoked_at IS NULL`, publicKey).Scan(&k.ProjectID, &k.RateLimitPerSec, &k.Origins)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return Key{}, ErrInvalidKey
 	}

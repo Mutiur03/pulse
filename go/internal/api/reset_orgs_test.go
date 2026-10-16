@@ -46,7 +46,7 @@ func TestPasswordResetRequest(t *testing.T) {
 	s := &Server{
 		Accounts: &fakeAccounts{users: map[string]string{"a@example.com": "pw"}},
 		Mail:     box, AppURL: "https://pulse.example.com/",
-		ResetThrottle: &auth.Throttle{Redis: redis.NewClient(&redis.Options{Addr: mr.Addr()}), Max: 3, Window: time.Hour, Prefix: "reset:req"},
+		Limits: AuthLimits{ResetEmail: &auth.Throttle{Redis: redis.NewClient(&redis.Options{Addr: mr.Addr()}), Max: 3, Window: time.Hour, Prefix: "reset:req"}},
 	}
 	rec := post(s, "/v1/auth/password-reset/request", `{"email":"a@example.com"}`, "1.1.1.1")
 	if rec.Code != 204 {

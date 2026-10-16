@@ -3,9 +3,11 @@ package api
 import (
 	"errors"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/mail"
 	"github.com/Mutiur03/pulse/internal/orgs"
@@ -59,6 +61,7 @@ func (s *Server) RemoveMember(w http.ResponseWriter, r *http.Request, org gen.Or
 	case err != nil:
 		internal(w, err)
 	default:
+		s.record(r, audit.Entry{OrgID: org, Action: audit.MemberRemove, Target: "user " + strconv.FormatInt(user, 10)})
 		w.WriteHeader(http.StatusNoContent)
 	}
 }
@@ -118,6 +121,7 @@ func (s *Server) CreateInvite(w http.ResponseWriter, r *http.Request, org gen.Or
 	s.send(mail.Message{To: email, Subject: p.User.Name + " invited you to " + orgName + " on Pulse",
 		Text: p.User.Name + " (" + p.User.Email + ") invited you to join " + orgName + " on Pulse as " + inv.Role + ".\n\n" +
 			"Accept the invite within 7 days:\n\n" + s.link("/invite", token) + "\n"})
+	s.record(r, audit.Entry{OrgID: org, Action: audit.InviteCreate, Target: email, Details: map[string]any{"role": inv.Role}})
 	writeJSON(w, http.StatusCreated, invite2gen(inv))
 }
 
@@ -133,6 +137,7 @@ func (s *Server) RevokeInvite(w http.ResponseWriter, r *http.Request, org gen.Or
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{OrgID: org, Action: audit.InviteRevoke, Target: "invite " + strconv.FormatInt(id, 10)})
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -170,7 +175,7 @@ func (s *Server) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		writeErr(w, http.StatusNotFound, "invite not found")
 		return
 	}
-	_, err := s.Orgs.Accept(r.Context(), body.Token, p.User.ID, p.User.Email)
+	joined, err := s.Orgs.Accept(r.Context(), body.Token, p.User.ID, p.User.Email)
 	switch {
 	case errors.Is(err, orgs.ErrBadInvite):
 		writeErr(w, http.StatusNotFound, "the invite is invalid or has expired")
@@ -182,6 +187,7 @@ func (s *Server) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{OrgID: joined, Action: audit.InviteAccept, Target: p.User.Email})
 	c, err := r.Cookie(auth.CookieName)
 	if err != nil {
 		internal(w, err)

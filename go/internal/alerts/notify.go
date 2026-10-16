@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/Mutiur03/pulse/internal/mail"
+	"github.com/Mutiur03/pulse/internal/safehttp"
 )
 
 // ChannelKind is how a notification is delivered.
@@ -160,12 +161,22 @@ func Verify(secret string, body []byte, header string, now time.Time, tolerance 
 	return hmac.Equal([]byte(want), []byte("t="+ts+",v1="+sig))
 }
 
-// Notifier delivers payloads to channels.
+// Notifier delivers payloads to channels. Webhook and Slack requests go
+// through Policy, which refuses internal addresses at dial time, and failed
+// deliveries are retried with exponential backoff.
 type Notifier struct {
-	Mail   mail.Sender
-	HTTP   *http.Client
+	Mail mail.Sender
+	// HTTP overrides the client built from Policy (tests).
+	HTTP *http.Client
+	// Policy allowlists otherwise blocked destinations; nil blocks all
+	// private, loopback and link-local addresses.
+	Policy *safehttp.Policy
 	AppURL string
 	Now    func() time.Time
+	// Attempts is how many times a delivery is tried (default 3); Backoff
+	// is the first wait between tries (default 1s), doubling each time.
+	Attempts int
+	Backoff  time.Duration
 }
 
 func (n *Notifier) now() time.Time {
@@ -179,8 +190,26 @@ func (n *Notifier) client() *http.Client {
 	if n.HTTP != nil {
 		return n.HTTP
 	}
-	return &http.Client{Timeout: 10 * time.Second}
+	return n.Policy.Client(10 * time.Second)
 }
+
+// CheckTarget validates a webhook or Slack URL against the policy before it
+// is saved.
+func (n *Notifier) CheckTarget(ctx context.Context, c Channel) error {
+	if c.Kind != Webhook && c.Kind != Slack {
+		return nil
+	}
+	return n.Policy.CheckURL(ctx, c.Target)
+}
+
+// retryable marks delivery errors worth another try.
+type retryable struct {
+	err   error
+	after time.Duration
+}
+
+func (r *retryable) Error() string { return r.err.Error() }
+func (r *retryable) Unwrap() error { return r.err }
 
 // Send delivers one payload to one channel.
 func (n *Notifier) Send(ctx context.Context, c Channel, p Payload) error {
@@ -210,7 +239,45 @@ func (n *Notifier) Send(ctx context.Context, c Channel, p Payload) error {
 	return fmt.Errorf("unknown channel kind %q", c.Kind)
 }
 
+// post delivers with retries on network errors, HTTP 429 and 5xx. Blocked
+// destinations and other 4xx answers fail at once.
 func (n *Notifier) post(ctx context.Context, target string, body []byte, headers map[string]string) error {
+	attempts, wait := n.Attempts, n.Backoff
+	if attempts <= 0 {
+		attempts = 3
+	}
+	if wait <= 0 {
+		wait = time.Second
+	}
+	var err error
+	for i := 0; i < attempts; i++ {
+		if i > 0 {
+			d := wait << (i - 1)
+			var r *retryable
+			if errors.As(err, &r) && r.after > d {
+				d = r.after
+			}
+			t := time.NewTimer(d)
+			select {
+			case <-ctx.Done():
+				t.Stop()
+				return err
+			case <-t.C:
+			}
+		}
+		err = n.postOnce(ctx, target, body, headers)
+		var r *retryable
+		if err == nil || !errors.As(err, &r) {
+			return err
+		}
+	}
+	if attempts > 1 {
+		return fmt.Errorf("%w (after %d attempts)", err, attempts)
+	}
+	return err
+}
+
+func (n *Notifier) postOnce(ctx context.Context, target string, body []byte, headers map[string]string) error {
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, target, bytes.NewReader(body))
 	if err != nil {
 		return err
@@ -222,12 +289,23 @@ func (n *Notifier) post(ctx context.Context, target string, body []byte, headers
 	}
 	res, err := n.client().Do(req)
 	if err != nil {
-		return err
+		if errors.Is(err, safehttp.ErrBlocked) || ctx.Err() != nil {
+			return err
+		}
+		return &retryable{err: err}
 	}
 	defer func() { _ = res.Body.Close() }()
 	_, _ = io.Copy(io.Discard, io.LimitReader(res.Body, 64<<10))
 	if res.StatusCode >= 300 {
-		return fmt.Errorf("%s answered HTTP %d", req.URL.Host, res.StatusCode)
+		err := fmt.Errorf("%s answered HTTP %d", req.URL.Host, res.StatusCode)
+		if res.StatusCode == http.StatusTooManyRequests || res.StatusCode >= 500 {
+			after := time.Duration(0)
+			if sec, perr := strconv.Atoi(res.Header.Get("Retry-After")); perr == nil && sec > 0 && sec <= 30 {
+				after = time.Duration(sec) * time.Second
+			}
+			return &retryable{err: err, after: after}
+		}
+		return err
 	}
 	return nil
 }

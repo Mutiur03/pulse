@@ -12,7 +12,9 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/alerts"
 	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
 	"github.com/Mutiur03/pulse/internal/mail"
@@ -87,10 +89,21 @@ type Server struct {
 	Accounts Accounts
 	Keys     KeyStore
 	Projects ProjectStore
-	// Throttle limits failed logins; nil disables it.
-	Throttle *auth.Throttle
-	// ResetThrottle limits password reset requests; nil disables it.
-	ResetThrottle *auth.Throttle
+	// Limits throttle login, signup and password reset.
+	Limits AuthLimits
+	// ClientIP finds the client address behind trusted proxies; nil uses
+	// the direct peer.
+	ClientIP *clientip.Resolver
+	// Sessions, Roles, Origins, Audit and AuditLog back the security
+	// endpoints; nil disables each.
+	Sessions SessionRevoker
+	Roles    RoleStore
+	Origins  OriginStore
+	Audit    audit.Recorder
+	AuditLog AuditReader
+	// OutboundCheck validates webhook and Slack URLs before they are
+	// saved (SSRF protection); nil skips the check.
+	OutboundCheck func(ctx context.Context, rawURL string) error
 	Orgs          OrgStore
 	// Mail sends reset, invite and verification emails; nil drops them.
 	Mail mail.Sender

@@ -6,6 +6,7 @@ import (
 	"net/http"
 
 	"github.com/Mutiur03/pulse/internal/api/gen"
+	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/projects"
 )
@@ -82,6 +83,7 @@ func (s *Server) CreateProject(w http.ResponseWriter, r *http.Request) {
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{OrgID: pr.OrgID, ProjectID: pr.ID, Action: audit.ProjectCreate, Target: pr.Name})
 	writeJSON(w, http.StatusCreated, gen.CreatedProject{Project: project2gen(pr), Key: apiKey(k)})
 }
 
@@ -101,5 +103,6 @@ func (s *Server) UpdateProject(w http.ResponseWriter, r *http.Request, projectID
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.ProjectUpdate, Target: name})
 	writeJSON(w, http.StatusOK, gen.Project{Id: projectID, Name: name, Role: gen.ProjectRoleOwner})
 }

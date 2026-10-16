@@ -286,10 +286,10 @@ func Quantile(bounds []float64, counts []uint64, q float64) (float64, bool) {
 			switch {
 			case i == 0:
 				return bounds[0], true
-			case i == len(bounds):
+			case i >= len(bounds):
 				return bounds[len(bounds)-1], true
 			}
-			lo, hi := bounds[i-1], bounds[i]
+			lo, hi := bounds[i-1], bounds[i] //nolint:gosec // 0 < i < len(bounds) after the switch
 			frac := (rank - seen) / float64(c)
 			return lo + (hi-lo)*math.Max(0, math.Min(1, frac)), true
 		}

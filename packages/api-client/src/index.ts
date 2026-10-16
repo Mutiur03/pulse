@@ -31,6 +31,8 @@ export type Org = Schemas['Org'];
 export type Member = Schemas['Member'];
 export type Invite = Schemas['Invite'];
 export type InviteInfo = Schemas['InviteInfo'];
+export type AuditEntry = Schemas['AuditEntry'];
+export type AllowedOrigins = Schemas['AllowedOrigins'];
 export type Role = Org['role'];
 export type ReplaySummary = Schemas['ReplaySummary'];
 export type ReplayList = Schemas['ReplayList'];
@@ -137,6 +139,14 @@ export class APIClient {
     return this.request('POST', `/v1/orgs/${orgId}/members/${userId}/remove`);
   }
 
+  setMemberRole(orgId: number, userId: number, role: Role): Promise<void> {
+    return this.request('POST', `/v1/orgs/${orgId}/members/${userId}/role`, undefined, { role });
+  }
+
+  listAuditLog(orgId: number, query?: { limit?: number; before?: number }): Promise<AuditEntry[]> {
+    return this.request('GET', `/v1/orgs/${orgId}/audit-log`, query);
+  }
+
   listInvites(orgId: number): Promise<Invite[]> {
     return this.request('GET', `/v1/orgs/${orgId}/invites`);
   }
@@ -161,8 +171,21 @@ export class APIClient {
     return this.request('POST', '/v1/auth/logout');
   }
 
+  /** Ends every session of the current user, including this one. */
+  logoutAll(): Promise<{ sessions_ended: number }> {
+    return this.request('POST', '/v1/auth/logout-all');
+  }
+
   me(): Promise<Me> {
     return this.request('GET', '/v1/auth/me');
+  }
+
+  getAllowedOrigins(projectId: number): Promise<AllowedOrigins> {
+    return this.request('GET', `/v1/projects/${projectId}/allowed-origins`);
+  }
+
+  setAllowedOrigins(projectId: number, origins: string[]): Promise<AllowedOrigins> {
+    return this.request('POST', `/v1/projects/${projectId}/allowed-origins`, undefined, { origins });
   }
 
   listKeys(projectId: number): Promise<ApiKey[]> {

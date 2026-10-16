@@ -22,6 +22,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/kafka"
 	"github.com/Mutiur03/pulse/internal/mail"
 	"github.com/Mutiur03/pulse/internal/processor"
+	"github.com/Mutiur03/pulse/internal/safehttp"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/telemetry"
 )
@@ -55,6 +56,12 @@ func main() {
 	defer func() { _ = rdb.Close() }()
 
 	appURL := os.Getenv("APP_URL")
+	// Webhook and Slack deliveries never reach internal addresses unless
+	// allowlisted here (development only).
+	outbound, err := safehttp.ParseAllowlist(os.Getenv("OUTBOUND_ALLOWLIST"))
+	if err != nil {
+		log.Fatalf("OUTBOUND_ALLOWLIST: %v", err)
+	}
 	engine := &alerts.Engine{
 		Store:   &alerts.Store{DB: db},
 		Metrics: chClient,
@@ -65,6 +72,7 @@ func main() {
 				User: os.Getenv("SMTP_USER"), Password: os.Getenv("SMTP_PASSWORD"),
 			}),
 			AppURL: appURL,
+			Policy: outbound,
 		},
 		Locks:  alerts.RedisLocker{Client: rdb},
 		AppURL: appURL,

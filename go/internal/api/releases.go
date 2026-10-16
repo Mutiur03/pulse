@@ -12,6 +12,7 @@ import (
 
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/artifacts"
+	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
 	"github.com/Mutiur03/pulse/internal/sourcemap"
 	"github.com/Mutiur03/pulse/internal/store/ch"
@@ -133,7 +134,7 @@ func (s *Server) UploadSourcemaps(w http.ResponseWriter, r *http.Request, projec
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, MaxUploadBytes)
-	if err := r.ParseMultipartForm(8 << 20); err != nil {
+	if err := r.ParseMultipartForm(8 << 20); err != nil { //nolint:gosec // body capped by MaxBytesReader above
 		var tooBig *http.MaxBytesError
 		if errors.As(err, &tooBig) {
 			writeErr(w, http.StatusRequestEntityTooLarge, "upload is larger than 50 MB")
@@ -267,6 +268,7 @@ func (s *Server) CreateUploadToken(w http.ResponseWriter, r *http.Request, proje
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.UploadTokenCreate, Target: name})
 	writeJSON(w, http.StatusCreated, gen.UploadTokenCreated{Token: toToken(t), Secret: secret})
 }
 
@@ -282,6 +284,7 @@ func (s *Server) RevokeUploadToken(w http.ResponseWriter, r *http.Request, proje
 		internal(w, err)
 		return
 	}
+	s.record(r, audit.Entry{ProjectID: projectID, Action: audit.UploadTokenRevoke, Target: t.Name})
 	writeJSON(w, http.StatusOK, toToken(t))
 }
 

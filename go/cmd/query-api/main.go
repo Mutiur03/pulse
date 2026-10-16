@@ -8,6 +8,7 @@ import (
 	"os"
 	"os/signal"
 	"strconv"
+	"strings"
 	"syscall"
 	"time"
 
@@ -15,7 +16,9 @@ import (
 	"github.com/Mutiur03/pulse/internal/api"
 	"github.com/Mutiur03/pulse/internal/api/gen"
 	"github.com/Mutiur03/pulse/internal/artifacts"
+	"github.com/Mutiur03/pulse/internal/audit"
 	"github.com/Mutiur03/pulse/internal/auth"
+	"github.com/Mutiur03/pulse/internal/clientip"
 	"github.com/Mutiur03/pulse/internal/config"
 	"github.com/Mutiur03/pulse/internal/issues"
 	"github.com/Mutiur03/pulse/internal/keys"
@@ -23,6 +26,7 @@ import (
 	"github.com/Mutiur03/pulse/internal/orgs"
 	"github.com/Mutiur03/pulse/internal/projects"
 	"github.com/Mutiur03/pulse/internal/replay"
+	"github.com/Mutiur03/pulse/internal/safehttp"
 	"github.com/Mutiur03/pulse/internal/store/ch"
 	"github.com/Mutiur03/pulse/internal/symbolicate"
 	"github.com/Mutiur03/pulse/internal/telemetry"
@@ -64,16 +68,49 @@ func main() {
 	defer db.Close()
 	rdb := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
 	defer func() { _ = rdb.Close() }()
-	accounts := &auth.Store{DB: db}
+	idle := auth.DefaultIdle
+	if h := envInt("SESSION_IDLE_HOURS", 0); h > 0 {
+		idle = time.Duration(h) * time.Hour
+	}
+	accounts := &auth.Store{DB: db, Idle: idle}
+	proxies, err := clientip.Parse(os.Getenv("TRUSTED_PROXIES"))
+	if err != nil {
+		log.Fatalf("TRUSTED_PROXIES: %v", err)
+	}
+	outbound, err := safehttp.ParseAllowlist(os.Getenv("OUTBOUND_ALLOWLIST"))
+	if err != nil {
+		log.Fatalf("OUTBOUND_ALLOWLIST: %v", err)
+	}
+	keyStore := &keys.Store{DB: db, Redis: rdb}
+	orgStore := &orgs.Store{DB: db}
+	auditStore := &audit.Store{DB: db}
+	limit := func(prefix, env string, def int, window time.Duration) *auth.Throttle {
+		return &auth.Throttle{Redis: rdb, Max: envInt(env, def), Window: window, Prefix: prefix}
+	}
 	srv := &api.Server{
 		Traces: chClient, Issues: issueStore, Accounts: accounts,
-		Keys:     &keys.Store{DB: db, Redis: rdb},
+		Keys:     keyStore,
 		Projects: &projects.Store{DB: db},
-		// Five failed logins per email and address lock it for 15 minutes.
-		Throttle: &auth.Throttle{Redis: rdb, Max: 5, Window: 15 * time.Minute},
-		// Five reset emails per address and client per hour.
-		ResetThrottle: &auth.Throttle{Redis: rdb, Max: 5, Window: time.Hour, Prefix: "reset:req"},
-		Orgs:          &orgs.Store{DB: db},
+		Limits: api.AuthLimits{
+			// Five failed logins per email and address lock it for 15 minutes,
+			// twenty from any addresses lock the email.
+			LoginFail:  limit("login:fail", "LOGIN_FAIL_LIMIT", 5, 15*time.Minute),
+			LoginEmail: limit("login:email", "LOGIN_EMAIL_FAIL_LIMIT", 20, 15*time.Minute),
+			// Attempts per client address, successful or not.
+			LoginIP:  limit("login:ip", "LOGIN_IP_LIMIT", 100, 15*time.Minute),
+			SignupIP: limit("signup:ip", "SIGNUP_IP_LIMIT", 20, time.Hour),
+			ResetIP:  limit("reset:ip", "RESET_IP_LIMIT", 20, time.Hour),
+			// Five reset emails per address and client per hour.
+			ResetEmail: limit("reset:req", "RESET_EMAIL_LIMIT", 5, time.Hour),
+		},
+		ClientIP:      proxies,
+		Sessions:      accounts,
+		Roles:         orgStore,
+		Origins:       &projects.Origins{DB: db, Keys: keyStore},
+		Audit:         auditStore,
+		AuditLog:      auditStore,
+		OutboundCheck: outbound.CheckURL,
+		Orgs:          orgStore,
 		// Without SMTP_ADDR emails are written to the log.
 		Mail: mail.New(mail.Config{
 			Addr: os.Getenv("SMTP_ADDR"), From: os.Getenv("SMTP_FROM"),
@@ -87,7 +124,7 @@ func main() {
 	}
 
 	srv.Alerts, srv.AlertMetrics = &alerts.Store{DB: db}, chClient
-	srv.AlertSender = &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL}
+	srv.AlertSender = &alerts.Notifier{Mail: srv.Mail, AppURL: srv.AppURL, Policy: outbound}
 
 	// A typed nil would look non-nil through the interface.
 	if objects := replay.Connect(); objects != nil {
@@ -107,12 +144,24 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(middleware.RequestID)
-	r.Use(middleware.Logger)
+	// The standard logger prints full URLs; this one redacts tokens.
+	r.Use(api.RequestLogger)
 	r.Use(middleware.Recoverer)
 	r.Use(middleware.Timeout(60 * time.Second))
+	r.Use(api.SecurityHeaders(envInt("HSTS_MAX_AGE", 0)))
 	// The web app calls this API through its own same-origin proxy, so no
 	// CORS headers are sent and the session cookie never leaves that origin.
-	r.Use(auth.Middleware(accounts))
+	// State-changing requests must come from the web app's origin.
+	csrf := auth.CSRF{}
+	for _, o := range append([]string{os.Getenv("APP_URL")}, strings.Split(os.Getenv("CSRF_TRUSTED_ORIGINS"), ",")...) {
+		if n := auth.NormalizeOrigin(o); n != "" {
+			csrf.Origins = append(csrf.Origins, n)
+		}
+	}
+	if len(csrf.Origins) == 0 {
+		log.Printf("APP_URL is not set: the CSRF Origin check only rejects requests browsers mark as cross-site")
+	}
+	r.Use(auth.Middleware(accounts, csrf))
 
 	handler := gen.HandlerFromMux(srv, r)
 
@@ -136,4 +185,12 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		log.Printf("Server shutdown error: %v", err)
 	}
+}
+
+// envInt reads a positive integer setting, or def.
+func envInt(name string, def int) int {
+	if n, err := strconv.Atoi(os.Getenv(name)); err == nil && n >= 0 {
+		return n
+	}
+	return def
 }
